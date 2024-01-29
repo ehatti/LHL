@@ -5,3 +5,4 @@
 
 ./Core/Program.v
 ./Core/Traces.v
+./Core/Linearizability.v

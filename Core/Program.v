@@ -3,7 +3,7 @@ Definition ESig : Type := Type -> Type.
 CoInductive Prog {E : ESig} {Ret : Type} : Type :=
 | Bind {A} : E A -> (A -> Prog) -> Prog
 | Return : Ret -> Prog
-| Noop : Prog -> Prog.
+| NoOp : Prog -> Prog.
 
 Arguments Prog : clear implicits.
 
@@ -40,6 +40,13 @@ Record Layer {E F : ESig} : Type :=
         Obj : Spec E;
         Impl : Mod E F; 
     }.
+Arguments Layer : clear implicits.
+
+Definition idLayer {E : ESig} (spec : Spec E) :=
+    {|
+        Obj := spec;
+        Impl := idMod
+    |}.
 
 (* Layer Events *)
 
@@ -48,6 +55,7 @@ Variant LEvent {E F : ESig} : Type :=
 | ORetEv {Ret : Type} (n : Ret)
 | UCallEv {A : Type} (m : E A)
 | URetEv {A : Type} (n : A)
+| Silent
 .
 
 Definition ThreadLEvent {E F} : Type := nat * @LEvent E F.
