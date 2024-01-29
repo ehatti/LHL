@@ -1,0 +1,5 @@
+{
+    "vscoq.path": "/Users/arthurovale/.opam/LHL/bin/vscoqtop",
+    "vscoq.goals.messages.full": true,
+    "vscoq.proof.mode": 0
+}
