@@ -47,7 +47,7 @@ Inductive ThreadState {E : ESig} : Type :=
 | UCall {Ret A} (k : A -> Prog E Ret)
 .
 
-Definition ThreadsSt {E : ESig} : Type := nat -> ThreadState (E := E).
+Definition ThreadsSt {E : ESig} : Type := ThreadName -> ThreadState (E := E).
 
 Definition allIdle {E : ESig} : ThreadsSt (E := E) := fun n => Idle.
 
@@ -85,60 +85,61 @@ Definition IsTraceOfOver {E F : ESig} (t : Trace (ThreadEvent F)) (lay : @Layer 
 
 (* Interactions *)
 
-Definition InterState {E F : ESig} {lay : @Layer E F} : Type := 
-    (ThreadsSt (E := E)) * lay.(USpec).(State).
+Definition InterState {E : ESig} {spec : Spec E} : Type := 
+    (ThreadsSt (E := E)) * spec.(State).
 
-Inductive InterStep {E F : ESig} {lay : @Layer E F} :
-    InterState -> ThreadLEvent (E := E) (F := F) -> InterState -> Prop  :=
-    | IOCall ths st i R m ths' :
+Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadName) :
+    InterState -> ThreadLEvent -> InterState -> Prop  :=
+    | IOCall ths st R m ths' :
         ths i = Idle -> 
-        ths' i = Cont (lay.(LImpl) R m) ->
+        ths' i = Cont (impl R m) ->
         (forall j , j <> i -> ths' j = ths j) -> 
-        InterStep (ths, st) (i, OCallEv m) (ths', st)
-    | IORet ths st i R n ths' :
+        InterStep i (ths, st) (i, OCallEv m) (ths', st)
+    | IORet ths st R n ths' :
         ths i = Cont (Return n) ->
         ths' i = Idle -> 
         (forall j , j <> i -> ths' j = ths j) -> 
-        InterStep (ths, st) (i, ORetEv (Ret := R) n) (ths', st)
-    | IUCall ths st i A (m : E A) R k ths' st' : 
+        InterStep i (ths, st) (i, ORetEv (Ret := R) n) (ths', st)
+    | IUCall ths st A (m : E A) R k ths' st' : 
         ths i = Cont (Bind m k) ->
         ths' i = UCall (Ret := R) k ->
-        lay.(USpec).(Step) st (i, CallEv m) st' ->
+        spec.(Step) st (i, CallEv m) st' ->
         (forall j , j <> i -> ths' j = ths j) -> 
-        InterStep (ths, st) (i, UCallEv m) (ths', st')
-    | IURet ths st i A (n : A) R k ths' st' : 
+        InterStep i (ths, st) (i, UCallEv m) (ths', st')
+    | IURet ths st A (n : A) R k ths' st' : 
         ths i = UCall (Ret := R) k ->
         ths' i = Cont (k n) -> 
-        lay.(USpec).(Step) st (i, RetEv n) st' -> 
+        spec.(Step) st (i, RetEv n) st' -> 
         (forall j , j <> i -> ths' j = ths j) -> 
-        InterStep (ths, st) (i, URetEv n) (ths', st')
-    | IUSilent ths st i R (p : _ R) ths' :
+        InterStep i (ths, st) (i, URetEv n) (ths', st')
+    | IUSilent ths st R (p : _ R) ths' :
         ths i = Cont (NoOp p) ->
         ths' i = Cont p -> 
         (forall j , j <> i -> ths' j = ths j) -> 
-        InterStep (ths, st) (i, Silent) (ths', st).
+        InterStep i (ths, st) (i, Silent) (ths', st).
 
-Definition InterSteps {E F : ESig} {lay : @Layer E F} : 
-    InterState (lay := lay) -> Trace ThreadLEvent -> InterState -> Prop := Steps (InterStep).
+Definition InterSteps {E F : ESig} {spec : Spec E} {impl : Impl E F} : 
+    InterState (spec := spec) -> Trace (ThreadLEvent (F := F)) -> InterState -> Prop := 
+        Steps (fun thst ev thst' => exists i, InterStep (impl := impl) i thst ev thst').
 
-Definition IsTraceOfInter {E F : ESig} (t : Trace ThreadLEvent) (lay : @Layer E F) := 
-    exists thst, IsPathOf (allIdle, lay.(USpec).(Init)) t thst (InterSteps).
+Definition IsTraceOfInter {E F : ESig} (t : Trace (ThreadLEvent (F := F))) (lay : Layer E F) := 
+    exists thst, IsPathOf (allIdle, lay.(USpec).(Init)) t thst (InterSteps (impl := lay.(LImpl))).
 
 Definition IsTraceOfInterOv {E F : ESig} (t : Trace (ThreadEvent F)) (lay : @Layer E F) := 
     exists t', t = projOver t' /\ IsTraceOfInter t' lay.
 
-Inductive InterUStep {E F : ESig} {lay : @Layer E F} : 
+Inductive InterUStep {E : ESig} {spec : Spec E} : 
     InterState -> InterState -> Prop :=
     | InterUCall ths st i A (m : E A) R k ths' st' : 
         ths i = Cont (Bind m k) ->
         ths' i = UCall (Ret := R) k ->
-        lay.(USpec).(Step) st (i, CallEv m) st' ->
+        spec.(Step) st (i, CallEv m) st' ->
         (forall j , j <> i -> ths' j = ths j) -> 
         InterUStep (ths, st) (ths', st')
     | InterURet ths st i A (n : A) R k ths' st' : 
         ths i = UCall (Ret := R) k ->
         ths' i = Cont (k n) -> 
-        lay.(USpec).(Step) st (i, RetEv n) st' -> 
+        spec.(Step) st (i, RetEv n) st' -> 
         (forall j , j <> i -> ths' j = ths j) -> 
         InterUStep (ths, st) (ths', st')
     | InterUSilent ths st i R (p : _ R) ths' :
@@ -147,15 +148,15 @@ Inductive InterUStep {E F : ESig} {lay : @Layer E F} :
         (forall j , j <> i -> ths' j = ths j) -> 
         InterUStep (ths, st) (ths', st).
 
-Definition InterUSteps {E F : ESig} {lay : @Layer E F} : 
-    InterState (lay := lay) -> InterState (lay := lay) -> Prop := 
-    clos_refl_trans InterState InterUStep.
+Definition InterUSteps {E : ESig} {spec : Spec E} : 
+    InterState -> InterState -> Prop := 
+    clos_refl_trans InterState (InterUStep (spec := spec)).
 
-Inductive InterOStep {E F : ESig} {lay : @Layer E F} :
-    InterState (lay := lay) -> ThreadLEvent (E := E) (F := F) -> InterState -> Prop  :=
+Inductive InterOStep {E F : ESig} {spec : Spec E} {impl : Impl E F} :
+    InterState (spec := spec) -> ThreadLEvent (E := E) (F := F) -> InterState -> Prop  :=
     | InterOCall ths st i R m ths' :
         ths i = Idle -> 
-        ths' i = Cont (lay.(LImpl) R m) ->
+        ths' i = Cont (impl R m) ->
         (forall j , j <> i -> ths' j = ths j) -> 
         InterOStep (ths, st) (i, OCallEv m) (ths', st)
     | InterORet ths st i R n ths' :
@@ -166,9 +167,9 @@ Inductive InterOStep {E F : ESig} {lay : @Layer E F} :
 
 Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F := 
     {|
-        State := InterState (lay := lay);
+        State := InterState (spec := lay.(USpec));
         Step thst ev thst'' := exists thst' ev', 
-            InterUSteps thst thst' /\ projOverEv ev' = Some ev /\ InterOStep thst' ev' thst'';
+            InterUSteps thst thst' /\ projOverEv ev' = Some ev /\ InterOStep (impl := lay.(LImpl)) thst' ev' thst'';
         Init := (allIdle, lay.(USpec).(Init))
     |}.
 
