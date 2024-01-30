@@ -9,53 +9,58 @@ Arguments Prog : clear implicits.
 
 Notation "x <- f ; m" := (Bind f (fun x => m)) (at level 80, right associativity).
 
+Definition Impl {E : ESig} {F : ESig} := (forall Ret, F Ret -> Prog E Ret).
+Arguments Impl : clear implicits.
+
+(* Identity Program and Implementation *)
 Definition idProg {E : ESig} {Ret : Type} : E Ret -> Prog E Ret := 
     fun e => (x <- e ; Return x).
 
-Definition Mod {E : ESig} {F : ESig} := (forall Ret, F Ret -> Prog E Ret).
-Arguments Mod : clear implicits.
-
-Definition idMod {E : ESig} : Mod E E := 
+Definition idImpl {E : ESig} : Impl E E := 
     fun Ret => idProg.
 
-Definition ThreadName := nat.
+(* Program Operations *)
 
-Variant Event {E : ESig} : Type :=
-| CallEv {Ret : Type} (m : E Ret)
-| RetEv {Ret : Type} (n : Ret)
-.
+CoFixpoint bindProg {E A B} (p : Prog E A) (f : A -> Prog E B) : Prog E B :=
+  match p with
+    | Bind e f' => x <- e; bindProg (f' x) f
+    | Return a => f a
+    | NoOp p' => NoOp (bindProg p' f)
+  end.
+Notation "x <-- f ; m" := (bindProg f (fun x => m)) (at level 80, right associativity).
 
-Definition ThreadEvent (E : ESig) : Type := ThreadName * Event (E := E).
+CoFixpoint mapProg
+           {E E'}
+           (f : forall A, E A -> E' A)
+           {Ret}
+           (p : Prog E Ret) :
+  Prog E' Ret :=
+  match p with
+    | @Bind _ _ A e f' => a <- f A e; mapProg f (f' a)
+    | Return r => Return r
+    | NoOp p' => NoOp (mapProg f p')
+  end.
 
-Record Spec {E : ESig} : Type := 
-    {
-        State : Type;
-        Step : State -> ThreadEvent E -> State -> Prop;
-        Init : State
-    }.
-Arguments Spec : clear implicits.
+CoFixpoint substProg
+           {E F}
+           (impl : Impl E F)
+           {Ret}
+           (p : Prog F Ret) :
+  Prog E Ret :=
+  match p with
+    | @Bind _ _ A m f => NoOp (bindSubstProg impl f (impl A m))
+    | Return a => Return a
+    | NoOp p' => NoOp (substProg impl p')
+  end
 
-Record Layer {E F : ESig} : Type :=
-    {
-        Obj : Spec E;
-        Impl : Mod E F; 
-    }.
-Arguments Layer : clear implicits.
+with bindSubstProg
+           {F F'} (impl : forall A, F' A -> Prog F A)
+           {R R'} (f: R -> Prog F' R') (p: Prog F R) :=
+  match p with
+  | Bind m' f' => r <- m'; bindSubstProg impl f (f' r)
+  | Return a => NoOp (substProg impl (f a))
+  | NoOp p'' => NoOp (bindSubstProg impl f p'')
+  end.
 
-Definition idLayer {E : ESig} (spec : Spec E) :=
-    {|
-        Obj := spec;
-        Impl := idMod
-    |}.
-
-(* Layer Events *)
-
-Variant LEvent {E F : ESig} : Type :=
-| OCallEv {Ret : Type} (m : F Ret)
-| ORetEv {Ret : Type} (n : Ret)
-| UCallEv {A : Type} (m : E A)
-| URetEv {A : Type} (n : A)
-| Silent
-.
-
-Definition ThreadLEvent {E F} : Type := nat * @LEvent E F.
+Definition implVComp {E F G} (impl : Impl E F) (impl' : Impl F G) : Impl E G := 
+    fun Ret g => substProg impl (impl' Ret g).

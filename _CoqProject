@@ -4,5 +4,7 @@
 ./Util/TransUtil.v
 
 ./Core/Program.v
+./Core/Specs.v
 ./Core/Traces.v
 ./Core/Linearizability.v
+./Core/Simulates.v
