@@ -1,10 +1,16 @@
 -Q . LHL
 
+./Util/Tactics.v
+./Util/Util.v
 ./Util/ListUtil.v
 ./Util/TransUtil.v
 
 ./Core/Program.v
+./Core/ProgramFacts.v
 ./Core/Specs.v
 ./Core/Traces.v
 ./Core/Linearizability.v
 ./Core/Simulates.v
+
+# Requires Paco
+./Core/Eutt.v

@@ -25,6 +25,12 @@ Record Layer {E F : ESig} : Type :=
     }.
 Arguments Layer : clear implicits.
 
+Definition mkLayer {E F : ESig} (spec : Spec E) (impl : Impl E F) : (Layer E F) := 
+    {|
+        USpec := spec;
+        LImpl := impl
+    |}.
+
 Definition idLayer {E : ESig} (spec : Spec E) :=
     {|
         USpec := spec;

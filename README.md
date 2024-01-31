@@ -19,3 +19,9 @@ Generating Coq Makefile:
 ```
 coq_makefile -f _CoqProject -o Makefile
 ```
+
+To Install Paco
+```
+opam repo add coq-released https://coq.inria.fr/opam/released
+opam install coq-paco
+```
