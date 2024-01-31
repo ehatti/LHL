@@ -50,3 +50,7 @@ CoqMakefile
 CoqMakefile.conf
 Makefile
 Makefile.conf
+
+# vscode
+
+.vscode/*
