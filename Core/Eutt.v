@@ -456,28 +456,31 @@ Proof.
       cbn. punfold IHeuttF; pfold; constructor; auto.
 Qed.
 
-Inductive flatten_flatten_bisim {M N P}
-          (f : forall R, M R -> Prog N R) (g : forall R, N R -> Prog P R)
+*)
+
+Inductive subst_subst_bisim {E F G}
+          (f : Impl F G) (g : Impl E F)
           {R}
-  : Prog P R -> Prog P R -> Prop :=
-| flatten_flatten_bisim_base p
-  : flatten_flatten_bisim f g
-      (flattenProg g (flattenProg f p))
-      (flattenProg (fun _ m => flattenProg g (f _ m)) p)
-| flatten_flatten_bisim_bind {S} (p : _ S) k
-  : flatten_flatten_bisim f g
-      (flattenProg g (bindFlattenProg f k p))
-      (bindFlattenProg
-         (fun (A0 : Type) (m0 : M A0) => flattenProg g (f A0 m0)) k
-         (flattenProg g p))
-| flatten_flatten_bisim_bind_2 {S T} (p : _ S) (h : S -> _ T) k
-  : flatten_flatten_bisim f g
-      (bindFlattenProg g (fun r0 : _ => bindFlattenProg f k (h r0)) p)
-      (bindFlattenProg
-         (fun (A0 : Type) (m0 : M A0) => flattenProg g (f A0 m0)) k
-         (bindFlattenProg g h p))
+  : Prog E R -> Prog E R -> Prop :=
+| subst_subst_bisim_base p
+  : subst_subst_bisim f g
+      (substProg g (substProg f p))
+      (substProg (fun _ m => substProg g (f _ m)) p)
+| subst_subst_bisim_bind {S} (p : _ S) k
+  : subst_subst_bisim f g
+      (substProg g (bindSubstProg f k p))
+      (bindSubstProg
+         (fun (A0 : Type) (m0 : G A0) => substProg g (f A0 m0)) k
+         (substProg g p))
+| subst_subst_bisim_bind_2 {S T} (p : _ S) (h : S -> _ T) k
+  : subst_subst_bisim f g
+      (bindSubstProg g (fun r0 : _ => bindSubstProg f k (h r0)) p)
+      (bindSubstProg
+         (fun (A0 : Type) (m0 : G A0) => substProg g (f A0 m0)) k
+         (bindSubstProg g h p))
 .
 
+(*
 Inductive all_eutt {M1 M2} (RR : IRel M1 M2)
   : list (sigT (Prog M1)) -> list (sigT (Prog M2)) -> Prop :=
 | all_eutt_nil : all_eutt RR [] []
@@ -486,32 +489,9 @@ Inductive all_eutt {M1 M2} (RR : IRel M1 M2)
   all_eutt RR t1 t2 ->
   all_eutt RR (existT _ T p1 :: t1) (existT _ T p2 :: t2)
 .
+*)
 
-(* interp f . interp g = interp (interp f . g) *)
-Lemma flatten_flatten {M N P}
-      (f : forall R, M R -> Prog N R) (g : forall R, N R -> Prog P R)
-  : (ieq ==> eutt ieq)%isig
-      (fun _ (m : Prog M _) => flattenProg g (flattenProg f m))
-      (@flattenProg _ _ (fun _ (m : M _) =>
-                         flattenProg g (f _ m))).
-Proof.
-  intros ? e _ [].
-  enough (forall (p1 p2 : Prog P T),
-    flatten_flatten_bisim f g p1 p2 ->
-    eutt ieq p1 p2).
-  { apply H; constructor. }
-  clear. pcofix self; intros _ _ []; pfold.
-  all:
-    match goal with
-    | [ |- _ ?p1 ?p2 ] => rewrite (frobProgId p1), (frobProgId p2)
-    end;
-    match goal with
-    | [ p : Prog _ _ |- _ ] => destruct p; cbn
-    end; constructor.
-  all: try reflexivity.
-  all: right; apply self; constructor.
-Qed.
-
+(*
 Lemma eutt_ProgSteps {M} (o : Spec M) (Ret : Type) M2 {RR : IRel M M2}
       (s : State o) (x : Ret)
       (x0 : Prog M Ret)
