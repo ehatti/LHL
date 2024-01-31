@@ -1,6 +1,7 @@
 From Coq Require Import
     List
-    Relations.
+    Relations
+    Init.Nat.
 
 From LHL.Util Require Import
     ListUtil
@@ -17,6 +18,12 @@ Unset Strict Implicit.
 (* Traces *)
 
 Definition Trace (T : Type) : Type := list T.
+
+Definition projAgentEv {A} i (ev : nat * A) : option (nat * A) :=
+    if eqb (fst ev) i then
+        Some ev
+    else
+        None.
 
 Definition projOverEv {E F : ESig} (ev : @ThreadLEvent E F) : option (ThreadEvent F) := 
     match ev with
@@ -36,8 +43,23 @@ Definition projUnderEv {E F : ESig} (ev : @ThreadLEvent E F) : option (ThreadEve
     | (_, Silent) => None
     end.
 
+Definition liftUEv {E F} (ev : @Event E) : @LEvent E F :=
+    match ev with
+    | CallEv m => UCallEv m
+    | RetEv v => URetEv v
+    end.
+
+Definition liftOEv {E F} (ev : @Event F) : @LEvent E F :=
+    match ev with
+    | CallEv m => OCallEv m
+    | RetEv v => ORetEv v
+    end.
+
 Notation projOver := (mapfilter projOverEv).
 Notation projUnder := (mapfilter projUnderEv).
+Definition projAgent {A} i : Trace (ThreadName * A) -> Trace (ThreadName * A) := (mapfilter (projAgentEv i)).
+Notation liftU := (map liftUEv).
+Notation liftO := (map liftOEv).
 
 (* Implule Transition System *)
 
@@ -51,7 +73,7 @@ Definition ThreadsSt {E : ESig} : Type := ThreadName -> ThreadState (E := E).
 
 Definition allIdle {E : ESig} : ThreadsSt (E := E) := fun n => Idle.
 
-Definition ThreadStep {E F : ESig} 
+Definition ThreadStep {E F : ESig}
     (M : Impl E F) (th : ThreadState) (e : LEvent) (th' : ThreadState) : Prop :=
         match e with 
         | @OCallEv _ _ R m => th = Idle /\ th' = Cont (M R m)
@@ -89,7 +111,7 @@ Definition InterState {E : ESig} {spec : Spec E} : Type :=
     (ThreadsSt (E := E)) * spec.(State).
 
 Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadName) :
-    InterState -> ThreadLEvent -> InterState -> Prop  :=
+    InterState -> ThreadLEvent -> InterState -> Prop :=
     | IOCall ths st R m ths' :
         ths i = Idle -> 
         ths' i = Cont (impl R m) ->
@@ -117,6 +139,10 @@ Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadNa
         ths' i = Cont p -> 
         (forall j , j <> i -> ths' j = ths j) -> 
         InterStep i (ths, st) (i, Silent) (ths', st).
+
+Definition ImplSteps i {E F : ESig} {spec : Spec E} {impl : Impl E F} : 
+    InterState (spec := spec) -> Trace (ThreadLEvent (F := F)) -> InterState -> Prop := 
+        Steps (fun thst ev thst' => InterStep (impl := impl) i thst ev thst').
 
 Definition InterSteps {E F : ESig} {spec : Spec E} {impl : Impl E F} : 
     InterState (spec := spec) -> Trace (ThreadLEvent (F := F)) -> InterState -> Prop := 
