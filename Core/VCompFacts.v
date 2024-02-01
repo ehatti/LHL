@@ -101,3 +101,10 @@ Proof.
   intros. unfold euttImpl. intros.
   apply substProg_assoc. reflexivity.
 Qed.
+
+Theorem obj_VComp_assoc {E F G} :
+  forall (spec : Spec E) (impl : Impl E F) (impl' : Impl F G),
+  ((spec :> impl) :|> impl') = (spec :> impl |> impl').
+Proof.
+    auto.
+Qed.
