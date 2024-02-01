@@ -61,20 +61,30 @@ Module Logic(O : OBJECT).
   Import Ps.
   Import O.
 
-  Definition Commit i (impl : Impl E F) (G : Relt) (P : Prec) (ev : @Event E) (Q : Relt) :=
-    forall s ρ t r evs evs',
-    InterSteps (impl:=impl) (allIdle, VE.(Init)) evs s ->
-    LinRw (projOver evs) ρ ->
-    IsTraceOfSpec ρ VF ->
+  Inductive AllRetEv : Trace (@ThreadEvent F) -> Prop :=
+  | NilAllRet : AllRetEv nil
+  | ConsAllRet {Ret s i} {v : F Ret} :
+      AllRetEv s ->
+      AllRetEv (cons (i, RetEv v) s).
+
+  Notation LinToVF ρ := (exists l, IsTraceOfSpec l VF /\ LinRw ρ l).
+
+  Notation "ρ --> σ" := (exists t, AllRetEv t /\ LinRw (ρ ++ t) σ)
+    (at level 20).
+
+  Definition Commit i (impl : Impl E F)
+    (G : Relt)
+    (P : Prec)
+    (ev : @Event E)
+    (Q : Relt) :=
+    forall s ρ t,
+    LinToVF ρ ->
     P s ρ ->
       InterStep (impl:=impl) i s (i, liftUEv ev) t /\
-      InterSteps (impl:=impl) t evs' r /\
-      let evs'' := app evs (cons (i, liftUEv ev) evs') in
       exists σ,
-        LinRw (projOver evs'') σ /\
-        IsTraceOfSpec σ VF /\
         Q s ρ t σ /\
-        G s ρ t σ.
+        G s ρ t σ /\
+        ρ --> σ.
  
   Definition VerifyPrim i (impl : Impl E F) (R G : Relt) (P : Prec) (ev : @Event E) (Q : Relt) :=
     Stable R P /\
@@ -136,4 +146,8 @@ Module Logic(O : OBJECT).
         (Q Ret m; Returned i Ret)) /\
     (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2) s ρ t σ,
       (P Ret1 m1; Invoke i Ret1 m1; Q Ret1 m1; Returned i Ret1; Return i Ret1 ==> P Ret2 m2) s ρ t σ).
+  
+  (* Theorem soundness (lay : Layer E F) :
+    (exists R G P Q, VerifyImpl R G P lay.(LImpl) Q) ->
+    specRefines VF (overObj lay). *)
 End Logic.
