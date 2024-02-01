@@ -4,10 +4,14 @@ From LHL.Core Require Import
     Traces
     Linearizability.
 
+From LHL.Core Require Import
+    RefinesFacts.
+
 Theorem lin_obs_ref {E F} : 
     forall (spec' spec : Spec E) (impl : Impl E F) ,
         Lin spec' spec -> 
         layerRefines (spec' :> impl) (spec :> impl).
+
 
 (* 
 show (overObj (spec :> impl)) :> impl' = overObj ((spec :> impl) |> impl').

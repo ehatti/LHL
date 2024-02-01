@@ -13,6 +13,7 @@
 
 ./Core/ProgramFacts.v
 ./Core/TracesFacts.v
+./Core/RefinesFacts.v
 
 # Requires Paco
 ./Core/Eutt.v
