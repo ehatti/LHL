@@ -1,7 +1,8 @@
 From LHL.Core Require Import
   Program
   Specs
-  Traces.
+  Traces
+  Linearizability.
 From Coq Require Import
   Lists.List
   Init.Nat.
@@ -61,12 +62,17 @@ Module Logic(O : OBJECT).
   Import O.
 
   Definition Commit i (impl : Impl E F) (G : Relt) (P : Prec) (ev : @Event E) (Q : Relt) :=
-    forall s ρ t r evs evs' evs'',
+    forall s ρ t r evs evs',
+    InterSteps (impl:=impl) (allIdle, VE.(Init)) evs s ->
+    LinRw (projOver evs) ρ ->
+    IsTraceOfSpec ρ VF ->
     P s ρ ->
       InterStep (impl:=impl) i s (i, liftUEv ev) t /\
       InterSteps (impl:=impl) t evs' r /\
-      evs'' = app evs (cons (i, liftUEv ev) evs') /\
-        exists σ,
+      let evs'' := app evs (cons (i, liftUEv ev) evs') in
+      exists σ,
+        LinRw (projOver evs'') σ /\
+        IsTraceOfSpec σ VF /\
         Q s ρ t σ /\
         G s ρ t σ.
  
