@@ -6,11 +6,13 @@
 ./Util/TransUtil.v
 
 ./Core/Program.v
-./Core/ProgramFacts.v
 ./Core/Specs.v
 ./Core/Traces.v
 ./Core/Linearizability.v
 ./Core/Simulates.v
+
+./Core/ProgramFacts.v
+./Core/TracesFacts.v
 
 # Requires Paco
 ./Core/Eutt.v

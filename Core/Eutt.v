@@ -82,6 +82,7 @@ Qed.
 
 Global Hint Resolve Reflexive_eutt_ieq : core.
 
+(*
 Inductive untaus1 {E R} (P : Prog E R -> Prop) : Prog E R -> Prop :=
 | untaus1_Noop p : untaus1 P p -> untaus1 P (NoOp p)
 | untaus1_Id p : P p -> untaus1 P p
@@ -147,7 +148,7 @@ Proof.
 Qed.
 
 
-(*
+
 (***************)
 (* BOILERPLATE *)
 
@@ -193,6 +194,7 @@ Proof.
   induction H; try (discriminate + constructor; auto).
   injection 1; intros; subst; constructor.
 Qed.
+*)
 
 Lemma Symmetric_eutt_ {M1 M2} (RR : IRel M1 M2) (RR' : IRel M2 M1) {R}
       (SYM : forall X m1 m2, RR X m1 m2 -> RR' X m2 m1)
@@ -222,20 +224,20 @@ Qed.
 
 Section Trans.
 
-Context {M1 M2 M3 : Type -> Type}
-  (R12 : IRel M1 M2)
-  (R23 : IRel M2 M3)
-  (R13 : IRel M1 M3).
+Context {E1 E2 E3 : ESig}
+  (R12 : IRel E1 E2)
+  (R23 : IRel E2 E3)
+  (R13 : IRel E1 E3).
 
 Context
-  (RRR : forall A m1 m2 m3, R12 A m1 m2 -> R23 A m2 m3 -> R13 A m1 m3).
+  (RRR : forall A e1 e2 e3, R12 A e1 e2 -> R23 A e2 e3 -> R13 A e1 e3).
 
 Lemma inv_eutt_Noop_left {R}
-  : forall (p1 : Prog M2 R) (p2 : Prog M3 R),
-    euttF R23 (upaco2 (euttF R23 (R := R)) bot2) (Noop p1) p2 ->
-    euttF R23 (upaco2 (euttF R23 (R := R)) bot2) p1 p2.
+  : forall (p1 : Prog E2 R) (p2 : Prog E3 R),
+    euttF R23 (upaco2 (euttF R23 (Ret := R)) bot2) (NoOp p1) p2 ->
+    euttF R23 (upaco2 (euttF R23 (Ret := R)) bot2) p1 p2.
 Proof.
-  intros p1 p2 H; remember (Noop p1) as Noop_p1 eqn:EQp1.
+  intros p1 p2 H; remember (NoOp p1) as NoOp_p1 eqn:EQp1.
   induction H; try discriminate.
   - constructor.
     destruct H; [| contradiction ].
@@ -247,11 +249,11 @@ Proof.
 Qed.
 
 Lemma inv_eutt_Noop_right {R}
-  : forall (p1 : Prog M1 R) (p2 : Prog M2 R),
-    euttF R12 (upaco2 (euttF R12 (R := R)) bot2) p1 (Noop p2) ->
-    euttF R12 (upaco2 (euttF R12 (R := R)) bot2) p1 p2.
+  : forall (p1 : Prog E1 R) (p2 : Prog E2 R),
+    euttF R12 (upaco2 (euttF R12 (Ret := R)) bot2) p1 (NoOp p2) ->
+    euttF R12 (upaco2 (euttF R12 (Ret := R)) bot2) p1 p2.
 Proof.
-  intros p1 p2 H; remember (Noop p2) as Noop_p1 eqn:EQp1.
+  intros p1 p2 H; remember (NoOp p2) as Noop_p1 eqn:EQp1.
   induction H; try discriminate.
   - constructor.
     destruct H; [| contradiction ].
@@ -263,7 +265,7 @@ Proof.
 Qed.
 
 Lemma Transitive_eutt {R}
- : forall (p1 : Prog M1 R) (p2 : Prog M2 R) (p3 : Prog M3 R),
+ : forall (p1 : Prog E1 R) (p2 : Prog E2 R) (p3 : Prog E3 R),
    eutt R12 p1 p2 ->
    eutt R23 p2 p3 ->
    eutt R13 p1 p3.
@@ -289,7 +291,7 @@ Proof.
     inversion Heqp2'; clear Heqp2'. subst.
     injpair_; subst.
     constructor.
-    { apply (RRR _ m1 m2 m3); auto. }
+    { apply (RRR _ e e' e'0); auto. }
     intros x.
     specialize (H0 x).
     destruct H0; [| contradiction ].
@@ -369,6 +371,7 @@ Proof.
   intros ? ? ? ? [] []. constructor.
 Qed.
 
+(*
 Local Notation fI := flattenObject.
 
 Inductive flattenProg_bisim {M1 M2 N1 N2}
@@ -489,9 +492,9 @@ Inductive all_eutt {M1 M2} (RR : IRel M1 M2)
   all_eutt RR t1 t2 ->
   all_eutt RR (existT _ T p1 :: t1) (existT _ T p2 :: t2)
 .
-*)
 
-(*
+
+
 Lemma eutt_ProgSteps {M} (o : Spec M) (Ret : Type) M2 {RR : IRel M M2}
       (s : State o) (x : Ret)
       (x0 : Prog M Ret)
