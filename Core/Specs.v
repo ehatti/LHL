@@ -25,6 +25,13 @@ Record Layer {E F : ESig} : Type :=
     }.
 Arguments Layer : clear implicits.
 
+Definition mkLayer {E F : ESig} (spec : Spec E) (impl : Impl E F) : (Layer E F) := 
+    {|
+        USpec := spec;
+        LImpl := impl
+    |}.
+Notation "x :> y" := (mkLayer x y) (at level 80, right associativity).
+
 Definition idLayer {E : ESig} (spec : Spec E) :=
     {|
         USpec := spec;
@@ -50,3 +57,4 @@ Definition layVComp {E F G} (lay : Layer E F) (impl : Impl F G) : Layer E G :=
         USpec := lay.(USpec);
         LImpl := implVComp lay.(LImpl) impl
     |}.
+Notation "x :|> y" := (layVComp x y) (at level 80, right associativity).

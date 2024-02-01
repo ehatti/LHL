@@ -54,3 +54,4 @@ Makefile.conf
 # vscode
 
 .vscode/*
+.DS_Store

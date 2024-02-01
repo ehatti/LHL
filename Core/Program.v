@@ -64,3 +64,5 @@ with bindSubstProg
 
 Definition implVComp {E F G} (impl : Impl E F) (impl' : Impl F G) : Impl E G := 
     fun Ret g => substProg impl (impl' Ret g).
+
+Notation "x |> y" := (implVComp x y) (at level 80, right associativity).
