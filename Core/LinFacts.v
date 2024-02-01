@@ -22,6 +22,4 @@ step7: we get (spec' :> impl) <= (overObj (spec :> idImpl)) :> impl) <= ((spec :
 
 as desired.
 
-(spec' :> impl) < overObj (spec :> idImpl) :> impl 
-
 *)
