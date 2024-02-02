@@ -54,6 +54,23 @@ Module Predicates(O : OBJECT).
   
   Global Instance stable_Prec : HasStable Prec :=
     fun R P => forall s ρ, ((fun t σ => exists s ρ, P s ρ /\ R s ρ t σ) ==> P) s ρ.
+
+  Class HasAll A :=
+    All : A -> Prop.
+  
+  Global Instance all_Relt : HasAll Relt :=
+    fun R => forall s ρ t σ, R s ρ t σ.
+  
+  Global Instance all_Prec : HasAll Prec :=
+    fun P => forall s ρ, P s ρ.
+  
+  Definition id : Relt :=
+    fun s ρ t σ => s = t /\ ρ = σ.
+  
+  Definition ptop : Prec :=
+    fun _ _ => True.
+  Definition rtop : Relt :=
+    fun _ _ _ _ => True.
 End Predicates.
 
 Module Logic(O : OBJECT).
@@ -91,14 +108,27 @@ Module Logic(O : OBJECT).
     Stable R Q /\
     Commit i impl G P ev Q.
 
-  Inductive VerifyProg i (impl : Impl E F) (R G : Relt) : forall (A: Type), Prec -> Prog E A -> Relt -> Prop :=
-  | SafeReturn {A} P Q v :
-      VerifyPrim i impl R G P (RetEv v) Q ->
-      VerifyProg i impl R G A P (Return v) Q
-  | SafeBind {A B} P Q S (m : E A) (k : A -> Prog E B) :
-      VerifyPrim i impl R G P (CallEv m) Q ->
-      (forall x, VerifyProg i impl R G B (P; Q) (k x) S) ->
-      VerifyProg i impl R G B P (Bind m k) (Q; S)
+  CoInductive VerifyProg i (impl : Impl E F) : Relt -> Relt -> forall (A: Type), Prec -> Prog E A -> Relt -> Prop :=
+  | SafeReturn A v :
+      VerifyProg i impl rtop id A ptop (Return v) id
+  | SafeBind A B R G P QI QR S (m : E A) (k : A -> Prog E B) :
+      VerifyPrim i impl R G P (CallEv m) QI ->
+      (forall v,
+        VerifyPrim i impl R G (P; QI) (RetEv v) QR /\
+        VerifyProg i impl R G B (P; QI; QR) (k v) S) ->
+      VerifyProg i impl R G B P (Bind m k) (QI; QR; S)
+  | SafeNoOp A R G P C Q :
+      VerifyProg i impl R G A P C Q ->
+      VerifyProg i impl R G A P (NoOp C) Q
+  | SafeWeaken A C R R' G G' P P' Q Q' :
+      Stable R' P' ->
+      Stable R' Q' ->
+      All (P' ==> P) ->
+      All (R' ==> R) ->
+      All (G ==> G') ->
+      All (Q ==> Q') ->
+      VerifyProg i impl R G A P C Q ->
+      VerifyProg i impl R' G' A P' C Q'
   .
   Arguments VerifyProg i impl R G {A} P C Q.
 
@@ -107,12 +137,11 @@ Module Logic(O : OBJECT).
       fst s i = Idle /\
       true = even (length (@projAgent (@LEvent E F) i (map (fun e => (fst e, liftOEv (snd e))) ρ))).
 
-  Definition Invoke (i : ThreadName) Ret (m : F Ret) : Relt :=
+  Definition Invoke impl (i : ThreadName) Ret (m : F Ret) : Relt :=
     fun s ρ t σ =>
       TIdle i s ρ /\
       σ = app ρ (cons (i, CallEv m) nil) /\
-      exists (C : Prog E Ret),
-        fst s i = Cont C.
+      InterStep (impl:=impl) i s (i, OCallEv m) t.
 
   Definition Returned (i : ThreadName) (Ret : Type) : Relt :=
     fun s ρ t σ =>
@@ -122,30 +151,31 @@ Module Logic(O : OBJECT).
         exists r,
           projAgent i σ = app r (cons (i, RetEv v) nil).
 
-  Definition Return (i : ThreadName) (Ret : Type) : Relt :=
+  Definition Return (impl : Impl E F) (i : ThreadName) (Ret : Type) : Relt :=
     fun s ρ t σ =>
-      σ = ρ /\
       fst t i = Idle /\
+      σ = ρ /\
       exists (v : Ret) r,
-        fst s i = Cont (Return v) /\
-        projAgent i σ = app r (cons (i, RetEv v) nil).
+        projAgent i σ = app r (cons (i, RetEv v) nil) /\
+        InterStep (impl:=impl) i s (i, ORetEv v) t.
 
   Definition VerifyImpl
     (R G : Relt)
     (P : forall Ret, F Ret -> Prec)
     (impl : Impl E F)
     (Q : forall Ret, F Ret -> Relt) : Prop :=
+    All (G ==> R) /\
     (forall i Ret (m : F Ret),
       P Ret m (allIdle, VE.(Init)) nil /\
-      (forall s ρ, (P Ret m ==> TIdle i) s ρ) /\
+      All (P Ret m ==> TIdle i) /\
       Stable R (P Ret m) /\
       Stable R (Q Ret m) /\
       VerifyProg i impl R G
-        (P Ret m; Invoke i Ret m)
+        (P Ret m; Invoke impl i Ret m)
         (impl Ret m)
         (Q Ret m; Returned i Ret)) /\
-    (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2) s ρ t σ,
-      (P Ret1 m1; Invoke i Ret1 m1; Q Ret1 m1; Returned i Ret1; Return i Ret1 ==> P Ret2 m2) s ρ t σ).
+    (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2),
+      All (P Ret1 m1; Invoke impl i Ret1 m1; Q Ret1 m1; Returned i Ret1; Return i Ret1 ==> P Ret2 m2)).
   
   (* Theorem soundness (lay : Layer E F) :
     (exists R G P Q, VerifyImpl R G P lay.(LImpl) Q) ->
