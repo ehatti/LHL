@@ -175,7 +175,7 @@ Module Logic(O : OBJECT).
         (impl Ret m)
         (Q Ret m; Returned i Ret)) /\
     (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2),
-      All (P Ret1 m1; Invoke impl i Ret1 m1; Q Ret1 m1; Returned i Ret1; Return i Ret1 ==> P Ret2 m2)).
+      All (P Ret1 m1; Invoke impl i Ret1 m1; Q Ret1 m1; Returned i Ret1; Return impl i Ret1 ==> P Ret2 m2)).
   
   (* Theorem soundness (lay : Layer E F) :
     (exists R G P Q, VerifyImpl R G P lay.(LImpl) Q) ->
