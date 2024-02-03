@@ -17,3 +17,4 @@
 
 # Requires Paco
 ./Core/Eutt.v
+./Core/VCompFacts.v

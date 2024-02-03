@@ -39,3 +39,25 @@ Definition IsPathOf {Ev State : Type}
     (steps : State -> list Ev -> State -> Prop) : Prop := steps st t st'.
 
 Definition Incl {A} (s : A -> Prop) (s' : A -> Prop) := forall a, s a -> s' a.
+
+Theorem Incl_refl {A} : 
+  forall (s : A -> Prop),
+    Incl s s.
+Proof.
+    unfold Incl. auto.
+Qed.
+
+Theorem Incl_trans {A} :
+  forall (s s' s'' : A -> Prop),
+    Incl s s' -> Incl s' s'' -> Incl s s''.
+Proof. 
+    unfold Incl. auto.
+Qed.
+
+Theorem Incl_antisym {A} : 
+  forall (s s' : A -> Prop),
+    Incl s s' -> Incl s' s -> 
+    forall a , s a <-> s' a.
+Proof.
+  unfold Incl. intros. split; auto.
+Qed.
