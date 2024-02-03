@@ -52,17 +52,17 @@ Proof.
   - right; auto.
 Qed.
 
-Theorem idImpl_is_identity_l {E F Ret} : 
+Theorem idImpl_is_identity_l {E F} : 
     forall (M : Impl E F) , 
-    euttImpl (Ret := Ret) ieq (idImpl |> M) M.
+    euttImpl ieq (idImpl |> M) M.
 Proof.
   intros. unfold euttImpl. intros.
   apply substIdImpl_is_id_l.
 Qed.
 
-Theorem idImpl_is_identity_r {E F Ret} : 
+Theorem idImpl_is_identity_r {E F} : 
     forall (M : Impl E F) , 
-    euttImpl (Ret := Ret) ieq (M |> idImpl) M.
+    euttImpl ieq (M |> idImpl) M.
 Proof.
   intros. unfold euttImpl. intros.
   apply substIdImpl_is_id_r.
@@ -94,10 +94,17 @@ Proof.
   all: right; apply self; constructor.
 Qed.
 
-Theorem implVComp_assoc {E F G H Ret} :
+Theorem implVComp_assoc {E F G H} :
   forall (MF : Impl E F) (MG : Impl F G) (MH : Impl G H),
-  euttImpl (Ret := Ret) ieq (MF |> (MG |> MH)) ((MF |> MG) |> MH).
+  euttImpl ieq (MF |> (MG |> MH)) ((MF |> MG) |> MH).
 Proof.
   intros. unfold euttImpl. intros.
   apply substProg_assoc. reflexivity.
+Qed.
+
+Theorem obj_VComp_assoc {E F G} :
+  forall (spec : Spec E) (impl : Impl E F) (impl' : Impl F G),
+  ((spec :> impl) :|> impl') = (spec :> impl |> impl').
+Proof.
+    auto.
 Qed.

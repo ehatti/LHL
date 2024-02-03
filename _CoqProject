@@ -13,6 +13,7 @@
 
 ./Core/ProgramFacts.v
 ./Core/TracesFacts.v
+./Core/RefinesFacts.v
 
 # Requires Paco
 ./Core/Eutt.v
@@ -21,3 +22,4 @@
 ./Examples/CounterSpecs.v
 ./Examples/RacyCounter.v
 ./Examples/AtomicCounter.v
+./Core/VCompFacts.v

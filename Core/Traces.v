@@ -57,7 +57,9 @@ Definition liftOEv {E F} (ev : @Event F) : @LEvent E F :=
 
 Notation projOver := (mapfilter projOverEv).
 Notation projUnder := (mapfilter projUnderEv).
-Definition projAgent {A} i : Trace (ThreadName * A) -> Trace (ThreadName * A) := (mapfilter (projAgentEv i)).
+Definition projAgent {A} i : 
+    Trace (ThreadName * A) -> Trace (ThreadName * A) := 
+        (mapfilter (projAgentEv i)).
 Notation liftU := (map liftUEv).
 Notation liftO := (map liftOEv).
 

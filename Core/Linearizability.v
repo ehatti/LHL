@@ -9,7 +9,7 @@ From LHL.Core Require Import
 From Coq Require Import
   Lists.List.
 
-Definition KConc {E} (spec : Spec E) : Spec E := overObj (idLayer spec).
+Definition KConc {E} (spec : Spec E) : Spec E := overObj (spec :> idImpl).
 
 Definition Lin {E} (spec' : Spec E) (spec : Spec E) :=
   specRefines spec' (KConc spec).

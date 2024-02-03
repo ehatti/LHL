@@ -4,22 +4,22 @@ From LHL.Core Require Import
     Traces
     Linearizability.
 
+From LHL.Core Require Import
+    VCompFacts
+    RefinesFacts.
+
+(* Observational Refinement *)
 Theorem lin_obs_ref {E F} : 
     forall (spec' spec : Spec E) (impl : Impl E F) ,
         Lin spec' spec -> 
-        layerRefines (mkLayer spec' impl) (mkLayer spec impl).
+        layerRefines (spec' :> impl) (spec :> impl).
 Proof.
-    intros. intro. intro.
-    unfold Lin in H. 
-    unfold IsTraceOfSpec.
-    destruct H0. destruct H0.
-
-
-(* 
-show (overObj (spec :> impl)) :> impl' = overObj ((spec :> impl) |> impl').
-
-step1: show specRefines spec' spec -> layerRefines (mkLayer spec' impl) (mkLayer spec impl)
-
-(spec' :> impl) < overObj (spec :> idImpl) :> impl 
-
-*)
+    intros.
+    apply (mkLayer_monotonic _ _ impl) in H.
+    assert (H' := layerRefines_VComp_assoc spec idImpl impl).
+    rewrite obj_VComp_assoc in H'.
+    assert (ID_EUTT := idImpl_is_identity_l impl).
+    assert (H'' := eutt_layerRefines spec _ _ ID_EUTT).
+    eapply layerRefines_trans. eapply layerRefines_trans.
+    apply H. apply H'. apply H''.
+Qed.

@@ -43,10 +43,10 @@ Definition eutt {E E'} (RR : IRel E E') R
   : Prog E R -> Prog E' R -> Prop := paco2 (euttF RR) bot2.
 Arguments eutt {E E'} RR [R].
 
-Definition euttImpl {E E' F} (RR : IRel E E') Ret
+Definition euttImpl {E E' F} (RR : IRel E E')
   (impl : Impl E F) (impl' : Impl E' F) : Prop := 
-    forall (f : F Ret) , eutt RR (impl Ret f) (impl' Ret f).
-Arguments euttImpl {E E' F} RR [Ret].
+    forall Ret (f : F Ret) , eutt RR (impl Ret f) (impl' Ret f).
+Arguments euttImpl {E E' F} RR.
 
 Lemma monotone_euttF {E E'} (RR : IRel E E') R
   : monotone2 (euttF RR (Ret := R)).

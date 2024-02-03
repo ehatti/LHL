@@ -32,7 +32,7 @@ Theorem simulates_refines {E} :
     forall (spec spec' : Spec E),
         Simulates spec spec' -> 
         specRefines spec spec'.
-    Proof.
-        unfold specRefines, Incl, IsTraceOfSpec in *. intros. 
-        destruct H0; eapply simulate_isPathOf; eassumption.
+Proof.
+    unfold specRefines, Incl, IsTraceOfSpec in *. intros. 
+    destruct H0; eapply simulate_isPathOf; eassumption.
 Qed.
