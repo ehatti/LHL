@@ -179,5 +179,17 @@ Module Logic(O : OBJECT).
   
   (* Theorem soundness (lay : Layer E F) :
     (exists R G P Q, VerifyImpl R G P lay.(LImpl) Q) ->
-    specRefines VF (overObj lay). *)
+    specRefines VF (overObj lay).
+  intros.
+  destruct H as [R].
+  destruct H as [G].
+  destruct H as [P].
+  destruct H as [Q].
+  unfold VerifyImpl, specRefines, TransUtil.Incl in *.
+  destruct H.
+  destruct H0.
+  intros.
+  unfold IsTraceOfSpec, TransUtil.IsPathOf, TransUtil.Steps in *.
+  destruct H2 as [st].
+  Admitted. *)
 End Logic.

@@ -1,5 +1,12 @@
 Definition ESig : Type := Type -> Type.
 
+Inductive Sum {E F : ESig} : ESig :=
+| InL {A} (x : E A) : Sum A
+| InR {A} (x : F A) : Sum A.
+Arguments Sum : clear implicits.
+
+Notation "E |+| F" := (Sum E F) (at level 41, right associativity).
+
 CoInductive Prog {E : ESig} {Ret : Type} : Type :=
 | Bind {A} : E A -> (A -> Prog) -> Prog
 | Return : Ret -> Prog
