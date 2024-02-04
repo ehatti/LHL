@@ -1,7 +1,6 @@
 From Coq Require Import
     List
-    Relations
-    Init.Nat.
+    Relations.
 
 From LHL.Util Require Import
     ListUtil

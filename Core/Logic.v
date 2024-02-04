@@ -78,14 +78,6 @@ Module Logic(O : OBJECT).
   Import Ps.
   Import O.
 
-  Inductive AllRetEv : Trace (@ThreadEvent F) -> Prop :=
-  | NilAllRet : AllRetEv nil
-  | ConsAllRet {Ret s i} {v : F Ret} :
-      AllRetEv s ->
-      AllRetEv (cons (i, RetEv v) s).
-
-  Notation LinToVF ρ := (exists l, IsTraceOfSpec l VF /\ LinRw ρ l).
-
   Notation "ρ --> σ" := (exists t, AllRetEv t /\ LinRw (ρ ++ t) σ)
     (at level 20).
 

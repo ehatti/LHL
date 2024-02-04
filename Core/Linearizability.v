@@ -1,3 +1,6 @@
+From Coq Require Import
+      Relations.
+
 From LHL.Util Require Import
   TransUtil.
 
@@ -14,13 +17,35 @@ Definition KConc {E} (spec : Spec E) : Spec E := overObj (spec :> idImpl).
 Definition Lin {E} (spec' : Spec E) (spec : Spec E) :=
   specRefines spec' (KConc spec).
 
-Definition LinRwSmall {F} (evs evs' : Trace (ThreadEvent F)) : Prop :=
+Definition HBRw_ {E} (evs evs' : Trace (ThreadEvent E)) : Prop :=
     exists h h' i i' m m',
       i <> i' ->
       evs = h ++ (cons (i, m) (cons (i', m') nil)) ++ h' ->
-      ((exists Ret (l : F Ret), m = CallEv l) \/ (exists Ret (v : Ret), m' = RetEv v)) ->
+      ((exists Ret (e : E Ret), m = CallEv e) \/ (exists Ret (e : E Ret) (v : Ret), m' = RetEv e v)) ->
       evs' = h ++ (cons (i', m') (cons (i, m) nil)) ++ h'.
 
-Inductive LinRw {F} : Trace (ThreadEvent F) -> Trace (ThreadEvent F) -> Prop :=
-| LinRefl {s} : LinRw s s
-| LinTrans {s t r} : LinRwSmall s t -> LinRw t r -> LinRw s r.
+Definition HBRw {E} : (Trace (ThreadEvent E)) -> (Trace (ThreadEvent E)) -> Prop :=
+  clos_refl_trans (Trace (ThreadEvent E)) HBRw_.
+
+Inductive AllRetEv {E} : Trace (@ThreadEvent E) -> Prop :=
+| NilAllRet : AllRetEv nil
+| ConsAllRet {Ret s i} {m : E Ret} {v : Ret} :
+    AllRetEv s ->
+    AllRetEv (cons (i, RetEv m v) s).
+
+Inductive AllCallEv {E} : Trace (@ThreadEvent E) -> Prop :=
+| NilAllCall : AllCallEv nil
+| ConsCall {Ret s i} {m : E Ret} :
+    AllCallEv s ->
+    AllCallEv (cons (i, CallEv m) s).
+
+Definition LinRw {E} : 
+  (Trace (ThreadEvent E)) -> (Trace (ThreadEvent E)) -> Prop :=
+  fun s t => exists sO sP, 
+    AllCallEv sO -> AllRetEv sP -> 
+    HBRw (s ++ sP) (t ++ sO).
+
+(*  
+The correct invariant is this:
+ Notation LinToVF ρ := (exists l, IsTraceOfSpec l VF /\ LinRw ρ l). 
+ *)
