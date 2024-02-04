@@ -1,6 +1,6 @@
 Definition ESig : Type := Type -> Type.
 
-Definition Sum EL ER (Ret : Type) := sum (EL Ret) (ER Ret).
+Definition Sum EL ER (Ret : Type) := (EL Ret) + (ER Ret).
 
 CoInductive Prog {E : ESig} {Ret : Type} : Type :=
 | Bind {A} : E A -> (A -> Prog) -> Prog

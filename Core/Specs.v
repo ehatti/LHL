@@ -5,7 +5,7 @@ Definition ThreadName := nat.
 
 Variant Event {E : ESig} : Type :=
 | CallEv {Ret : Type} (m : E Ret)
-| RetEv {Ret : Type} (n : Ret)
+| RetEv {Ret : Type} (m : E Ret) (n : Ret)
 .
 
 Definition ThreadEvent (E : ESig) : Type := ThreadName * Event (E := E).
@@ -42,9 +42,9 @@ Definition idLayer {E : ESig} (spec : Spec E) :=
 
 Variant LEvent {E F : ESig} : Type :=
 | OCallEv {Ret : Type} (m : F Ret)
-| ORetEv {Ret : Type} (n : Ret)
+| ORetEv {Ret : Type} (m : F Ret) (n : Ret)
 | UCallEv {A : Type} (m : E A)
-| URetEv {A : Type} (n : A)
+| URetEv {A : Type} (m : E A) (n : A)
 | Silent
 .
 

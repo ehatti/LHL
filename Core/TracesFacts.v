@@ -21,22 +21,22 @@ Qed.
 
 (* Eutt *)
 
-Inductive euttTS_ {E E' : ESig}  (RR : IRel E E') :
-    ThreadState (E := E) -> ThreadState (E := E') -> Prop :=
+Inductive euttTS_ {E E' F : ESig}  (RR : IRel E E') :
+    ThreadState (E := E) (F := F) -> ThreadState (E := E') -> Prop :=
 | euttTS_Idle : euttTS_ RR Idle Idle
-| euttTS_Cont Ret p p' : 
+| euttTS_Cont Ret m p p' : 
     eutt RR p p' -> 
-    euttTS_ RR (Cont (Ret := Ret) p) (Cont (Ret := Ret) p')
-| euttTS_UCall A Ret k k' : 
+    euttTS_ RR (Cont m (Ret := Ret) p) (Cont m (Ret := Ret) p')
+| euttTS_UCall A Ret m k k' : 
     forall (x : A), eutt RR (k x) (k' x) ->
-    euttTS_ RR (UCall k) (UCall (Ret := Ret) k').
+    euttTS_ RR (UCall m k) (UCall m (Ret := Ret) k').
 
-Definition euttTS {E E' : ESig}  (RR : IRel E E') :
-    ThreadsSt (E := E) -> ThreadsSt (E := E') -> Prop :=
+Definition euttTS {E E' F : ESig}  (RR : IRel E E') :
+    ThreadsSt (E := E) (F := F) -> ThreadsSt (E := E') -> Prop :=
     fun ths ths' => forall (i : ThreadName), euttTS_ RR (ths i) (ths' i).
 
-Definition euttIS {A E E'} (RR : IRel E E') :
-    ThreadsSt (E := E) * A -> ThreadsSt (E := E') * A -> Prop :=
+Definition euttIS {A E E' F} (RR : IRel E E') :
+    ThreadsSt (E := E) (F := F) * A -> ThreadsSt (E := E') * A -> Prop :=
         fun ost ost' => euttTS RR (fst ost) (fst ost').
 
 Lemma eutt_InterStep {E F} (RR : IRel E E) (spec : Spec E) (impl : Impl E F) (impl' : Impl E F): 
@@ -47,11 +47,12 @@ Lemma eutt_InterStep {E F} (RR : IRel E E) (spec : Spec E) (impl : Impl E F) (im
         exists ist1' ev',
             (ev' = ev \/ ev' = (i, Silent)) /\
             InterStep (impl := impl') i ist0' ev' ist1'.
+Admitted.
 
 Lemma euttTS_isPathOf {E F} (spec : Spec E) : 
     forall (impl : Impl E F) (impl' : Impl E F),
     forall t thst0 thst1 thst0', 
-        euttOS ieq thst0 thst0' ->
+        euttIS ieq thst0 thst0' ->
         IsPathOf thst0 t thst1 (Steps (overObj (spec :> impl)).(Step)) ->
         exists thst1',  
             IsPathOf thst0' t thst1' (Steps (overObj (spec :> impl')).(Step)).

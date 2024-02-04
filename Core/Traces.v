@@ -28,31 +28,31 @@ Definition projAgentEv {A} i (ev : nat * A) : option (nat * A) :=
 Definition projOverEv {E F : ESig} (ev : @ThreadLEvent E F) : option (ThreadEvent F) := 
     match ev with
     | (i, OCallEv m) => Some (i, CallEv m)
-    | (i, ORetEv n) => Some (i, RetEv n)
-    | (_, UCallEv m) => None
-    | (_, URetEv n) => None
+    | (i, ORetEv m n) => Some (i, RetEv m n)
+    | (_, UCallEv _) => None
+    | (_, URetEv _ _) => None
     | (_, Silent) => None
     end.
 
 Definition projUnderEv {E F : ESig} (ev : @ThreadLEvent E F) : option (ThreadEvent E) := 
     match ev with
-    | (_, OCallEv m) => None
-    | (_, ORetEv n) => None
+    | (_, OCallEv _) => None
+    | (_, ORetEv _ _) => None
     | (i, UCallEv m) => Some (i, CallEv m)
-    | (i, URetEv n) => Some (i, RetEv n)
+    | (i, URetEv m n) => Some (i, RetEv m n)
     | (_, Silent) => None
     end.
 
 Definition liftUEv {E F} (ev : @Event E) : @LEvent E F :=
     match ev with
     | CallEv m => UCallEv m
-    | RetEv v => URetEv v
+    | RetEv m v => URetEv m v
     end.
 
 Definition liftOEv {E F} (ev : @Event F) : @LEvent E F :=
     match ev with
     | CallEv m => OCallEv m
-    | RetEv v => ORetEv v
+    | RetEv m v => ORetEv m v
     end.
 
 Notation projOver := (mapfilter projOverEv).
@@ -63,26 +63,26 @@ Definition projAgent {A} i :
 Notation liftU := (map liftUEv).
 Notation liftO := (map liftOEv).
 
-(* Implule Transition System *)
+(* Implementation Transition System *)
 
-Inductive ThreadState {E : ESig} : Type :=
+Inductive ThreadState {E F : ESig} : Type :=
 | Idle
-| Cont {Ret} (p : Prog E Ret) 
-| UCall {Ret A} (k : A -> Prog E Ret)
+| Cont {Ret} (m : F Ret) (p : Prog E Ret) 
+| UCall {Ret A} (m : F Ret) (k : A -> Prog E Ret)
 .
 
-Definition ThreadsSt {E : ESig} : Type := ThreadName -> ThreadState (E := E).
+Definition ThreadsSt {E F : ESig} : Type := ThreadName -> ThreadState (E := E) (F := F).
 
-Definition allIdle {E : ESig} : ThreadsSt (E := E) := fun n => Idle.
+Definition allIdle {E F : ESig} : ThreadsSt (E := E) (F := F) := fun n => Idle.
 
 Definition ThreadStep {E F : ESig}
     (M : Impl E F) (th : ThreadState) (e : LEvent) (th' : ThreadState) : Prop :=
         match e with 
-        | @OCallEv _ _ R m => th = Idle /\ th' = Cont (M R m)
-        | @ORetEv _ _ R n => th = Cont (Return n) /\ th' = Idle
-        | @UCallEv _ _ A m => exists R (k : _ -> _ R), th = Cont (Bind m k) /\ th' = UCall (A := A) k
-        | @URetEv _ _ A n =>  exists R (k : _ -> _ R), th = UCall k /\ th' = Cont (k n)
-        | Silent => exists R (p : _ R), th = Cont (NoOp p) /\ th' = Cont p
+        | @OCallEv _ _ R m => th = Idle /\ th' = Cont m (M R m)
+        | @ORetEv _ _ R m n => th = Cont m (Return n) /\ th' = Idle
+        | @UCallEv _ _ A m => exists R m' (k : _ -> _ R), th = Cont m' (Bind m k) /\ th' = UCall m' (A := A) k
+        | @URetEv _ _ A _ n =>  exists R m (k : _ -> _ R), th = UCall m k /\ th' = Cont m (k n)
+        | Silent => exists R m (p : _ R), th = Cont m (NoOp p) /\ th' = Cont m p
         end.
 
 Definition ThreadsStep E F (M : Impl E F)
@@ -109,36 +109,36 @@ Definition IsTraceOfOver {E F : ESig} (t : Trace (ThreadEvent F)) (lay : @Layer 
 
 (* Interactions *)
 
-Definition InterState {E : ESig} {spec : Spec E} : Type := 
-    (ThreadsSt (E := E)) * spec.(State).
+Definition InterState {E F : ESig} {spec : Spec E} : Type := 
+    (ThreadsSt (E := E) (F := F)) * spec.(State).
 
 Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadName) :
     InterState -> ThreadLEvent -> InterState -> Prop :=
     | IOCall ths st R m ths' :
         ths i = Idle -> 
-        ths' i = Cont (impl R m) ->
+        ths' i = Cont m (impl R m) ->
         (forall j , j <> i -> ths' j = ths j) -> 
         InterStep i (ths, st) (i, OCallEv m) (ths', st)
-    | IORet ths st R n ths' :
-        ths i = Cont (Return n) ->
+    | IORet ths st R m n ths' :
+        ths i = Cont m (Return n) ->
         ths' i = Idle -> 
         (forall j , j <> i -> ths' j = ths j) -> 
-        InterStep i (ths, st) (i, ORetEv (Ret := R) n) (ths', st)
-    | IUCall ths st A (m : E A) R k ths' st' : 
-        ths i = Cont (Bind m k) ->
-        ths' i = UCall (Ret := R) k ->
+        InterStep i (ths, st) (i, ORetEv (Ret := R) m n) (ths', st)
+    | IUCall ths st A (m : E A) R m' k ths' st' : 
+        ths i = Cont m' (Bind m k) ->
+        ths' i = UCall m' (Ret := R) k ->
         spec.(Step) st (i, CallEv m) st' ->
         (forall j , j <> i -> ths' j = ths j) -> 
         InterStep i (ths, st) (i, UCallEv m) (ths', st')
-    | IURet ths st A (n : A) R k ths' st' : 
-        ths i = UCall (Ret := R) k ->
-        ths' i = Cont (k n) -> 
-        spec.(Step) st (i, RetEv n) st' -> 
+    | IURet ths st A m (n : A) R m' k ths' st' : 
+        ths i = UCall (Ret := R) m' k ->
+        ths' i = Cont m' (k n) -> 
+        spec.(Step) st (i, RetEv m n) st' -> 
         (forall j , j <> i -> ths' j = ths j) -> 
-        InterStep i (ths, st) (i, URetEv n) (ths', st')
-    | IUSilent ths st R (p : _ R) ths' :
-        ths i = Cont (NoOp p) ->
-        ths' i = Cont p -> 
+        InterStep i (ths, st) (i, URetEv m n) (ths', st')
+    | IUSilent ths st R m (p : _ R) ths' :
+        ths i = Cont m (NoOp p) ->
+        ths' i = Cont m p -> 
         (forall j , j <> i -> ths' j = ths j) -> 
         InterStep i (ths, st) (i, Silent) (ths', st).
 
@@ -156,42 +156,42 @@ Definition IsTraceOfInter {E F : ESig} (t : Trace (ThreadLEvent (F := F))) (lay 
 Definition IsTraceOfInterOv {E F : ESig} (t : Trace (ThreadEvent F)) (lay : @Layer E F) := 
     exists t', t = projOver t' /\ IsTraceOfInter t' lay.
 
-Inductive InterUStep {E : ESig} {spec : Spec E} : 
-    InterState -> InterState -> Prop :=
-    | InterUCall ths st i A (m : E A) R k ths' st' : 
-        ths i = Cont (Bind m k) ->
-        ths' i = UCall (Ret := R) k ->
+Inductive InterUStep {E F : ESig} {spec : Spec E} : 
+    InterState (F := F) -> InterState -> Prop :=
+    | InterUCall ths st i A (m : E A) R m' k ths' st' : 
+        ths i = Cont m' (Bind m k) ->
+        ths' i = UCall m' (Ret := R) k ->
         spec.(Step) st (i, CallEv m) st' ->
         (forall j , j <> i -> ths' j = ths j) -> 
         InterUStep (ths, st) (ths', st')
-    | InterURet ths st i A (n : A) R k ths' st' : 
-        ths i = UCall (Ret := R) k ->
-        ths' i = Cont (k n) -> 
-        spec.(Step) st (i, RetEv n) st' -> 
+    | InterURet ths st i A m (n : A) R m' k ths' st' : 
+        ths i = UCall (Ret := R) m' k ->
+        ths' i = Cont m' (k n) -> 
+        spec.(Step) st (i, RetEv m n) st' -> 
         (forall j , j <> i -> ths' j = ths j) -> 
         InterUStep (ths, st) (ths', st')
-    | InterUSilent ths st i R (p : _ R) ths' :
-        ths i = Cont (NoOp p) ->
-        ths' i = Cont p -> 
+    | InterUSilent ths st i R m (p : _ R) ths' :
+        ths i = Cont m (NoOp p) ->
+        ths' i = Cont m p -> 
         (forall j , j <> i -> ths' j = ths j) -> 
         InterUStep (ths, st) (ths', st).
 
-Definition InterUSteps {E : ESig} {spec : Spec E} : 
-    InterState -> InterState -> Prop := 
+Definition InterUSteps {E F : ESig} {spec : Spec E} : 
+    InterState (F := F) -> InterState -> Prop := 
     clos_refl_trans InterState (InterUStep (spec := spec)).
 
 Inductive InterOStep {E F : ESig} {spec : Spec E} {impl : Impl E F} :
     InterState (spec := spec) -> ThreadLEvent (E := E) (F := F) -> InterState -> Prop  :=
     | InterOCall ths st i R m ths' :
         ths i = Idle -> 
-        ths' i = Cont (impl R m) ->
+        ths' i = Cont m (impl R m) ->
         (forall j , j <> i -> ths' j = ths j) -> 
         InterOStep (ths, st) (i, OCallEv m) (ths', st)
-    | InterORet ths st i R n ths' :
-        ths i = Cont (Return n) ->
+    | InterORet ths st i R m n ths' :
+        ths i = Cont m (Return n) ->
         ths' i = Idle -> 
         (forall j , j <> i -> ths' j = ths j) -> 
-        InterOStep (ths, st) (i, ORetEv (Ret := R) n) (ths', st).
+        InterOStep (ths, st) (i, ORetEv (Ret := R) m n) (ths', st).
 
 Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F := 
     {|

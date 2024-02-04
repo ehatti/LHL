@@ -9,17 +9,23 @@ Section Tensor.
 
   Definition StepTensor st (ev : ThreadEvent (Sum EL ER)) st' :=
     match ev with
-      | CallEv m => inl ev' => specL.(EvalInstruction) instr' (fst st) a (fst st') /\ (snd st = snd st')
-      | CallEv n => inr instr' => specR.(EvalInstruction) instr' (snd st) a (snd st') /\ (fst st = fst st')
+      | (i, CallEv m) => 
+          match m with
+          |  inl m' => specL.(Step) (fst st) (i, CallEv m') (fst st') /\ (snd st = snd st')
+          |  inr m' => specR.(Step) (snd st) (i, CallEv m') (snd st') /\ (fst st = fst st')
+          end
+      | (i, RetEv m n) => 
+          match m with
+          | inl m' => specL.(Step) (fst st) (i, RetEv m' n) (fst st') /\ (snd st = snd st')
+          | inr m' => specR.(Step) (snd st) (i, RetEv m' n) (snd st') /\ (fst st = fst st')
+          end
     end.
 
-  Definition pairSpec : Spec PairInstruction :=
+  Definition tensorSpec : Spec (EL + ER) :=
     {|
-      State := prod specL.(State) specR.(State);
-      EvalInstruction := EvalPairInstruction;
+      State := specL.(State) * specR.(State);
+      EvalInstruction := StepTensor;
       initialState := (specL.(initialState), specR.(initialState))
     |}.
 
-End Pair.
-
-Arguments PairInstruction : clear implicits.
+End Tensor.
