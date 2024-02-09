@@ -19,6 +19,9 @@ Unset Strict Implicit.
 
 Definition Trace (T : Type) : Type := list T.
 
+Definition PrefixOf {T} (ρ σ : Trace T) : Prop :=
+    exists τ, σ = app ρ τ.
+
 Definition projAgentEv {A} i (ev : nat * A) : option (nat * A) :=
     if eqb (fst ev) i then
         Some ev
@@ -109,7 +112,7 @@ Definition IsTraceOfOver {E F : ESig} (t : Trace (ThreadEvent F)) (lay : @Layer 
 
 (* Interactions *)
 
-Definition InterState {E F : ESig} {spec : Spec E} : Type := 
+Definition InterState {E F : ESig} {spec : Spec E} : Type :=
     (ThreadsSt (E := E) (F := F)) * spec.(State).
 
 Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadName) :
@@ -124,11 +127,11 @@ Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadNa
         ths' i = Idle -> 
         (forall j , j <> i -> ths' j = ths j) -> 
         InterStep i (ths, st) (i, ORetEv (Ret := R) m n) (ths', st)
-    | IUCall ths st A (m : E A) R m' k ths' st' : 
+    | IUCall ths st A (m : E A) R (m' : F R) k ths' st' :
         ths i = Cont m' (Bind m k) ->
         ths' i = UCall m' (Ret := R) k ->
         spec.(Step) st (i, CallEv m) st' ->
-        (forall j , j <> i -> ths' j = ths j) -> 
+        (forall j , j <> i -> ths' j = ths j) ->
         InterStep i (ths, st) (i, UCallEv m) (ths', st')
     | IURet ths st A m (n : A) R m' k ths' st' : 
         ths i = UCall (Ret := R) m' k ->

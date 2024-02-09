@@ -10,6 +10,8 @@
 ./Core/Traces.v
 ./Core/Linearizability.v
 ./Core/Simulates.v
+./Core/Logic.v
+./Core/Tensor.v
 
 ./Core/ProgramFacts.v
 ./Core/TracesFacts.v

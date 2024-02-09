@@ -19,9 +19,9 @@ Definition Lin {E} (spec' : Spec E) (spec : Spec E) :=
 
 Definition HBRw_ {E} (evs evs' : Trace (ThreadEvent E)) : Prop :=
     exists h h' i i' m m',
-      i <> i' ->
-      evs = h ++ (cons (i, m) (cons (i', m') nil)) ++ h' ->
-      ((exists Ret (e : E Ret), m = CallEv e) \/ (exists Ret (e : E Ret) (v : Ret), m' = RetEv e v)) ->
+      i <> i' /\
+      evs = h ++ (cons (i, m) (cons (i', m') nil)) ++ h' /\
+      ((exists Ret (e : E Ret), m = CallEv e) \/ (exists Ret (e : E Ret) (v : Ret), m' = RetEv e v)) /\
       evs' = h ++ (cons (i', m') (cons (i, m) nil)) ++ h'.
 
 Definition HBRw {E} : (Trace (ThreadEvent E)) -> (Trace (ThreadEvent E)) -> Prop :=
@@ -42,10 +42,15 @@ Inductive AllCallEv {E} : Trace (@ThreadEvent E) -> Prop :=
 Definition LinRw {E} : 
   (Trace (ThreadEvent E)) -> (Trace (ThreadEvent E)) -> Prop :=
   fun s t => exists sO sP, 
-    AllCallEv sO -> AllRetEv sP -> 
+    AllCallEv sO /\ AllRetEv sP /\ 
     HBRw (s ++ sP) (t ++ sO).
 
-(*  
-The correct invariant is this:
- Notation LinToVF ρ := (exists l, IsTraceOfSpec l VF /\ LinRw ρ l). 
- *)
+Notation LinToSpec ρ V := (exists l, IsTraceOfSpec l V /\ LinRw ρ l). 
+
+Definition lin {E} (V : Spec E) (ρ : Trace (ThreadEvent E)) : Trace (ThreadEvent E).
+Admitted.
+
+Lemma lin_correct {E} {V : Spec E} ρ :
+  let σ := lin V ρ in
+  LinToSpec σ V /\ forall ρ', LinToSpec ρ' V -> PrefixOf ρ' ρ -> PrefixOf ρ' σ.
+Admitted.

@@ -7,19 +7,19 @@ Variant LockSig : ESig :=
 | Rel : LockSig unit.
 
 Variant LockState :=
-| LockIdle
+| LockUnowned
 | LockAcqRunning (i : ThreadName)
-| LockWaitForRel (i : ThreadName)
+| LockOwned (i : ThreadName)
 | LockRelRunning (i : ThreadName).
 
 Variant LockStep : LockState -> ThreadEvent LockSig -> LockState -> Prop :=
-| LockCallAcq i : LockStep LockIdle (i, CallEv Acq) (LockAcqRunning i)
-| LockRetAcq i : LockStep (LockAcqRunning i) (i, RetEv Acq) (LockWaitForRel i)
-| LockCallRel i : LockStep (LockWaitForRel i) (i, CallEv Rel) (LockRelRunning i)
-| LockRetRel i : LockStep (LockRelRunning i) (i, RetEv Rel) LockIdle.
+| LockCallAcq i : LockStep LockUnowned (i, CallEv Acq) (LockAcqRunning i)
+| LockRetAcq i : LockStep (LockAcqRunning i) (i, RetEv Acq tt) (LockOwned i)
+| LockCallRel i : LockStep (LockOwned i) (i, CallEv Rel) (LockRelRunning i)
+| LockRetRel i : LockStep (LockRelRunning i) (i, RetEv Rel tt) LockUnowned.
 
 Definition lockSpec : Spec LockSig := {|
     State := LockState;
     Step := LockStep;
-    Init := LockIdle
+    Init := LockUnowned
 |}.

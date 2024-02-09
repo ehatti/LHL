@@ -13,9 +13,9 @@ Variant AtomicCounterState :=
 
 Variant AtomicCounterStep : AtomicCounterState -> ThreadEvent CounterSig -> AtomicCounterState -> Prop :=
 | CounterCallInc n i : AtomicCounterStep (CounterIdle n) (i, CallEv Inc) (CounterIncRunning n i)
-| CounterRetInc i n : AtomicCounterStep (CounterIncRunning n i) (i, RetEv Inc) (CounterIdle (S n))
+| CounterRetInc i n : AtomicCounterStep (CounterIncRunning n i) (i, RetEv Inc tt) (CounterIdle (S n))
 | CounterCallGet n i : AtomicCounterStep (CounterIdle n) (i, CallEv Get) (CounterGetRunning n i)
-| CounterRetGet i n : AtomicCounterStep (CounterGetRunning n i)  (i, RetEv (n, Get)) (CounterIdle n).
+| CounterRetGet i n : AtomicCounterStep (CounterGetRunning n i)  (i, RetEv Get n) (CounterIdle n).
 
 Variant RacyCounterState :=
 | CounterUB

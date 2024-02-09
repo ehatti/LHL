@@ -7,7 +7,7 @@ Section Tensor.
           (specL : Spec EL)
           (specR : Spec ER).
 
-  Definition StepTensor st (ev : ThreadEvent (Sum EL ER)) st' :=
+  Definition StepTensor st (ev : ThreadEvent (EL |+| ER)) st' :=
     match ev with
       | (i, CallEv m) => 
           match m with
@@ -21,11 +21,11 @@ Section Tensor.
           end
     end.
 
-  Definition tensorSpec : Spec (EL + ER) :=
+  Definition tensorSpec : Spec (EL |+| ER) :=
     {|
       State := specL.(State) * specR.(State);
-      EvalInstruction := StepTensor;
-      initialState := (specL.(initialState), specR.(initialState))
+      Step := StepTensor;
+      Init := (specL.(Init), specR.(Init))
     |}.
 
 End Tensor.
