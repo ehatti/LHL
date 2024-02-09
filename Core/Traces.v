@@ -4,6 +4,7 @@ From Coq Require Import
     Init.Nat.
 
 From LHL.Util Require Import
+    Util
     ListUtil
     TransUtil.
 
@@ -76,6 +77,9 @@ Inductive ThreadState {E F : ESig} : Type :=
 
 Definition ThreadsSt {E F : ESig} : Type := ThreadName -> ThreadState (E := E) (F := F).
 
+Definition updt_thst {E F : ESig} := 
+    updt_istate (A := ThreadName) (State :=ThreadState (E := E) (F := F))  (eqA := eqb).
+
 Definition allIdle {E F : ESig} : ThreadsSt (E := E) (F := F) := fun n => Idle.
 
 Definition ThreadStep {E F : ESig}
@@ -120,29 +124,29 @@ Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadNa
     | IOCall ths st R m ths' :
         ths i = Idle -> 
         ths' i = Cont m (impl R m) ->
-        (forall j , j <> i -> ths' j = ths j) -> 
+        differ_pointwise ths ths' i -> 
         InterStep i (ths, st) (i, OCallEv m) (ths', st)
     | IORet ths st R m n ths' :
         ths i = Cont m (Return n) ->
         ths' i = Idle -> 
-        (forall j , j <> i -> ths' j = ths j) -> 
+        differ_pointwise ths ths' i -> 
         InterStep i (ths, st) (i, ORetEv (Ret := R) m n) (ths', st)
     | IUCall ths st A (m : E A) R (m' : F R) k ths' st' :
         ths i = Cont m' (Bind m k) ->
         ths' i = UCall m' (Ret := R) k ->
         spec.(Step) st (i, CallEv m) st' ->
-        (forall j , j <> i -> ths' j = ths j) ->
+        differ_pointwise ths ths' i -> 
         InterStep i (ths, st) (i, UCallEv m) (ths', st')
     | IURet ths st A m (n : A) R m' k ths' st' : 
         ths i = UCall (Ret := R) m' k ->
         ths' i = Cont m' (k n) -> 
         spec.(Step) st (i, RetEv m n) st' -> 
-        (forall j , j <> i -> ths' j = ths j) -> 
+        differ_pointwise ths ths' i -> 
         InterStep i (ths, st) (i, URetEv m n) (ths', st')
     | IUSilent ths st R m (p : _ R) ths' :
         ths i = Cont m (NoOp p) ->
         ths' i = Cont m p -> 
-        (forall j , j <> i -> ths' j = ths j) -> 
+        differ_pointwise ths ths' i -> 
         InterStep i (ths, st) (i, Silent) (ths', st).
 
 Definition ImplSteps i {E F : ESig} {spec : Spec E} {impl : Impl E F} : 
@@ -165,18 +169,18 @@ Inductive InterUStep {E F : ESig} {spec : Spec E} :
         ths i = Cont m' (Bind m k) ->
         ths' i = UCall m' (Ret := R) k ->
         spec.(Step) st (i, CallEv m) st' ->
-        (forall j , j <> i -> ths' j = ths j) -> 
+        differ_pointwise ths ths' i -> 
         InterUStep (ths, st) (ths', st')
     | InterURet ths st i A m (n : A) R m' k ths' st' : 
         ths i = UCall (Ret := R) m' k ->
         ths' i = Cont m' (k n) -> 
         spec.(Step) st (i, RetEv m n) st' -> 
-        (forall j , j <> i -> ths' j = ths j) -> 
+        differ_pointwise ths ths' i -> 
         InterUStep (ths, st) (ths', st')
     | InterUSilent ths st i R m (p : _ R) ths' :
         ths i = Cont m (NoOp p) ->
         ths' i = Cont m p -> 
-        (forall j , j <> i -> ths' j = ths j) -> 
+        differ_pointwise ths ths' i -> 
         InterUStep (ths, st) (ths', st).
 
 Definition InterUSteps {E F : ESig} {spec : Spec E} : 
@@ -188,12 +192,12 @@ Inductive InterOStep {E F : ESig} {spec : Spec E} {impl : Impl E F} :
     | InterOCall ths st i R m ths' :
         ths i = Idle -> 
         ths' i = Cont m (impl R m) ->
-        (forall j , j <> i -> ths' j = ths j) -> 
+        differ_pointwise ths ths' i -> 
         InterOStep (ths, st) (i, OCallEv m) (ths', st)
     | InterORet ths st i R m n ths' :
         ths i = Cont m (Return n) ->
         ths' i = Idle -> 
-        (forall j , j <> i -> ths' j = ths j) -> 
+        differ_pointwise ths ths' i -> 
         InterOStep (ths, st) (i, ORetEv (Ret := R) m n) (ths', st).
 
 Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F := 
