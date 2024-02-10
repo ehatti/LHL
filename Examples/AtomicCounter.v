@@ -207,7 +207,7 @@ Qed.
 
 Theorem atomicCounterCorrect :
   VerifyImpl rely guar precs atomicCounterImpl posts.
-unfold VerifyImpl.
+(* unfold VerifyImpl.
 split.
 {
   intros.
@@ -225,4 +225,4 @@ split.
     easy.
     unfold Invoke.
   }
-}
+} *)
