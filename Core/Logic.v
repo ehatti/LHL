@@ -110,23 +110,23 @@ Definition TIdle {E VE F} (i : ThreadName) : @Prec E VE F :=
     fst s i = Idle /\
     true = even (length (@projAgent (@LEvent E F) i (map (fun e => (fst e, liftOEv (snd e))) ρ))).
 
-Definition Invoke {E VE F} impl (i : ThreadName) Ret (m : F Ret) : @Relt E VE F :=
+Definition TInvoke {E VE F} impl (i : ThreadName) Ret (m : F Ret) : @Relt E VE F :=
   fun s ρ t σ =>
     TIdle i s ρ /\
     σ = app ρ (cons (i, CallEv m) nil) /\
     InterStep (impl:=impl) i s (i, OCallEv m) t.
 
 Inductive ReltRTC {E VE F} {R : @Relt E VE F} : @Relt E VE F :=
-| Refl s ρ : ReltRTC s ρ s ρ
-| Step s ρ t σ : R s ρ t σ -> ReltRTC s ρ t σ
-| Trans s ρ t σ r τ :
+| RTCRefl s ρ : ReltRTC s ρ s ρ
+| RTCStep s ρ t σ : R s ρ t σ -> ReltRTC s ρ t σ
+| RTCTrans s ρ t σ r τ :
     ReltRTC s ρ t σ ->
     ReltRTC t σ r τ ->
     ReltRTC s ρ r τ.
 Arguments ReltRTC {E VE F} R.
 
 Definition InvokeAny {E VE F} impl : @Relt E VE F :=
-  fun s ρ t σ => exists i Ret (m : F Ret), Invoke impl i Ret m s ρ t σ.
+  fun s ρ t σ => exists i Ret (m : F Ret), TInvoke impl i Ret m s ρ t σ.
 
 Definition InvokeMany {E VE F} impl :=
   ReltRTC (@InvokeAny E VE F impl).
@@ -139,7 +139,7 @@ Definition Returned {E VE F} (i : ThreadName) {Ret} (m : F Ret) : @Relt E VE F :
       exists r,
         projAgent i σ = app r (cons (i, RetEv m v) nil).
 
-Definition Return {E VE F} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E VE F :=
+Definition TReturn {E VE F} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E VE F :=
   fun s ρ t σ =>
     fst t i = Idle /\
     σ = ρ /\
@@ -148,7 +148,7 @@ Definition Return {E VE F} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) 
       InterStep (impl:=impl) i s (i, ORetEv m v) t.
 
 Definition ReturnAny {E VE F} impl : @Relt E VE F :=
-  fun s ρ t σ => exists i Ret (m : F Ret), Return impl i m s ρ t σ.
+  fun s ρ t σ => exists i Ret (m : F Ret), TReturn impl i m s ρ t σ.
 
 Definition ReturnMany {E VE F} impl :=
   ReltRTC (@ReturnAny E VE F impl).
@@ -163,7 +163,7 @@ Definition VerifyImpl
   (Q : ThreadName -> forall Ret, F Ret -> @Relt E VE F) : Prop :=
   (forall i Ret (m : F Ret),
     VerifyProg VF i impl (R i) (G i)
-      (P i Ret m << Invoke impl i Ret m)
+      (P i Ret m << TInvoke impl i Ret m)
       (impl Ret m)
       (Q i Ret m >> Returned i m)) /\
   (forall i Ret (m : F Ret),
@@ -173,4 +173,4 @@ Definition VerifyImpl
     Stable (R i) (Q i Ret m)) /\
   (forall i, G i ==> R i) /\
   (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2),
-    P i Ret1 m1 << Invoke impl i Ret1 m1 << Q i Ret1 m1 << Returned i m1 << Return impl i m1 ==> P i Ret2 m2).
+    P i Ret1 m1 << TInvoke impl i Ret1 m1 << Q i Ret1 m1 << Returned i m1 << TReturn impl i m1 ==> P i Ret2 m2).
