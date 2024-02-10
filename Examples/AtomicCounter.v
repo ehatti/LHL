@@ -16,6 +16,9 @@ From Coq Require Import
   Lists.List
   Relations.Relation_Operators.
 
+Import ListNotations.
+Open Scope list_scope.
+
 Definition atomicCounterSpec : Spec CounterSig := {|
   State := AtomicCounterState;
   Step := AtomicCounterStep;
@@ -103,9 +106,10 @@ repeat repeat match goal with
 | [ H : ReltCompose ?P ?Q ?s ?ρ ?t ?σ |- ?G] => destruct H
 | [ H : ?P /\ ?Q |- ?G ] => destruct H
 | [ H : exists x, ?P |- ?G ] => destruct H
-| [ H : ReltToPrec ?R ?s ?ρ |- ?G ] => destruct H
-| [ H : PrecToRelt ?P ?s ?ρ ?t ?σ |- ?G ] => destruct H
+(* | [ H : ReltToPrec ?R ?s ?ρ |- ?G ] => destruct H *)
+(* | [ H : PrecToRelt ?P ?s ?ρ ?t ?σ |- ?G ] => destruct H *)
 | [ H : Invoke ?impl ?i ?A ?l ?s ?ρ ?t ?σ |- ?G ] => destruct H
+| [ H : LinRw ?ρ ?σ |- ?G ] => destruct H
 end;
 repeat match goal with
 | [ H : InterStep ?i ?st ?ev ?st' |- ?G ] => dependent destruction H
@@ -133,6 +137,31 @@ constructor.
 apply rt_refl.
 Qed.
 
+Lemma lemBind {impl i R G A B} {m : E A} {k : A -> Prog E B} :
+  forall (P : Prec) (QI QR S : Relt),
+  Stable R P ->
+  Stable R QI ->
+  Stable R QR ->
+  Stable R S ->
+  Commit i impl R G P (CallEv m) QI ->
+  (forall v,
+    Commit i impl R G (P;; QI) (RetEv m v) QR /\
+    VerifyProg i impl R G (P;; QI;; QR) (k v) S) ->
+  VerifyProg i impl R G P (Bind m k) (QI; QR; S).
+intros.
+constructor.
+easy.
+intros.
+specialize (H4 v).
+split.
+split.
+apply precCompStable; easy.
+split.
+easy.
+easy.
+easy.
+Qed.
+
 Theorem atomicCounterCorrect :
     VerifyImpl rely guar precs atomicCounterImpl posts.
 unfold VerifyImpl.
@@ -147,7 +176,7 @@ eapply SafeBind with
     σ = ρ)
   (QR:= fun s ρ t σ =>
     lockState t = LockOwned i /\
-    σ = app ρ (cons (i, RetEv Inc tt) nil)).
+    σ = ρ).
 {
   unfold VerifyPrim.
   split.
@@ -155,6 +184,7 @@ eapply SafeBind with
     unfold Stable, stablePrec, impl, implPrec.
     intros.
     do 10 destruct H.
+    admit.
   }
   split.
   admit.
@@ -201,9 +231,8 @@ split.
   exists nil.
   split.
   constructor.
-  exists nil, (cons (i, RetEv Inc tt) nil).
+  exists nil, nil.
   split.
-  constructor.
   constructor.
   constructor.
   constructor.
@@ -213,7 +242,7 @@ split.
 eapply SafeBind with
   (QI:= fun s ρ t σ =>
     lockState t = LockOwned i /\
-    σ = ρ /\
+    σ = ρ ++ [(i, CallEv Inc)] ++ [(i, RetEv Inc tt)] /\
     exists n,
     countState t = CounterDSt (CounterIncRunning n i))
   (QR:= fun s ρ t σ =>
@@ -229,11 +258,18 @@ eapply SafeBind with
   split.
   admit.
   commit.
-  
+  dependent destruction H7.
 }
 intros.
 split.
-admit.
+{
+  unfold VerifyPrim.
+  split.
+  admit.
+  split.
+  admit.
+  commit.
+}
 eapply SafeBind with
   (QI:= fun s ρ t σ =>
     lockState t = LockRelRunning i /\

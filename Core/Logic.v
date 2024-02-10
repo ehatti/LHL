@@ -5,7 +5,9 @@ From LHL.Core Require Import
   Linearizability.
 From Coq Require Import
   Lists.List
-  Init.Nat.
+  Init.Nat
+  Logic.FunctionalExtensionality
+  Logic.PropExtensionality.
 
 Module Type OBJECT.
   Parameter E F : ESig.
@@ -26,12 +28,13 @@ Module Predicates(O : OBJECT).
     @InterState E F VE -> Trace (ThreadEvent F) ->
     Prop.
 
-  Definition PrecToRelt (P : Prec) : Relt :=
-    fun s ρ t σ => s = t /\ ρ = σ /\ P t σ.
-  Coercion PrecToRelt : Prec >-> Relt.
-  Definition ReltToPrec (R : Relt) : Prec :=
+  Definition rtp (R : Relt) : Prec :=
     fun t σ => exists s ρ, R s ρ t σ.
-  Coercion ReltToPrec : Relt >-> Prec.
+
+  Definition PrecCompose (P : Prec) (R : Relt) : Prec :=
+    fun t σ => exists s ρ, P s ρ /\ R s ρ t σ.
+
+  Notation "R ;; G" := (PrecCompose R G) (left associativity, at level 38).
 
   Definition ReltCompose (R G : Relt) : Relt :=
     fun s ρ r τ => exists t σ, R s ρ t σ /\ G t σ r τ.
@@ -89,7 +92,26 @@ Module Predicates(O : OBJECT).
   easy.
   Qed.
 
-  Lemma compStable {R Q S : Relt} :
+  Lemma precCompStable {R P Q} :
+    Stable R P ->
+    Stable R Q ->
+    Stable R (P;; Q).
+  intros.
+  unfold Stable, stablePrec, impl, implPrec.
+  intros.
+  do 6 destruct H1.
+  do 2 eexists.
+  split.
+  exact H1.
+  eapply stableRight.
+  easy.
+  do 2 eexists.
+  split.
+  exact H3.
+  easy.
+  Qed.
+
+  Lemma reltCompStable {R Q S : Relt} :
     Stable R Q ->
     Stable R S ->
     Stable R (Q; S).
@@ -119,6 +141,22 @@ Module Predicates(O : OBJECT).
   do 2 eexists.
   split.
   exact H3.
+  easy.
+  Qed.
+
+  Lemma rtpStable {R Q : Relt} :
+    Stable R Q ->
+    Stable R (rtp Q).
+  intros.
+  unfold Stable, stablePrec, impl, implPrec, rtp.
+  intros.
+  do 5 destruct H0.
+  do 2 eexists.
+  eapply stableRight.
+  easy.
+  do 2 eexists.
+  split.
+  exact H0.
   easy.
   Qed.
 
@@ -158,11 +196,11 @@ Module Logic(O : OBJECT).
   CoInductive VerifyProg i (impl : Impl E F) : Relt -> Relt -> forall (A: Type), Prec -> Prog E A -> Relt -> Prop :=
   | SafeReturn A v :
       VerifyProg i impl rtop id A ptop (Return v) id
-  | SafeBind A B R G P QI QR S (m : E A) (k : A -> Prog E B) :
+  | SafeBind A B R G (P : Prec) (QI QR S : Relt) (m : E A) (k : A -> Prog E B) :
       VerifyPrim i impl R G P (CallEv m) QI ->
       (forall v,
-        VerifyPrim i impl R G (P; QI) (RetEv m v) QR /\
-        VerifyProg i impl R G B (P; QI; QR) (k v) S) ->
+        VerifyPrim i impl R G (P;; QI) (RetEv m v) QR /\
+        VerifyProg i impl R G B (P;; QI;; QR) (k v) S) ->
       VerifyProg i impl R G B P (Bind m k) (QI; QR; S)
   | SafeNoOp A R G P C Q :
       VerifyProg i impl R G A P C Q ->
@@ -227,7 +265,7 @@ Module Logic(O : OBJECT).
     (Q : ThreadName -> forall Ret, F Ret -> Relt) : Prop :=
     (forall i Ret (m : F Ret),
       VerifyProg i impl (R i) (G i)
-        (P i Ret m; Invoke impl i Ret m)
+        (P i Ret m;; Invoke impl i Ret m)
         (impl Ret m)
         (Q i Ret m; Returned i m)) /\
     (forall i Ret (m : F Ret),
@@ -237,7 +275,7 @@ Module Logic(O : OBJECT).
       Stable (R i) (Q i Ret m)) /\
     (forall i, All (G i ==> R i)) /\
     (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2),
-      All (P i Ret1 m1; Invoke impl i Ret1 m1; Q i Ret1 m1; Returned i m1; Return impl i m1 ==> P i Ret2 m2)).
+      All (P i Ret1 m1;; Invoke impl i Ret1 m1;; Q i Ret1 m1;; Returned i m1;; Return impl i m1 ==> P i Ret2 m2)).
   
   (* Theorem soundness (lay : Layer E F) :
     (exists R G P Q, VerifyImpl R G P lay.(LImpl) Q) ->

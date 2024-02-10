@@ -81,6 +81,7 @@ Proof.
         pose (H0 j). simpl in e1. 
         assert (differ_pointwise (fst ist0') thst1' i) by eapply updt_istate_pointwise.
         rewrite (H2 j n). rewrite (d j n). assumption.   
+Admitted.
 
 Lemma euttTS_isPathOf {E F} (spec : Spec E) : 
     forall (impl : Impl E F) (impl' : Impl E F),
