@@ -205,19 +205,17 @@ Module Logic(O : OBJECT).
   | SafeNoOp A R G P C Q :
       VerifyProg i impl R G A P C Q ->
       VerifyProg i impl R G A P (NoOp C) Q
+  | SafeWeaken {A} {C : Prog E A} R R' G G' P P' Q Q' :
+      VerifyProg i impl R G A P C Q ->
+      Stable R' P' ->
+      Stable R' Q' ->
+      All (P' ==> P) ->
+      All (R' ==> R) ->
+      All (G ==> G') ->
+      All (Q ==> Q') ->
+      VerifyProg i impl R' G' A P' C Q'
   .
   Arguments VerifyProg i impl R G {A} P C Q.
-
-  Lemma SafeWeaken {i impl A} {C : Prog E A} R R' G G' P P' Q Q' :
-    VerifyProg i impl R G P C Q ->
-    Stable R' P' ->
-    Stable R' Q' ->
-    All (P' ==> P) ->
-    All (R' ==> R) ->
-    All (G ==> G') ->
-    All (Q ==> Q') ->
-    VerifyProg i impl R' G' P' C Q'.
-  Admitted.
 
   Lemma SafeWeakenPost {i impl A} {C : Prog E A} R G P Q Q' :
     VerifyProg i impl R G P C Q ->
@@ -236,8 +234,20 @@ Module Logic(O : OBJECT).
       σ = app ρ (cons (i, CallEv m) nil) /\
       InterStep (impl:=impl) i s (i, OCallEv m) t.
   
-  Definition InvokeAny impl i : Relt :=
-    fun s ρ t σ => exists Ret (m : F Ret), Invoke impl i Ret m s ρ t σ.
+  Inductive ReltRTC {R : Relt} : Relt :=
+  | Refl s ρ : ReltRTC s ρ s ρ
+  | Step s ρ t σ : R s ρ t σ -> ReltRTC s ρ t σ
+  | Trans s ρ t σ r τ :
+      ReltRTC s ρ t σ ->
+      ReltRTC t σ r τ ->
+      ReltRTC s ρ r τ.
+  Arguments ReltRTC : clear implicits.
+
+  Definition InvokeAny impl : Relt :=
+    fun s ρ t σ => exists i Ret (m : F Ret), Invoke impl i Ret m s ρ t σ.
+
+  Definition InvokeMany impl :=
+    ReltRTC (InvokeAny impl).
 
   Definition Returned (i : ThreadName) {Ret} (m : F Ret) : Relt :=
     fun s ρ t σ =>
@@ -255,8 +265,11 @@ Module Logic(O : OBJECT).
         projAgent i σ = app r (cons (i, RetEv m v) nil) /\
         InterStep (impl:=impl) i s (i, ORetEv m v) t.
 
-  Definition ReturnAny impl i : Relt :=
-    fun s ρ t σ => exists Ret (m : F Ret), Return impl i m s ρ t σ.
+  Definition ReturnAny impl : Relt :=
+    fun s ρ t σ => exists i Ret (m : F Ret), Return impl i m s ρ t σ.
+
+  Definition ReturnMany impl :=
+    ReltRTC (ReturnAny impl).
 
   Definition VerifyImpl
     (R G : ThreadName -> Relt)

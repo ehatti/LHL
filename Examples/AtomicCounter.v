@@ -64,12 +64,9 @@ Definition lockState (s : @InterState E F VE) : LockState :=
   fst (snd s).
 
 Definition int : Relt :=
-  fun s ρ t σ =>
-    exists i,
-    (exists A (m : F A),
-      InterStep (impl:=atomicCounterImpl) i s (i, OCallEv m) t) \/
-    (exists A (m : F A) v,
-      InterStep (impl:=atomicCounterImpl) i s (i, ORetEv m v) t).
+  ReltRTC (fun s ρ t σ =>
+    InvokeAny atomicCounterImpl s ρ t σ \/
+    ReturnAny atomicCounterImpl s ρ t σ).
 
 Definition rely : ThreadName -> Relt :=
   fun i s ρ t σ =>
@@ -87,9 +84,9 @@ Definition guar : ThreadName -> Relt :=
 
 Definition precs : ThreadName -> forall Ret, CounterSig Ret -> Prec :=
   fun i Ret m s ρ =>
-    TIdle i s ρ /\
-    countState s <> CounterUB /\
-    lockState s <> LockOwned i.
+      TIdle i s ρ /\
+      countState s <> CounterUB /\
+      lockState s <> LockOwned i.
 
 Definition posts : ThreadName -> forall Ret, CounterSig Ret -> Relt :=
   fun i Ret m s ρ t σ =>
@@ -102,24 +99,31 @@ Definition posts : ThreadName -> forall Ret, CounterSig Ret -> Relt :=
     end.
 
 Ltac psimpl :=
-repeat repeat match goal with
+repeat lazymatch goal with
 | [ H : ReltCompose ?P ?Q ?s ?ρ ?t ?σ |- ?G] => destruct H
+| [ H : PrecCompose ?P ?Q ?s ?ρ |- ?G] => destruct H
 | [ H : ?P /\ ?Q |- ?G ] => destruct H
 | [ H : exists x, ?P |- ?G ] => destruct H
-(* | [ H : ReltToPrec ?R ?s ?ρ |- ?G ] => destruct H *)
-(* | [ H : PrecToRelt ?P ?s ?ρ ?t ?σ |- ?G ] => destruct H *)
 | [ H : Invoke ?impl ?i ?A ?l ?s ?ρ ?t ?σ |- ?G ] => destruct H
 | [ H : LinRw ?ρ ?σ |- ?G ] => destruct H
 end;
-repeat match goal with
+repeat lazymatch goal with
 | [ H : InterStep ?i ?st ?ev ?st' |- ?G ] => dependent destruction H
 | [ H : Step ?impl ?st ?ev ?st' |- ?G ] => idtac ev; simpl in H; dependent destruction H
 end;
 simpl in *;
-subst.
+subst;
+repeat lazymatch goal with
+| [ H : ?A, H' : ?A |- ?G] => clear H'
+end.
 
 Ltac commit :=
 unfold Commit;
+intros;
+repeat psimpl.
+
+Ltac stable :=
+unfold Stable, stablePrec, stableRelt, impl, implPrec, implRelt;
 intros;
 repeat psimpl.
 
@@ -137,8 +141,8 @@ constructor.
 apply rt_refl.
 Qed.
 
-Lemma lemBind {impl i R G A B} {m : E A} {k : A -> Prog E B} :
-  forall (P : Prec) (QI QR S : Relt),
+Lemma safeBind {impl i R G P A B} {m : E A} {k : A -> Prog E B} :
+  forall (QI QR S : Relt),
   Stable R P ->
   Stable R QI ->
   Stable R QR ->
@@ -162,124 +166,63 @@ easy.
 easy.
 Qed.
 
+Lemma safeBindUnit {impl i R G P A} {m : E unit} {k : unit -> Prog E A} :
+  forall (QI QR S : Relt),
+  Stable R P ->
+  Stable R QI ->
+  Stable R QR ->
+  Stable R S ->
+  Commit i impl R G P (CallEv m) QI ->
+  Commit i impl R G (P;; QI) (RetEv m tt) QR /\
+  VerifyProg i impl R G (P;; QI;; QR) (k tt) S ->
+  VerifyProg i impl R G P (Bind m k) (QI; QR; S).
+intros.
+apply safeBind.
+easy.
+easy.
+easy.
+easy.
+easy.
+intros.
+destruct v.
+easy.
+Qed.
+
+Lemma precStabilizedStable {R P} :
+  All (R; R ==> R) ->
+  Stable R (P;; R).
+intros.
+unfold Stable, stablePrec, impl, implPrec.
+intros.
+do 6 destruct H0.
+do 2 eexists.
+split.
+exact H0.
+apply H.
+do 2 eexists.
+split.
+exact H2.
+easy.
+Qed.
+
 Theorem atomicCounterCorrect :
-    VerifyImpl rely guar precs atomicCounterImpl posts.
+  VerifyImpl rely guar precs atomicCounterImpl posts.
 unfold VerifyImpl.
 split.
-intros.
-dependent destruction m; simpl.
-unfold inc.
-eapply SafeWeakenPost.
-eapply SafeBind with
-  (QI:= fun s ρ t σ =>
-    lockState t = LockAcqRunning i /\
-    σ = ρ)
-  (QR:= fun s ρ t σ =>
-    lockState t = LockOwned i /\
-    σ = ρ).
 {
-  unfold VerifyPrim.
-  split.
+  intros.
+  dependent destruction m; simpl.
+  unfold inc.
+  eapply SafeWeakenPost.
+  apply safeBindUnit.
   {
-    unfold Stable, stablePrec, impl, implPrec.
-    intros.
-    do 10 destruct H.
-    admit.
+    unfold precs, rely.
+    stable.
+    do 2 eexists.
+    split.
+    split.
+    exact H.
+    easy.
+    unfold Invoke.
   }
-  split.
-  admit.
-  commit.
-  dependent destruction H7.
-  destruct st, st'.
-  simpl in *.
-  subst.
-  eexists.
-  split.
-  easy.
-  unfold guar.
-  split.
-  right.
-  unfold lockState.
-  simpl.
-  intros.
-  easy.
-  apply new_poss_refl.
 }
-intros.
-split.
-{
-  unfold VerifyPrim.
-  split.
-  admit.
-  split.
-  admit.
-  commit.
-  dependent destruction H6.
-  destruct st, st'.
-  simpl in *.
-  subst.
-  eexists.
-  split.
-  easy.
-  unfold guar.
-  split.
-  right.
-  unfold lockState.
-  simpl.
-  intros.
-  easy.
-  exists nil.
-  split.
-  constructor.
-  exists nil, nil.
-  split.
-  constructor.
-  constructor.
-  constructor.
-  do 2 rewrite app_nil_r.
-  apply rt_refl.
-}
-eapply SafeBind with
-  (QI:= fun s ρ t σ =>
-    lockState t = LockOwned i /\
-    σ = ρ ++ [(i, CallEv Inc)] ++ [(i, RetEv Inc tt)] /\
-    exists n,
-    countState t = CounterDSt (CounterIncRunning n i))
-  (QR:= fun s ρ t σ =>
-    lockState t = LockOwned i /\
-    σ = ρ /\
-    exists n,
-    countState s = CounterDSt (CounterIncRunning n i) /\
-    countState t = CounterDSt (CounterIdle (S n))).
-{
-  unfold VerifyPrim.
-  split.
-  admit.
-  split.
-  admit.
-  commit.
-  dependent destruction H7.
-}
-intros.
-split.
-{
-  unfold VerifyPrim.
-  split.
-  admit.
-  split.
-  admit.
-  commit.
-}
-eapply SafeBind with
-  (QI:= fun s ρ t σ =>
-    lockState t = LockRelRunning i /\
-    σ = ρ)
-  (QR:= fun s ρ t σ =>
-    lockState t = LockUnowned /\
-    σ = ρ).
-admit.
-intros.
-split.
-admit.
-eapply SafeWeaken.
-apply SafeReturn.
