@@ -11,6 +11,8 @@
 ./Core/Linearizability.v
 ./Core/Simulates.v
 ./Core/Logic.v
+./Core/LogicTactics.v
+./Core/LogicFacts.v
 ./Core/Tensor.v
 
 ./Core/ProgramFacts.v

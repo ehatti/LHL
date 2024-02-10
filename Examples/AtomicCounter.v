@@ -98,35 +98,6 @@ Definition posts : ThreadName -> forall Ret, CounterSig Ret -> Relt :=
     | Inc => countState t = CounterDSt (CounterIdle (S n))
     end.
 
-Ltac psimpl :=
-repeat lazymatch goal with
-| [ H : ReltCompose ?P ?Q ?s ?ρ ?t ?σ |- ?G] => destruct H
-| [ H : PrecCompose ?P ?Q ?s ?ρ |- ?G] => destruct H
-| [ H : ?P /\ ?Q |- ?G ] => destruct H
-| [ H : exists x, ?P |- ?G ] => destruct H
-| [ H : Invoke ?impl ?i ?A ?l ?s ?ρ ?t ?σ |- ?G ] => destruct H
-| [ H : LinRw ?ρ ?σ |- ?G ] => destruct H
-end;
-repeat lazymatch goal with
-| [ H : InterStep ?i ?st ?ev ?st' |- ?G ] => dependent destruction H
-| [ H : Step ?impl ?st ?ev ?st' |- ?G ] => idtac ev; simpl in H; dependent destruction H
-end;
-simpl in *;
-subst;
-repeat lazymatch goal with
-| [ H : ?A, H' : ?A |- ?G] => clear H'
-end.
-
-Ltac commit :=
-unfold Commit;
-intros;
-repeat psimpl.
-
-Ltac stable :=
-unfold Stable, stablePrec, stableRelt, impl, implPrec, implRelt;
-intros;
-repeat psimpl.
-
 Lemma new_poss_refl : forall (ρ : Trace (ThreadEvent F)), ρ --> ρ.
 intros.
 exists nil.

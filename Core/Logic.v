@@ -174,19 +174,3 @@ Definition VerifyImpl
   (forall i, G i ==> R i) /\
   (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2),
     P i Ret1 m1 << Invoke impl i Ret1 m1 << Q i Ret1 m1 << Returned i m1 << Return impl i m1 ==> P i Ret2 m2).
-
-(* Theorem soundness (lay : Layer E F) :
-  (exists R G P Q, VerifyImpl R G P lay.(LImpl) Q) ->
-  specRefines VF (overObj lay).
-intros.
-destruct H as [R].
-destruct H as [G].
-destruct H as [P].
-destruct H as [Q].
-unfold VerifyImpl, specRefines, TransUtil.Incl in *.
-destruct H.
-destruct H0.
-intros.
-unfold IsTraceOfSpec, TransUtil.IsPathOf, TransUtil.Steps in *.
-destruct H2 as [st].
-Admitted. *)
