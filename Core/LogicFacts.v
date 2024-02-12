@@ -1,6 +1,5 @@
 From LHL Require Import
   Logic
-  LogicTactics
   Specs
   Traces
   Linearizability
@@ -14,50 +13,21 @@ From Coq Require Import
 Import ListNotations.
 Open Scope list_scope.
 
-Lemma precCompStable {E VE F} {R : @Relt E VE F} {P Q} :
-  Stable R P ->
-  Stable R Q ->
-  Stable R (P << Q).
-intros.
-unfold Stable, stablePrec, impl, implPrec.
-intros.
-do 2 pdestruct H1.
-psplit.
-exact H1.
-stable.
-right.
-psplit.
-exact H3.
-easy.
-Qed.
+Ltac psplit :=
+match goal with
+| [ |- ReltCompose ?P ?Q ?s ?ρ ?t ?σ ] =>
+    do 2 eexists; split
+| [ |- PrecCompose ?P ?Q ?s ?ρ ] =>
+    do 2 eexists; split
+| [ |- ?G ] => fail "Cannot split on this goal"
+end.
 
-Lemma reltCompStable {E VE F} {R : @Relt E VE F} {Q S} :
-  Stable R Q ->
-  Stable R S ->
-  Stable R (Q >> S).
-intros.
-unfold Stable, stableRelt, impl, implRelt.
-split.
-intros.
-pdestruct H1.
-pdestruct H2.
-psplit.
-stable.
-left.
-psplit.
-exact H1.
-exact H2.
-easy.
-intros.
-do 2 pdestruct H1.
-psplit.
-exact H1.
-stable.
-right.
-psplit.
-exact H3.
-easy.
-Qed.
+Ltac pdestruct H :=
+match type of H with
+| ReltCompose ?P ?Q ?s ?ρ ?t ?σ => do 3 destruct H
+| PrecCompose ?P ?Q ?s ?ρ => do 3 destruct H
+| _ => fail "Cannot destruct this hypothesis"
+end.
 
 Ltac psimpl :=
 repeat lazymatch goal with
@@ -78,26 +48,57 @@ repeat lazymatch goal with
 | [ H : ?A, H' : ?A |- ?G] => clear H'
 end.
 
-Ltac psplit :=
-match goal with
-| [ |- ReltCompose ?P ?Q ?s ?ρ ?t ?σ ] =>
-    do 2 eexists; split
-| [ |- PrecCompose ?P ?Q ?s ?ρ ] =>
-    do 2 eexists; split
-| [ |- ?G ] => fail "Cannot split on this goal"
-end.
 
-Ltac pdestruct H :=
-match type of H with
-| ReltCompose ?P ?Q ?s ?ρ ?t ?σ => do 3 destruct H
-| PrecCompose ?P ?Q ?s ?ρ => do 3 destruct H
-| _ => fail "Cannot destruct this hypothesis"
-end.
+Lemma precCompStable {E VE F} {R : @Relt E VE F} {P Q} :
+  Stable R P ->
+  Stable R Q ->
+  Stable R (P << Q).
+intros.
+unfold Stable, stablePrec, sub, subPrec.
+intros.
+do 2 pdestruct H1.
+psplit.
+exact H1.
+destruct H0.
+apply H4.
+psplit.
+exact H3.
+easy.
+Qed.
+
+Lemma reltCompStable {E VE F} {R : @Relt E VE F} {Q S} :
+  Stable R Q ->
+  Stable R S ->
+  Stable R (Q >> S).
+intros.
+unfold Stable, stableRelt, sub, subRelt.
+split.
+intros.
+destruct H.
+destruct H0.
+pdestruct H1.
+pdestruct H4.
+psplit.
+apply H.
+psplit.
+exact H1.
+exact H4.
+easy.
+intros.
+do 2 pdestruct H1.
+psplit.
+exact H1.
+destruct H0.
+apply H4.
+psplit.
+exact H3.
+easy.
+Qed.
 
 Lemma reltStableHelp {E VE F} {R : @Relt E VE F} {Q} :
     Stable R Q ->
     forall s ρ t σ,
-    (((R >> Q) s ρ t σ) \/ ((Q >> R) s ρ t σ)) ->
+    (((RTC R >> Q) s ρ t σ) \/ ((Q >> RTC R) s ρ t σ)) ->
     Q s ρ t σ.
 intros.
 destruct H.
@@ -108,20 +109,29 @@ apply H1.
 easy.
 Qed.
 
+Lemma rtcTrans {E VE F} {R : Relt E VE F} : (RTC R >> RTC R) ==> RTC R.
+unfold sub, subRelt.
+intros.
+pdestruct H.
+induction H.
+easy.
+econstructor.
+exact H.
+apply IHRTC.
+easy.
+Qed.
+
 Lemma precStabilizedStable {E VE F} {R : @Relt E VE F} {P} :
-  R >> R ==> R ->
-  Stable R (P << R).
+  Stable R (P << RTC R).
 intros.
-unfold Stable, stablePrec, impl, implPrec.
+unfold Stable, stablePrec, sub, subPrec.
 intros.
-do 6 destruct H0.
-do 2 eexists.
-split.
-exact H0.
-apply H.
-do 2 eexists.
-split.
-exact H2.
+do 2 pdestruct H.
+psplit.
+exact H.
+apply rtcTrans.
+psplit.
+exact H1.
 easy.
 Qed.
 

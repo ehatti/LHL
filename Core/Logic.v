@@ -40,10 +40,10 @@ Class HasSub A :=
   sub : A -> A -> Prop.
 Notation "P ==> Q" := (sub P Q) (right associativity, at level 41).
 
-Global Instance implPrec E VE F : HasSub (@Prec E VE F) :=
+Global Instance subPrec E VE F : HasSub (@Prec E VE F) :=
   fun P Q => forall s ρ, P s ρ -> Q s ρ.
 
-Global Instance implRelt E VE F : HasSub (Relt E VE F) :=
+Global Instance subRelt E VE F : HasSub (Relt E VE F) :=
   fun P Q => forall s ρ t σ, P s ρ t σ -> Q s ρ t σ.
 
 Class HasStable {E VE F} A :=
