@@ -136,9 +136,9 @@ easy.
 Qed.
 
 Ltac stable :=
-match goal with
-| [ H : ?R >> ?R ==> ?R |- @Stable _ _ _ _ stableRelt ?R (?P << ?R) ] =>
-    apply (precStabilizedStable H)
+lazymatch goal with
+| [ |- @Stable _ _ _ _ stableRelt ?R (?P << ?R) ] =>
+    apply precStabilizedStable
 | [ |- @Stable _ _ _ _ stablePrec ?R (?P << ?Q) ] =>
     eapply precCompStable; stable
 | [ |- @Stable _ _ _ _ stableRelt ?R (?Q >> ?S) ] =>
@@ -147,6 +147,7 @@ match goal with
     apply H
 | [ H : @Stable _ _ _ _ stableRelt ?R ?Q |- ?Q ?s ?ρ ?t ?σ ] =>
     apply (reltStableHelp H)
+| _ => idtac
 end.
 
 Lemma new_poss_refl {F} : forall (ρ : Trace (ThreadEvent F)), ρ --> ρ.
