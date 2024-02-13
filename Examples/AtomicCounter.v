@@ -2,6 +2,7 @@ From LHL.Core Require Import
   Program
   Specs
   Logic
+  LogicFacts
   Tensor
   Traces
   Linearizability.
@@ -45,17 +46,13 @@ Definition atomicCounterImpl : Impl (LockSig |+| CounterSig) CounterSig :=
   | Get => get
   end.
 
-Module AtomicCounterObj <: OBJECT.
-  Definition E := Underlay.
-  Definition F := CounterSig.
-  Definition VE := tensorSpec lockSpec racyCounterSpec.
-  Definition VF := atomicCounterSpec.
-End AtomicCounterObj.
+Definition E := Underlay.
+Definition F := CounterSig.
+Definition VE := tensorSpec lockSpec racyCounterSpec.
+Definition VF := atomicCounterSpec.
 
-Module Logic := Logic(AtomicCounterObj).
-Import AtomicCounterObj.
-Import Logic.
-Import Ps.
+Definition Relt := Relt E VE F.
+Definition Prec := Prec E VE F.
 
 Definition countState (s : @InterState E F VE) : RacyCounterState :=
   snd (snd s).
@@ -63,30 +60,33 @@ Definition countState (s : @InterState E F VE) : RacyCounterState :=
 Definition lockState (s : @InterState E F VE) : LockState :=
   fst (snd s).
 
-Definition int : Relt :=
-  ReltRTC (fun s ρ t σ =>
-    InvokeAny atomicCounterImpl s ρ t σ \/
-    ReturnAny atomicCounterImpl s ρ t σ).
+Definition int i : Relt :=
+  fun s ρ t σ =>
+    InvokeAny atomicCounterImpl i s ρ t σ \/
+    ReturnAny atomicCounterImpl i s ρ t σ.
 
 Definition rely : ThreadName -> Relt :=
   fun i s ρ t σ =>
-    int s ρ t σ \/
-    (lockState t = LockOwned i ->
-      countState s = countState t /\
-      lin VF ρ = lin VF σ).
+      RTC
+        (fun s ρ t σ => exists j, i <> j /\ int j s ρ t σ)
+        s ρ t σ \/
+      (lockState s = LockOwned i ->
+        countState s = countState t /\
+        lin VF ρ = lin VF σ /\
+        lockState t = LockOwned i).
 
 Definition guar : ThreadName -> Relt :=
   fun i s ρ t σ =>
-    int s ρ t σ \/
-    (lockState t <> LockOwned i ->
-      countState s = countState t /\
-      lin VF ρ = lin VF σ).
+      RTC (int i) s ρ t σ \/
+      (lockState s <> LockOwned i ->
+        countState s = countState t /\
+        lin VF ρ = lin VF σ).
 
 Definition precs : ThreadName -> forall Ret, CounterSig Ret -> Prec :=
   fun i Ret m s ρ =>
-      TIdle i s ρ /\
-      countState s <> CounterUB /\
-      lockState s <> LockOwned i.
+    TIdle i s ρ /\
+    countState s <> CounterUB /\
+    lockState s <> LockOwned i.
 
 Definition posts : ThreadName -> forall Ret, CounterSig Ret -> Relt :=
   fun i Ret m s ρ t σ =>
@@ -98,102 +98,71 @@ Definition posts : ThreadName -> forall Ret, CounterSig Ret -> Relt :=
     | Inc => countState t = CounterDSt (CounterIdle (S n))
     end.
 
-Lemma new_poss_refl : forall (ρ : Trace (ThreadEvent F)), ρ --> ρ.
-intros.
-exists nil.
-split.
-constructor.
-rewrite app_nil_r.
-exists nil, nil.
-split.
-constructor.
-split.
-constructor.
-apply rt_refl.
-Qed.
-
-Lemma safeBind {impl i R G P A B} {m : E A} {k : A -> Prog E B} :
-  forall (QI QR S : Relt),
-  Stable R P ->
-  Stable R QI ->
-  Stable R QR ->
-  Stable R S ->
-  Commit i impl R G P (CallEv m) QI ->
-  (forall v,
-    Commit i impl R G (P;; QI) (RetEv m v) QR /\
-    VerifyProg i impl R G (P;; QI;; QR) (k v) S) ->
-  VerifyProg i impl R G P (Bind m k) (QI; QR; S).
-intros.
-constructor.
-easy.
-intros.
-specialize (H4 v).
-split.
-split.
-apply precCompStable; easy.
-split.
-easy.
-easy.
-easy.
-Qed.
-
-Lemma safeBindUnit {impl i R G P A} {m : E unit} {k : unit -> Prog E A} :
-  forall (QI QR S : Relt),
-  Stable R P ->
-  Stable R QI ->
-  Stable R QR ->
-  Stable R S ->
-  Commit i impl R G P (CallEv m) QI ->
-  Commit i impl R G (P;; QI) (RetEv m tt) QR /\
-  VerifyProg i impl R G (P;; QI;; QR) (k tt) S ->
-  VerifyProg i impl R G P (Bind m k) (QI; QR; S).
-intros.
-apply safeBind.
-easy.
-easy.
-easy.
-easy.
-easy.
-intros.
-destruct v.
-easy.
-Qed.
-
-Lemma precStabilizedStable {R P} :
-  All (R; R ==> R) ->
-  Stable R (P;; R).
-intros.
-unfold Stable, stablePrec, impl, implPrec.
-intros.
-do 6 destruct H0.
-do 2 eexists.
-split.
-exact H0.
-apply H.
-do 2 eexists.
-split.
-exact H2.
-easy.
-Qed.
-
 Theorem atomicCounterCorrect :
-  VerifyImpl rely guar precs atomicCounterImpl posts.
-(* unfold VerifyImpl.
+  VerifyImpl VE VF rely guar precs atomicCounterImpl posts.
+unfold VerifyImpl.
 split.
+intros.
 {
+  unfold sub, subRelt.
   intros.
-  dependent destruction m; simpl.
+  pdestruct H.
+  destruct H, H0.
+  left.
+  apply rtcTrans.
+  psplit.
+  exact H.
+  easy.
+  left.
+  admit.
+  right.
+  intros.
+  apply H in H1.
+  clear H.
+  do 2 destruct H1.
+  apply H0 in H2.
+  clear H0.
+  do 2 destruct H2.
+  split.
+  etransitivity.
+  exact H.
+  easy.
+  split.
+  etransitivity.
+  exact H1.
+  easy.
+  easy.
+}
+split.
+admit.
+split.
+admit.
+split.
+admit.
+split.
+admit.
+split.
+admit.
+intros.
+destruct m.
+{
+  simpl.
   unfold inc.
-  eapply SafeWeakenPost.
-  apply safeBindUnit.
+  eapply weakenPost.
+  eapply safeBindUnit with
+    (QI:= fun s ρ t σ =>
+      countState t <> CounterUB /\
+      lockState t <> LockOwned i)
+    (QR:= fun s ρ t σ =>
+      countState t <> CounterUB /\
+      lockState t = LockOwned i).
   {
-    unfold precs, rely.
     stable.
-    do 2 eexists.
-    split.
-    split.
-    exact H.
-    easy.
-    unfold Invoke.
+    unfold Stable, stablePrec, sub, subPrec, precs, rely.
+    intros.
+    pdestruct H.
   }
-} *)
+  {
+    unfold Stable
+  }
+}

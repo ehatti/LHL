@@ -98,7 +98,7 @@ Qed.
 Lemma reltStableHelp {E VE F} {R : @Relt E VE F} {Q} :
     Stable R Q ->
     forall s ρ t σ,
-    (((RTC R >> Q) s ρ t σ) \/ ((Q >> RTC R) s ρ t σ)) ->
+    (((R >> Q) s ρ t σ) \/ ((Q >> R) s ρ t σ)) ->
     Q s ρ t σ.
 intros.
 destruct H.
@@ -122,23 +122,24 @@ easy.
 Qed.
 
 Lemma precStabilizedStable {E VE F} {R : @Relt E VE F} {P} :
-  Stable R (P << RTC R).
+  (R >> R ==> R) ->
+  Stable R (P << R).
 intros.
 unfold Stable, stablePrec, sub, subPrec.
 intros.
-do 2 pdestruct H.
+do 2 pdestruct H0.
 psplit.
-exact H.
-apply rtcTrans.
+exact H0.
+apply H.
 psplit.
-exact H1.
+exact H2.
 easy.
 Qed.
 
 Ltac stable :=
 lazymatch goal with
-| [ |- @Stable _ _ _ _ stableRelt ?R (?P << ?R) ] =>
-    apply precStabilizedStable
+| [ H : ?R >> ?R ==> ?R |- @Stable _ _ _ _ stableRelt ?R (?P << ?R) ] =>
+    apply (precStabilizedStable H)
 | [ |- @Stable _ _ _ _ stablePrec ?R (?P << ?Q) ] =>
     eapply precCompStable; stable
 | [ |- @Stable _ _ _ _ stableRelt ?R (?Q >> ?S) ] =>
