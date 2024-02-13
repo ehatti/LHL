@@ -47,8 +47,9 @@ Variant LEvent {E F : ESig} : Type :=
 | URetEv {A : Type} (m : E A) (n : A)
 | Silent
 .
+Arguments LEvent : clear implicits.
 
-Definition ThreadLEvent {E F} : Type := nat * @LEvent E F.
+Definition ThreadLEvent E F : Type := nat * @LEvent E F.
 
 (* Layer Composition *)
 

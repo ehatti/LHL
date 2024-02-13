@@ -83,7 +83,7 @@ Definition updt_thst {E F : ESig} :=
 Definition allIdle {E F : ESig} : ThreadsSt (E := E) (F := F) := fun n => Idle.
 
 Definition ThreadStep {E F : ESig}
-    (M : Impl E F) (th : ThreadState) (e : LEvent) (th' : ThreadState) : Prop :=
+    (M : Impl E F) (th : ThreadState) (e : LEvent E F) (th' : ThreadState) : Prop :=
         match e with 
         | @OCallEv _ _ R m => th = Idle /\ th' = Cont m (M R m)
         | @ORetEv _ _ R m n => th = Cont m (Return n) /\ th' = Idle
@@ -93,22 +93,22 @@ Definition ThreadStep {E F : ESig}
         end.
 
 Definition ThreadsStep E F (M : Impl E F)
-  : ThreadsSt -> ThreadLEvent -> ThreadsSt -> Prop :=
+  : ThreadsSt -> ThreadLEvent E F -> ThreadsSt -> Prop :=
   PointStep (ThreadStep (E := E) M).
 
 Definition ThreadsSteps {E F} (M : Impl E F)
-  : ThreadsSt -> Trace ThreadLEvent -> ThreadsSt -> Prop :=
+  : ThreadsSt -> Trace (ThreadLEvent E F) -> ThreadsSt -> Prop :=
   Steps (ThreadsStep M).
 
 (* Trace Semantics *)
 
-Definition IsTraceOfImpl {E F : ESig} (t : Trace ThreadLEvent) (M : Impl E F) : Prop :=
+Definition IsTraceOfImpl {E F : ESig} (t : Trace (ThreadLEvent E F)) (M : Impl E F) : Prop :=
     exists thst, IsPathOf allIdle t thst (ThreadsSteps M).
     
 Definition IsTraceOfSpec {E : ESig} (t : Trace (ThreadEvent E)) (spec : Spec E) : Prop := 
     exists st, IsPathOf spec.(Init) t st (Steps spec.(Step)).
 
-Definition IsTraceOfLayer {E F : ESig} (t : Trace ThreadLEvent) (lay : @Layer E F) : Prop :=
+Definition IsTraceOfLayer {E F : ESig} (t : Trace (ThreadLEvent E F)) (lay : @Layer E F) : Prop :=
     IsTraceOfSpec (projUnder t) lay.(USpec) /\ IsTraceOfImpl t lay.(LImpl).
 
 Definition IsTraceOfOver {E F : ESig} (t : Trace (ThreadEvent F)) (lay : @Layer E F) : Prop :=
@@ -120,7 +120,7 @@ Definition InterState {E F : ESig} {spec : Spec E} : Type :=
     (ThreadsSt (E := E) (F := F)) * spec.(State).
 
 Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadName) :
-    InterState -> ThreadLEvent -> InterState -> Prop :=
+    InterState -> ThreadLEvent E F -> InterState -> Prop :=
     | IOCall ths st R m ths' :
         ths i = Idle -> 
         ths' i = Cont m (impl R m) ->
@@ -150,14 +150,14 @@ Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadNa
         InterStep i (ths, st) (i, Silent) (ths', st).
 
 Definition ImplSteps i {E F : ESig} {spec : Spec E} {impl : Impl E F} : 
-    InterState (spec := spec) -> Trace (ThreadLEvent (F := F)) -> InterState -> Prop := 
+    InterState (spec := spec) -> Trace (ThreadLEvent E F) -> InterState -> Prop := 
         Steps (fun thst ev thst' => InterStep (impl := impl) i thst ev thst').
 
 Definition InterSteps {E F : ESig} {spec : Spec E} {impl : Impl E F} : 
-    InterState (spec := spec) -> Trace (ThreadLEvent (F := F)) -> InterState -> Prop := 
+    InterState (spec := spec) -> Trace (ThreadLEvent E F) -> InterState -> Prop := 
         Steps (fun thst ev thst' => exists i, InterStep (impl := impl) i thst ev thst').
 
-Definition IsTraceOfInter {E F : ESig} (t : Trace (ThreadLEvent (F := F))) (lay : Layer E F) := 
+Definition IsTraceOfInter {E F : ESig} (t : Trace (ThreadLEvent E F)) (lay : Layer E F) := 
     exists thst, IsPathOf (allIdle, lay.(USpec).(Init)) t thst (InterSteps (impl := lay.(LImpl))).
 
 Definition IsTraceOfInterOv {E F : ESig} (t : Trace (ThreadEvent F)) (lay : @Layer E F) := 
@@ -188,7 +188,7 @@ Definition InterUSteps {E F : ESig} {spec : Spec E} :
     clos_refl_trans InterState (InterUStep (spec := spec)).
 
 Inductive InterOStep {E F : ESig} {spec : Spec E} {impl : Impl E F} :
-    InterState (spec := spec) -> ThreadLEvent (E := E) (F := F) -> InterState -> Prop  :=
+    InterState (spec := spec) -> ThreadLEvent E F -> InterState -> Prop  :=
     | InterOCall ths st i R m ths' :
         ths i = Idle -> 
         ths' i = Cont m (impl R m) ->
