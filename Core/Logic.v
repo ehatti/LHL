@@ -50,10 +50,10 @@ Class HasStable {E VE F} A :=
   Stable : Relt E VE F -> A -> Prop.
 
 Global Instance stableRelt {E VE F} : HasStable (Relt E VE F) :=
-  fun R Q => (RTC R >> Q ==> Q) /\ (Q >> RTC R ==> Q).
+  fun R Q => (R >> Q ==> Q) /\ (Q >> R ==> Q).
 
 Global Instance stablePrec {E VE F} : HasStable (@Prec E VE F) :=
-  fun R P => P << RTC R ==> P.
+  fun R P => P << R ==> P.
 
 Definition id {E VE F} : Relt E VE F :=
   fun s ρ t σ => s = t /\ ρ = σ.
@@ -113,10 +113,20 @@ CoInductive VerifyProg {E VE F} VF i (impl : Impl E F) : Relt E VE F -> Relt E V
 .
 Arguments VerifyProg {E VE F} VF i impl R G {A} P C Q.
 
+Inductive TraceIdle i {F} : Trace (ThreadEvent F) -> Prop :=
+| NilIdle : TraceIdle i nil
+| SkipIdle {j e ρ} :
+    i <> j ->
+    TraceIdle i ρ ->
+    TraceIdle i (cons (j, e) ρ)
+| ConsIdle {A m v ρ} :
+    TraceIdle i ρ ->
+    TraceIdle i (cons (i, CallEv m) (cons (i, RetEv (Ret:=A) m v) ρ)).
+
 Definition TIdle {E VE F} (i : ThreadName) : @Prec E VE F :=
   fun s ρ =>
     fst s i = Idle /\
-    true = even (length (@projAgent (@LEvent E F) i (map (fun e => (fst e, liftOEv (snd e))) ρ))).
+    TraceIdle i ρ.
 
 Definition TInvoke {E VE F} impl (i : ThreadName) Ret (m : F Ret) : Relt E VE F :=
   fun s ρ t σ =>
@@ -124,8 +134,11 @@ Definition TInvoke {E VE F} impl (i : ThreadName) Ret (m : F Ret) : Relt E VE F 
     σ = app ρ (cons (i, CallEv m) nil) /\
     InterStep (impl:=impl) i s (i, OCallEv m) t.
 
-Definition InvokeAny {E VE F} impl : Relt E VE F :=
-  fun s ρ t σ => exists i Ret (m : F Ret), TInvoke impl i Ret m s ρ t σ.
+Definition InvokeAny {E VE F} impl i : Relt E VE F :=
+  fun s ρ t σ =>
+    exists j Ret (m : F Ret),
+      i <> j /\
+      TInvoke impl j Ret m s ρ t σ.
 
 Definition Returned {E VE F} (i : ThreadName) {Ret} (m : F Ret) : Relt E VE F :=
   fun s ρ t σ =>
@@ -143,8 +156,11 @@ Definition TReturn {E VE F} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret)
       projAgent i σ = app r (cons (i, RetEv m v) nil) /\
       InterStep (impl:=impl) i s (i, ORetEv m v) t.
 
-Definition ReturnAny {E VE F} impl : Relt E VE F :=
-  fun s ρ t σ => exists i Ret (m : F Ret), TReturn impl i m s ρ t σ.
+Definition ReturnAny {E VE F} impl i : Relt E VE F :=
+  fun s ρ t σ =>
+    exists j Ret (m : F Ret),
+      i <> j /\
+      TReturn impl j m s ρ t σ.
 
 Definition VerifyImpl
   {E F}
@@ -154,16 +170,20 @@ Definition VerifyImpl
   (P : ThreadName -> forall Ret, F Ret -> @Prec E VE F)
   (impl : Impl E F)
   (Q : ThreadName -> forall Ret, F Ret -> Relt E VE F) : Prop :=
-  (forall i Ret (m : F Ret),
-    VerifyProg VF i impl (R i) (G i)
-      (P i Ret m << TInvoke impl i Ret m)
-      (impl Ret m)
-      (Q i Ret m >> Returned i m)) /\
+  (* Side conditions *)
+  (forall i j, i <> j -> G i ==> R j) /\
+  (forall i, R i >> R i ==> R i) /\
   (forall i Ret (m : F Ret),
     P i Ret m (allIdle, VE.(Init)) nil /\
     P i Ret m ==> TIdle i /\
     Stable (R i) (P i Ret m) /\
     Stable (R i) (Q i Ret m)) /\
-  (forall i, G i ==> R i) /\
   (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2),
-    P i Ret1 m1 << TInvoke impl i Ret1 m1 << Q i Ret1 m1 << Returned i m1 << TReturn impl i m1 ==> P i Ret2 m2).
+    P i Ret1 m1 << TInvoke impl i Ret1 m1 << Q i Ret1 m1 << Returned i m1 << TReturn impl i m1 ==> P i Ret2 m2) /\
+  True /\ (* TODO: Enforce rely respects VE and VF *)
+  (* Verification task *)
+  (forall i Ret (m : F Ret),
+    VerifyProg VF i impl (R i) (G i)
+      (P i Ret m << TInvoke impl i Ret m)
+      (impl Ret m)
+      (Q i Ret m >> Returned i m)).
