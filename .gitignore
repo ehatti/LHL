@@ -55,3 +55,7 @@ Makefile.conf
 
 .vscode/*
 .DS_Store
+
+# misc
+
+tex

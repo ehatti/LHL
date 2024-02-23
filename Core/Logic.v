@@ -19,6 +19,9 @@ Definition Relt E VE F :=
   @InterState E F VE -> Trace (ThreadEvent F) ->
   Prop.
 
+Definition Post E VE F A :=
+  A -> Relt E VE F.
+
 Inductive RTC {E VE F} {R : Relt E VE F} : Relt E VE F :=
 | RTCRefl s ρ : RTC s ρ s ρ
 | RTCTrans s ρ t σ r τ :
@@ -26,6 +29,10 @@ Inductive RTC {E VE F} {R : Relt E VE F} : Relt E VE F :=
     RTC t σ r τ ->
     RTC s ρ r τ.
 Arguments RTC {E VE F} R.
+
+Definition ReltToPrec {E VE F} (R : Relt E VE F) : Prec E VE F :=
+  fun t σ => exists s ρ, R s ρ t σ.
+Coercion ReltToPrec : Relt >-> Prec.
 
 Definition PrecCompose {E VE F} (P : Prec E VE F) (R : Relt E VE F) : Prec E VE F :=
   fun t σ => exists s ρ, P s ρ /\ R s ρ t σ.
@@ -54,6 +61,9 @@ Global Instance stableRelt {E VE F} : HasStable (Relt E VE F) :=
 
 Global Instance stablePrec {E VE F} : HasStable (@Prec E VE F) :=
   fun R P => P << R ==> P.
+
+Global Instance stablePost {E VE F A} : HasStable (Post E VE F A) :=
+  fun R Q => forall v, stableRelt R (Q v).
 
 Definition id {E VE F} : Relt E VE F :=
   fun s ρ t σ => s = t /\ ρ = σ.
@@ -89,27 +99,21 @@ Definition VerifyPrim {E VE F} VF i (impl : Impl E F)
   Stable R Q /\
   Commit VF i impl R G P ev Q.
 
-CoInductive VerifyProg {E VE F} VF i (impl : Impl E F) : Relt E VE F -> Relt E VE F -> forall (A: Type), @Prec E VE F -> Prog E A -> Relt E VE F -> Prop :=
-| SafeReturn A v :
-    VerifyProg VF i impl rtop id A ptop (Return v) id
+CoInductive VerifyProg {E VE F} VF i (impl : Impl E F) : Relt E VE F -> Relt E VE F -> forall (A: Type), @Prec E VE F -> Prog E A -> Post E VE F A -> Prop :=
+| SafeReturn A v R G P Q :
+    (forall s ρ t σ, P s ρ -> Q v s ρ t σ) ->
+    VerifyProg VF i impl R G A P (Return v) Q
 | SafeBind A B R G P QI QR S (m : E A) (k : A -> Prog E B) :
-    VerifyPrim VF i impl R G P (CallEv m) QI ->
+    Stable R QI ->
+    Stable R QR ->
+    Commit VF i impl R G P (CallEv m) QI ->
     (forall v,
-      VerifyPrim VF i impl R G (P << QI) (RetEv m v) QR /\
-      VerifyProg VF i impl R G B (P << QI << QR) (k v) S) ->
-    VerifyProg VF i impl R G B P (Bind m k) (QI >> QR >> S)
+      Commit VF i impl R G QI (RetEv m v) QR /\
+      VerifyProg VF i impl R G B QR (k v) S) ->
+    VerifyProg VF i impl R G B P (Bind m k) S
 | SafeNoOp A R G P C Q :
     VerifyProg VF i impl R G A P C Q ->
     VerifyProg VF i impl R G A P (NoOp C) Q
-| SafeWeaken {A} {C : Prog E A} R R' G G' P P' Q Q' :
-    VerifyProg VF i impl R G A P C Q ->
-    Stable R' P' ->
-    Stable R' Q' ->
-    P' ==> P ->
-    R' ==> R ->
-    G ==> G' ->
-    Q ==> Q' ->
-    VerifyProg VF i impl R' G' A P' C Q'
 .
 Arguments VerifyProg {E VE F} VF i impl R G {A} P C Q.
 
@@ -140,7 +144,8 @@ Definition InvokeAny {E VE F} impl i : Relt E VE F :=
 
 Definition Returned {E VE F} (i : ThreadName) {Ret} (m : F Ret) : Relt E VE F :=
   fun s ρ t σ =>
-    s = t /\ ρ = σ /\
+    s = t /\
+    ρ = σ /\
     exists (v : Ret), 
       fst t i = Cont m (Return v) /\
       exists r,
@@ -165,29 +170,21 @@ Definition VerifyImpl
   (R G : ThreadName -> Relt E VE F)
   (P : ThreadName -> forall Ret, F Ret -> @Prec E VE F)
   (impl : Impl E F)
-  (Q : ThreadName -> forall Ret, F Ret -> Relt E VE F) : Prop :=
+  (Q : ThreadName -> forall Ret, F Ret -> Post E VE F Ret) : Prop :=
   (* Side conditions *)
-  (forall i, R i >> R i ==> R i) /\
-  (forall i s ρ t σ,
-    R i s ρ t σ ->
-    projAgent i ρ = projAgent i σ /\
-    fst s i = fst t i) /\
-  (forall i s ρ t σ,
-    R i s ρ t σ ->
-    exists evs,
-    InterSteps (impl:=impl) s evs t /\
-    σ = app ρ (projOver evs)) /\
   (forall i j, i <> j -> G i ==> R j) /\
-  (forall i Ret (m : F Ret),
+  (forall i Ret (m : F Ret) v,
     P i Ret m (allIdle, VE.(Init)) nil /\
     P i Ret m ==> TIdle i /\
     Stable (R i) (P i Ret m) /\
-    Stable (R i) (Q i Ret m)) /\
-  (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2),
-    P i Ret1 m1 << TInvoke impl i Ret1 m1 << Q i Ret1 m1 << Returned i m1 << TReturn impl i m1 ==> P i Ret2 m2) /\
+    Stable (R i) (Q i Ret m v)) /\
+  (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2) v,
+    P i Ret1 m1 << TInvoke impl i Ret1 m1 << Q i Ret1 m1 v << Returned i m1 << TReturn impl i m1 ==> P i Ret2 m2) /\
   (* Verification task *)
   (forall i Ret (m : F Ret),
     VerifyProg VF i impl (R i) (G i)
       (P i Ret m << TInvoke impl i Ret m)
       (impl Ret m)
-      (Q i Ret m >> Returned i m)).
+      (fun v s ρ t σ =>
+        Q i Ret m v s ρ t σ /\
+        Returned i m t σ t σ)).
