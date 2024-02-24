@@ -17,6 +17,7 @@
 ./Core/ProgramFacts.v
 ./Core/TracesFacts.v
 ./Core/RefinesFacts.v
+./Core/VCompFacts.v
 
 # Requires Paco
 ./Core/Eutt.v
@@ -24,5 +25,3 @@
 ./Examples/Lock.v
 ./Examples/CounterSpecs.v
 ./Examples/RacyCounter.v
-./Examples/AtomicCounter.v
-./Core/VCompFacts.v

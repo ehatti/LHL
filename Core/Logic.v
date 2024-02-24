@@ -77,7 +77,7 @@ Notation "ρ --> σ" := (exists t, AllRetEv t /\ LinRw (ρ ++ t) σ)
   (at level 20).
 
 Definition Commit {E VE F} VF i (impl : Impl E F)
-  (R G : Relt E VE F)
+  (G : Relt E VE F)
   (P : @Prec E VE F)
   (ev : @Event E)
   (Q : Relt E VE F) :=
@@ -90,15 +90,6 @@ Definition Commit {E VE F} VF i (impl : Impl E F)
       G s ρ t σ /\
       ρ --> σ.
 
-Definition VerifyPrim {E VE F} VF i (impl : Impl E F)
-  (R G : Relt E VE F)
-  (P : @Prec E VE F)
-  (ev : @Event E)
-  (Q : Relt E VE F) :=
-  Stable R P /\
-  Stable R Q /\
-  Commit VF i impl R G P ev Q.
-
 CoInductive VerifyProg {E VE F} VF i (impl : Impl E F) : Relt E VE F -> Relt E VE F -> forall (A: Type), @Prec E VE F -> Prog E A -> Post E VE F A -> Prop :=
 | SafeReturn A v R G P Q :
     (forall s ρ t σ, P s ρ -> Q v s ρ t σ) ->
@@ -106,9 +97,9 @@ CoInductive VerifyProg {E VE F} VF i (impl : Impl E F) : Relt E VE F -> Relt E V
 | SafeBind A B R G P QI QR S (m : E A) (k : A -> Prog E B) :
     Stable R QI ->
     Stable R QR ->
-    Commit VF i impl R G P (CallEv m) QI ->
+    Commit VF i impl G P (CallEv m) QI ->
     (forall v,
-      Commit VF i impl R G QI (RetEv m v) QR /\
+      Commit VF i impl G QI (RetEv m v) QR /\
       VerifyProg VF i impl R G B QR (k v) S) ->
     VerifyProg VF i impl R G B P (Bind m k) S
 | SafeNoOp A R G P C Q :

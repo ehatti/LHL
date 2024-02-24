@@ -189,10 +189,10 @@ Qed.
 Lemma safeBind {E F VF VE impl i R G P A B} {S : Post E VE F B} {m : E A} {k : A -> Prog E B} :
   forall QI QR,
   Stable R QI ->
-  Commit VF i impl R G P (CallEv m) QI ->
+  Commit VF i impl G P (CallEv m) QI ->
   Stable R QR ->
   (forall v,
-    Commit VF i impl R G QI (RetEv m v) QR /\
+    Commit VF i impl G QI (RetEv m v) QR /\
     VerifyProg VF i impl R G QR (k v) S) ->
   VerifyProg VF i impl R G P (Bind m k) S.
 intros.
