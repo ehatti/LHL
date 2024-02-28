@@ -37,11 +37,11 @@ Coercion ReltToPrec : Relt >-> Prec.
 Definition PrecCompose {E VE F} (P : Prec E VE F) (R : Relt E VE F) : Prec E VE F :=
   fun t σ => exists s ρ, P s ρ /\ R s ρ t σ.
 
-Notation "R << G" := (PrecCompose R G) (left associativity, at level 38).
+Notation "R <<- G" := (PrecCompose R G) (left associativity, at level 37).
 
 Definition ReltCompose {E VE F} (R G : Relt E VE F) : Relt E VE F :=
   fun s ρ r τ => exists t σ, R s ρ t σ /\ G t σ r τ.
-Notation "R >> G" := (ReltCompose R G) (right associativity, at level 39).
+Notation "R ->> G" := (ReltCompose R G) (right associativity, at level 39).
 
 Class HasSub A :=
   sub : A -> A -> Prop.
@@ -57,10 +57,10 @@ Class HasStable {E VE F} A :=
   Stable : Relt E VE F -> A -> Prop.
 
 Global Instance stableRelt {E VE F} : HasStable (Relt E VE F) :=
-  fun R Q => (R >> Q ==> Q) /\ (Q >> R ==> Q).
+  fun R Q => (R ->> Q ==> Q) /\ (Q ->> R ==> Q).
 
 Global Instance stablePrec {E VE F} : HasStable (@Prec E VE F) :=
-  fun R P => P << R ==> P.
+  fun R P => P <<- R ==> P.
 
 Global Instance stablePost {E VE F A} : HasStable (Post E VE F A) :=
   fun R Q => forall v, stableRelt R (Q v).
@@ -99,15 +99,15 @@ CoInductive VerifyProg {E VE F} VF i (impl : Impl E F) : Relt E VE F -> Relt E V
     Stable R QR ->
     Commit VF i impl G P (CallEv m) QI ->
     (forall v,
-      Commit VF i impl G QI (RetEv m v) QR /\
-      VerifyProg VF i impl R G B QR (k v) S) ->
+      Commit VF i impl G QI (RetEv m v) (QR v) /\
+      VerifyProg VF i impl R G B (QR v) (k v) S) ->
     VerifyProg VF i impl R G B P (Bind m k) S
 | SafeNoOp A R G P C Q :
     VerifyProg VF i impl R G A P C Q ->
     VerifyProg VF i impl R G A P (NoOp C) Q
 .
 Arguments VerifyProg {E VE F} VF i impl R G {A} P C Q.
-
+  
 Inductive TraceIdle i {F} : Trace (ThreadEvent F) -> Prop :=
 | NilIdle : TraceIdle i nil
 | SkipIdle {j e ρ} :
@@ -170,11 +170,11 @@ Definition VerifyImpl
     Stable (R i) (P i Ret m) /\
     Stable (R i) (Q i Ret m v)) /\
   (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2) v,
-    P i Ret1 m1 << TInvoke impl i Ret1 m1 << Q i Ret1 m1 v << Returned i m1 << TReturn impl i m1 ==> P i Ret2 m2) /\
+    P i Ret1 m1 <<- TInvoke impl i Ret1 m1 <<- Q i Ret1 m1 v <<- Returned i m1 <<- TReturn impl i m1 ==> P i Ret2 m2) /\
   (* Verification task *)
   (forall i Ret (m : F Ret),
     VerifyProg VF i impl (R i) (G i)
-      (P i Ret m << TInvoke impl i Ret m)
+      (P i Ret m <<- TInvoke impl i Ret m)
       (impl Ret m)
       (fun v s ρ t σ =>
         Q i Ret m v s ρ t σ /\
