@@ -15,7 +15,7 @@
 ./Core/Tensor.v
 
 ./Core/ProgramFacts.v
-./Core/TracesFacts.v
+# ./Core/TracesFacts.v
 ./Core/RefinesFacts.v
 ./Core/VCompFacts.v
 

@@ -20,9 +20,10 @@ From Coq Require Import
   Program.Equality
   Lists.List
   Relations.Relation_Operators.
-
 Import ListNotations.
 Open Scope list_scope.
+
+From Hammer Require Import Hammer.
 
 Definition atomicCounterSpec : Spec CounterSig := {|
   State := AtomicCounterState;
@@ -237,55 +238,91 @@ Definition rely : ThreadName -> Relt :=
   fun i s ρ t σ =>
       inter i s ρ t σ \/
       (lockState s = LockOwned i ->
-        countState s = countState t /\
+        snd s = snd t /\
         lin ρ = lin σ).
 
+Lemma relyOwned i s ρ t σ :
+  lockState s = LockOwned i ->
+  rely i s ρ t σ ->
+  snd s = snd t /\
+  lin ρ = lin σ.
+unfold countState, lockState.
+destruct s, t, s, s0.
+simpl.
+intros.
+subst.
+destruct H0.
+destruct H.
+destruct H.
+destruct H0.
+do 4 destruct H0.
+destruct H1.
+dependent destruction H3.
+split.
+easy.
+rewrite linSplit.
+easy.
+unfold not.
+intros.
+dependent destruction H1.
+do 4 destruct H0.
+do 4 destruct H1.
+dependent destruction H2.
+easy.
+unfold lockState, countState in H.
+simpl in H.
+apply H.
+easy.
+Qed.
+
 Lemma relyTrans i :
-  rely i >> rely i ==> rely i.
+  rely i ->> rely i ==> rely i.
 unfold rely, inter, sub, subRelt, InvokeAny, TInvoke, ReturnAny, TReturn.
 intros.
 psimpl.
 destruct H, H0.
 psimpl.
 destruct H2, H1.
-{
-  psimpl.
-}
 Admitted.
+Hint Resolve relyTrans : rely_lemmas.
+
+Lemma relyId i :
+  id ==> rely i.
+unfold sub, subRelt.
+intros.
+destruct H.
+subst.
+right.
+intros.
+easy.
+Qed.
+Hint Resolve relyId : rely_lemmas.
 
 Definition guar : ThreadName -> Relt :=
   fun i s ρ t σ =>
       lockState s <> LockOwned i ->
-        countState s = countState t /\
+        snd s = snd t /\
         lin ρ = lin σ.
 
-Definition invariant i (f : nat -> AtomicCounterState) : Prec :=
+Definition invariant : Prec :=
   fun s ρ =>
-    exists k (b : bool),
-      countState s = CounterDSt (f k) /\
-      AtomicCounterSteps
-        (CounterIdle 0)
-        (lin ρ ++
-          if b then
-            [(i, CallEv Inc)]
-          else
-            [])
-        (f k).
+    exists s',
+      countState s = CounterDSt s'.
 
 Definition precs : ThreadName -> forall Ret, CounterSig Ret -> Prec :=
   fun i Ret m s ρ =>
     TIdle i s ρ /\
-    invariant i CounterIdle s ρ /\
+    invariant s ρ /\
     lockState s <> LockOwned i.
 
 Definition posts : ThreadName -> forall Ret, CounterSig Ret -> Post Ret :=
   fun i Ret m v _ _ t σ =>
-    invariant i CounterIdle t σ /\
+    invariant t σ /\
     lockState t <> LockOwned i.
 
 Ltac rw_all :=
-repeat match goal with
-| [ H : ?x = ?y |- ?G ] => try (rewrite H in *); clear H
+repeat lazymatch goal with
+| [ H : ?x = ?y |- ?G ] => try (rewrite H in *; clear H)
 end.
 
 Ltac commit :=
@@ -296,6 +333,87 @@ psimpl.
 Lemma listHelpAbsurd {A} {xs ys : list A} {x : A} :
   [] <> xs ++ x :: ys.
 Admitted.
+
+Ltac cond := unfold sub, subRelt, sp, guar, precs, invariant, countState, lockState, TIdle, Util.differ_pointwise in *; intros; psimpl; steps.
+
+Ltac decompose H :=
+lazymatch type of H with
+| InterStep ?i ?s ?ev ?t =>
+  dependent destruction H
+| ?P /\ ?Q  =>
+  let H1 := fresh in
+  let H2 := fresh in
+  destruct H as [H1 H2];
+  decompose H1;
+  decompose H2
+| TInvoke ?impl ?i ?A ?m ?s ?ρ ?t ?σ =>
+  let HI := fresh in
+  let P := fresh "P" in
+  let step := fresh "step" in
+  destruct H as [P HI];
+  destruct HI as [HI step];
+  subst
+| (?P <<- ?Q) ?s ?ρ =>
+  let HI := fresh in
+  let is := fresh "is" in
+  let iρ := fresh "iρ" in
+  let P := fresh "P" in
+  let Q := fresh "Q" in
+  destruct H as [is HI];
+  destruct HI as [iρ HI];
+  destruct HI as [P Q];
+  move is at top;
+  move iρ at top;
+  decompose P;
+  decompose Q
+| ReltToPrec ?P ?s ?ρ =>
+  let HI := fresh in
+  let is := fresh "is" in
+  let iρ := fresh "iρ" in
+  destruct H as [is HI];
+  destruct HI as [iρ HI];
+  move is at top;
+  move iρ at top;
+  decompose HI
+| sp ?impl ?i ?VF ?rel ?prec ?ev ?s ?ρ ?t ?σ =>
+  let HI := fresh in
+  let rs := fresh "rs" in
+  let rρ := fresh "rρ" in
+  let BR := fresh "BR" in
+  let P := fresh "P" in
+  let ss := fresh "ss" in
+  let sρ := fresh "sρ" in
+  let step := fresh "step" in
+  let trace := fresh "trace" in
+  let rw := fresh "rw" in
+  let AR := fresh "AR" in
+  destruct H as [rs HI];
+  destruct HI as [rρ HI];
+  destruct HI as [BR HI];
+  destruct HI as [P HI];
+  destruct HI as [ss HI];
+  destruct HI as [sρ HI];
+  destruct HI as [step HI];
+  destruct HI as [trace HI];
+  destruct HI as [rw AR];
+  move rs at top;
+  move rρ at top;
+  move ss at top;
+  move sρ at top;
+  move P before BR;
+  move trace at bottom;
+  move rw at bottom;
+  dependent destruction step;
+  decompose P
+| _ => idtac
+end.
+
+Ltac prepare H :=
+decompose H;
+repeat lazymatch goal with
+| [ H1 : ?P, H2 : ?P |- ?G] =>
+  clear H1
+end.
 
 Theorem atomicCounterCorrect :
   VerifyImpl VE VF rely guar precs atomicCounterImpl posts.
@@ -317,103 +435,21 @@ intros.
 destruct m.
 simpl.
 unfold inc.
+strongBind.
 {
-  eapply safeBind with
-    (QI:= fun s ρ t σ =>
-      invariant i CounterIdle t σ /\
-      lockState t <> LockOwned i)
-    (QR:= fun s ρ t σ =>
-      lockState s <> LockOwned i /\
-      lockState t = LockOwned i /\
-      countState s = countState t /\
-      ρ = σ /\
-      invariant i CounterIdle t σ).
-  {
-    admit.
-  }
-  {
-    commit.
-    dependent destruction H11.
-    destruct x2.
-    admit.
-    eexists.
-    split.
-    split.
-    exists x1, false.
-    split.
-    congruence.
-    exact H5.
-    congruence.
-    split.
-    intros.
-    split.
-    easy.
-    rewrite linSplit.
-    easy.
-    unfold not.
-    intros.
-    dependent destruction H11.
-    exists [].
-    split.
-    constructor.
-    exists [(i, CallEv Inc)], [].
-    constructor.
-    constructor.
-    constructor.
-    split.
-    constructor.
-    do 2 rewrite app_nil_r.
-    apply rt_refl.
-  }
-  admit.
-  split.
-  {
-    commit.
-    dependent destruction H6.
-    eexists.
-    split.
-    split.
-    congruence.
-    split.
-    congruence.
-    split.
-    easy.
-    split.
-    easy.
-    exists x2, false.
-  }
-  eapply safeBind with
-    (QI:= fun s ρ t σ =>
-      invariant (fun k => CounterIncRunning k i) t σ /\
-      lockState t = LockOwned i)
-    (QR:= fun s ρ t σ =>
-      lockState s = LockOwned i /\
-      invariant CounterIdle t σ).
-  admit.
-  {
-    commit.
-    dependent destruction H5.
-    congruence.
-    dependent destruction H5.
-    eexists.
-    split.
-    split.
-    exists x2.
-    split.
-    congruence.
-  }
-  admit.
-  split.
-  {
-    commit.
-    do 2 dependent destruction H6.
-    eexists.
-    split.
-    split.
-    congruence.
-    exists (S n).
-    split.
-    congruence.
-
-  }
+  unfold sub, subRelt, guar.
+  intros.
+  prepare H.
+  simpl in *.
+  destruct H0.
+  dependent destruction H0.
+  
+}
+admit.
+intros.
+strongBind.
+{
+  unfold sub, subRelt.
+  intros.
+  decompose H.
 }

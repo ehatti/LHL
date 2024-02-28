@@ -119,35 +119,32 @@ Definition IsTraceOfOver {E F : ESig} (t : Trace (ThreadEvent F)) (lay : @Layer 
 Definition InterState {E F : ESig} {spec : Spec E} : Type :=
     (ThreadsSt (E := E) (F := F)) * spec.(State).
 
+Definition updThs {E F} (ths : @ThreadsSt E F) i (st : @ThreadState E F) : @ThreadsSt E F :=
+    fun j =>
+        if eqb i j then
+            st
+        else
+            ths j.
+
 Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadName) :
     InterState -> ThreadLEvent E F -> InterState -> Prop :=
-    | IOCall ths st R m ths' :
-        ths i = Idle -> 
-        ths' i = Cont m (impl R m) ->
-        differ_pointwise ths ths' i -> 
-        InterStep i (ths, st) (i, OCallEv m) (ths', st)
-    | IORet ths st R m n ths' :
+    | IOCall ths st R m :
+        ths i = Idle ->
+        InterStep i (ths, st) (i, OCallEv m) (updThs ths i (Cont m (impl R m)), st)
+    | IORet ths st R m n :
         ths i = Cont m (Return n) ->
-        ths' i = Idle -> 
-        differ_pointwise ths ths' i -> 
-        InterStep i (ths, st) (i, ORetEv (Ret := R) m n) (ths', st)
-    | IUCall ths st A (m : E A) R (m' : F R) k ths' st' :
+        InterStep i (ths, st) (i, ORetEv (Ret := R) m n) (updThs ths i Idle, st)
+    | IUCall ths st A (m : E A) R (m' : F R) k st' :
         ths i = Cont m' (Bind m k) ->
-        ths' i = UCall m' (Ret := R) k ->
         spec.(Step) st (i, CallEv m) st' ->
-        differ_pointwise ths ths' i -> 
-        InterStep i (ths, st) (i, UCallEv m) (ths', st')
-    | IURet ths st A m (n : A) R m' k ths' st' : 
+        InterStep i (ths, st) (i, UCallEv m) (updThs ths i (UCall m' k), st')
+    | IURet ths st A m (n : A) R m' k st' : 
         ths i = UCall (Ret := R) m' k ->
-        ths' i = Cont m' (k n) -> 
         spec.(Step) st (i, RetEv m n) st' -> 
-        differ_pointwise ths ths' i -> 
-        InterStep i (ths, st) (i, URetEv m n) (ths', st')
-    | IUSilent ths st R m (p : _ R) ths' :
+        InterStep i (ths, st) (i, URetEv m n) (updThs ths i (Cont m' (k n)), st')
+    | IUSilent ths st R m (p : _ R) :
         ths i = Cont m (NoOp p) ->
-        ths' i = Cont m p -> 
-        differ_pointwise ths ths' i -> 
-        InterStep i (ths, st) (i, Silent) (ths', st).
+        InterStep i (ths, st) (i, Silent) (updThs ths i (Cont m p), st).
 
 Definition ImplSteps i {E F : ESig} {spec : Spec E} {impl : Impl E F} : 
     InterState (spec := spec) -> Trace (ThreadLEvent E F) -> InterState -> Prop := 

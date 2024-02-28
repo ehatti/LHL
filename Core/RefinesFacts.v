@@ -8,9 +8,6 @@ From LHL.Core Require Import
   Traces
   Eutt.
 
-From LHL.Core Require Import
-  TracesFacts.
-
 (* Basic Refinement Properties *)
 
 Lemma layerRefines_trans {E1 E2 E3 F} :
