@@ -119,7 +119,7 @@ Definition IsTraceOfOver {E F : ESig} (t : Trace (ThreadEvent F)) (lay : @Layer 
 Definition InterState {E F : ESig} {spec : Spec E} : Type :=
     (ThreadsSt (E := E) (F := F)) * spec.(State).
 
-Definition updThs {E F} (ths : @ThreadsSt E F) i (st : @ThreadState E F) : @ThreadsSt E F :=
+Definition updThs {A} (ths : ThreadName -> A) i (st : A) : ThreadName -> A :=
     fun j =>
         if eqb i j then
             st

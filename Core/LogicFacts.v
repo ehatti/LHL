@@ -11,10 +11,15 @@ From LHL.Util Require Import
 From Coq Require Import
   Program.Equality
   Lists.List
-  Relations.Relation_Operators.
+  Relations.Relation_Operators
+  Logic.FunctionalExtensionality
+  Logic.PropExtensionality.
 
 Import ListNotations.
 Open Scope list_scope.
+
+From Paco Require Import
+  paco.
 
 Ltac psplit :=
 match goal with
@@ -22,7 +27,7 @@ match goal with
     do 2 eexists; split
 | [ |- PrecCompose ?P ?Q ?s ?ρ ] =>
     do 2 eexists; split
-| [ |- ?G ] => fail "Cannot split on this goal"
+| [ |- _ ] => fail "Cannot split on this goal"
 end.
 
 Ltac pdestruct H :=
@@ -37,26 +42,57 @@ end.
 
 Ltac psimpl :=
 repeat lazymatch goal with
-| [ H : ReltCompose ?P ?Q ?s ?ρ ?t ?σ |- ?G] => destruct H
-| [ H : PrecCompose ?P ?Q ?s ?ρ |- ?G] => destruct H
-| [ H : ?P /\ ?Q |- ?G ] => destruct H
-| [ H : exists x, ?P |- ?G ] => destruct H
-| [ H : TInvoke ?impl ?i ?A ?l ?s ?ρ ?t ?σ |- ?G ] => destruct H
-| [ H : ReltToPrec ?R ?s ?ρ |- ?G ] => destruct H
+| [ H : ReltCompose ?P ?Q ?s ?ρ ?t ?σ |- _] => destruct H
+| [ H : PrecCompose ?P ?Q ?s ?ρ |- _] => destruct H
+| [ H : ?P /\ ?Q |- _ ] => destruct H
+| [ H : exists x, ?P |- _ ] => destruct H
+| [ H : TInvoke ?impl ?i ?A ?l ?s ?ρ ?t ?σ |- _ ] => destruct H
+| [ H : ReltToPrec ?R ?s ?ρ |- _ ] => destruct H
+| [ H : StReltToRelt ?Q ?s ?ρ ?t ?σ |- _ ] => destruct H
 end;
 simpl in *;
 subst;
 repeat lazymatch goal with
-| [ H : ?A, H' : ?A |- ?G] => clear H'
+| [ H : ?A, H' : ?A |- _] => clear H'
 end.
 
 Ltac steps :=
 repeat match goal with
-| [ H : InterStep ?i ?st ?e ?st' |- ?G ] => dependent destruction H
-| [ H : Step ?impl ?st ?ev ?st' |- ?G ] => simpl in H; dependent destruction H
+| [ H : InterStep ?i ?st ?e ?st' |- _ ] => dependent destruction H
+| [ H : Step ?impl ?st ?ev ?st' |- _ ] => simpl in H; destruct H;  dependent destruction H
 end.
 
-Lemma precCompStable {E VE F} {R : @Relt E VE F} {P Q} :
+Section lemmas.
+
+Context {E F VE VF} {R : @Relt E F VE VF}.
+
+Lemma reltCompIdLeft {Q : Relt VE VF} :
+  Q ->> id = Q.
+extensionality s.
+extensionality ρ.
+extensionality t.
+extensionality σ.
+apply propositional_extensionality.
+unfold ReltCompose.
+firstorder.
+subst.
+easy.
+Qed.
+
+Lemma reltCompIdRight {Q : Relt VE VF} :
+  id ->> Q = Q.
+extensionality s.
+extensionality ρ.
+extensionality t.
+extensionality σ.
+apply propositional_extensionality.
+unfold ReltCompose.
+firstorder.
+subst.
+easy.
+Qed.
+
+Lemma precCompStable {P Q} :
   Stable R P ->
   Stable R Q ->
   Stable R (P <<- Q).
@@ -73,7 +109,7 @@ exact H3.
 easy.
 Qed.
 
-Lemma reltCompStable {E VE F} {R : @Relt E VE F} {Q S} :
+Lemma reltCompStable {Q S} :
   Stable R Q ->
   Stable R S ->
   Stable R (Q ->> S).
@@ -102,33 +138,7 @@ exact H3.
 easy.
 Qed.
 
-Lemma reltStableHelp {E VE F} {R : @Relt E VE F} {Q} :
-    Stable R Q ->
-    forall s ρ t σ,
-    (((R ->> Q) s ρ t σ) \/ ((Q ->> R) s ρ t σ)) ->
-    Q s ρ t σ.
-intros.
-destruct H.
-destruct H0.
-apply H.
-easy.
-apply H1.
-easy.
-Qed.
-
-Lemma rtcTrans {E VE F} {R : Relt E VE F} : (RTC R ->> RTC R) ==> RTC R.
-unfold sub, subRelt.
-intros.
-pdestruct H.
-induction H.
-easy.
-econstructor.
-exact H.
-apply IHRTC.
-easy.
-Qed.
-
-Lemma precStabilizedStable {E VE F} {R : Relt E VE F} {P} :
+Lemma precStabilizedStable {P} :
   (R ->> R ==> R) ->
   Stable R (P <<- R).
 intros.
@@ -143,7 +153,35 @@ exact H2.
 easy.
 Qed.
 
-Lemma rtpStable {E VE F} {R} {Q : Relt E VE F} :
+Lemma reltStabilizedStable {Q} :
+  (R ->> R ==> R) ->
+  Stable R (R ->> Q ->> R).
+intros.
+unfold Stable, stableRelt, sub, subRelt.
+split.
+intros.
+psimpl.
+psplit.
+apply H.
+psplit.
+exact H0.
+exact H1.
+psplit.
+exact H2.
+easy.
+intros.
+psimpl.
+psplit.
+exact H0.
+psplit.
+exact H2.
+apply H.
+psplit.
+exact H3.
+easy.
+Qed.
+
+Lemma rtpStable {Q : Relt VE VF} :
   Stable R Q ->
   Stable R (ReltToPrec Q).
 unfold Stable, stableRelt, stablePrec, ReltToPrec.
@@ -158,229 +196,150 @@ exact H0.
 easy.
 Qed.
 
-Ltac stable :=
-lazymatch goal with
-| [ H : ?R ->> ?R ==> ?R |- @Stable _ _ _ _ stableRelt ?R (?P <<- ?R) ] =>
-    apply (precStabilizedStable H)
-| [ |- @Stable _ _ _ _ stablePrec ?R (?P <<- ?Q) ] =>
-    eapply precCompStable; stable
-| [ |- @Stable _ _ _ _ stableRelt ?R (?Q ->> ?S) ] =>
-    eapply reltCompStable; stable
-| [ H : @Stable _ _ _ _ stablePrec ?R ?P |- ?P ?s ?ρ ] =>
-    apply H
-| [ H : @Stable _ _ _ _ stableRelt ?R ?Q |- ?Q ?s ?ρ ?t ?σ ] =>
-    apply (reltStableHelp H)
-| _ => idtac
+End lemmas.
+
+Lemma precReltCompAssoc {E F VE VF} {P : @Prec E F VE VF} Q S :
+  P <<- (Q ->> S) = P <<- Q <<- S.
+extensionality s.
+extensionality ρ.
+Admitted.
+
+Lemma rtcTrans {E F VE VF} {R : @Relt E F VE VF} :
+  (RTC R ->> RTC R) ==> RTC R.
+unfold sub, subRelt, ReltCompose.
+intros.
+do 3 destruct H.
+induction H.
+easy.
+econstructor.
+exact H.
+apply IHRTC.
+easy.
+Qed.
+
+Lemma rtcTransTac {E F VE VF} {R : @Relt E F VE VF} {s ρ t σ r τ} :
+  RTC R s ρ t σ ->
+  RTC R t σ r τ ->
+  RTC R s ρ r τ.
+intros.
+eapply rtcTrans.
+psplit.
+exact H.
+easy.
+Qed.
+
+Lemma extendRtcLeft {E F VE VF} {R : @Relt E F VE VF} {s ρ t σ r τ} :
+  R s ρ t σ ->
+  RTC R t σ r τ ->
+  RTC R s ρ r τ.
+intros.
+eapply RTCStep.
+exact H.
+easy.
+Qed.
+
+Lemma extendRtcRight {E F VE VF} {R : @Relt E F VE VF} {s ρ t σ r τ} :
+  RTC R s ρ t σ ->
+  R t σ r τ ->
+  RTC R s ρ r τ.
+intros.
+eapply rtcTrans.
+psplit.
+exact H.
+eapply RTCStep.
+exact H0.
+constructor.
+Qed.
+
+Ltac simpl_rely :=
+repeat lazymatch goal with
+| [ H : ?R ?s ?ρ ?t ?σ, H0 : RTC ?R ?t ?σ ?r ?τ |- _] =>
+  let H2 := fresh in
+  assert (H2 : RTC R s ρ r τ);
+  try (eapply (extendRtcLeft H H0));
+  move H2 after H;
+  clear H H0 t σ
+| [ H : RTC ?R ?s ?ρ ?t ?σ, H0 : ?R ?t ?σ ?r ?τ |- _] =>
+  let H2 := fresh in
+  assert (H2 : RTC R s ρ r τ);
+  try (eapply (extendRtcRight H H0));
+  move H2 after H;
+  clear H H0 t σ
+| [ H : RTC ?R ?s ?ρ ?t ?σ, H0 : RTC ?R ?t ?σ ?r ?τ |- _] =>
+  let H2 := fresh in
+  assert (H2 : RTC R s ρ r τ);
+  try (eapply (rtcTransTac H H0));
+  move H2 after H;
+  clear H H0 t σ
 end.
 
-Lemma newPossRefl {F} : forall (ρ : Trace (ThreadEvent F)), ρ --> ρ.
-intros.
-exists nil.
-split.
-constructor.
-rewrite app_nil_r.
-exists nil, nil.
-split.
-constructor.
-split.
-constructor.
-apply rt_refl.
-Qed.
+Definition sp {E F VE VF} (e : @Event E) impl i
+  (R : @Relt E F VE VF)
+  : Relt VE VF :=
+  RTC R ->>
+  StReltToRelt (fun s t => InterStep (impl:=impl) i s (i, liftUEv e) t) ->>
+  RTC R.
 
-(* Lemma safeBind {E F VF VE impl i R G P A B} {S : Post E VE F B} {m : E A} {k : A -> Prog E B} :
-  forall PR PK,
-  Stable R QI ->
-  Commit VF i impl G P (CallEv m) QI ->
-  Stable R QR ->
-  (forall v,
-    Commit VF i impl G QI (RetEv m v) QR /\
-    VerifyProg VF i impl R G QR (k v) S) ->
-  VerifyProg VF i impl R G P (Bind m k) S.
+Lemma spStable {E F VE VF impl i} {e : @Event E} {R : @Relt E F VE VF} :
+  Stable R (sp e impl i R).
+unfold Stable, stableRelt, sub, subRelt.
+split.
+intros.
+unfold sp in *.
+psimpl.
+psplit.
+eapply RTCStep.
+exact H.
+exact H0.
+psplit.
+split.
+exact H1.
+easy.
+easy.
+unfold sp.
 intros.
 psimpl.
-eapply SafeBind.
+psplit.
 exact H.
+psplit.
+split.
 exact H1.
 easy.
-easy.
-Qed. *)
-
-Create HintDb rely_lemmas.
-
-Definition sp {E VE F} impl i VF (R : Relt E VE F) (P : Prec E VE F) ev : Relt E VE F :=
-  fun s ρ t σ =>
-    exists rs rρ,
-      R s ρ rs rρ /\
-      P rs rρ /\
-      exists rt rσ,
-        InterStep (impl:=impl) i rs (i, liftUEv ev) rt /\
-        IsTraceOfSpec rσ VF /\
-        LinRw rρ rσ /\
-        R rt rσ t σ.
-
-Lemma spStrongest E VE F VF impl i (R G : Relt E VE F) P ev :
-  id ==> R ->
-  sp impl i VF R P ev ==> G ->
-  Commit VF i impl G P ev (sp impl i VF R P ev).
-intros Rid Gsub.
-unfold Commit, sp.
-intros.
-do 2 destruct H.
-exists x.
-split.
-do 2 eexists.
-split.
-apply Rid.
-unfold id.
-easy.
-split.
-easy.
-do 2 eexists.
-split.
-exact H1.
-split.
-exact H.
-split.
-easy.
-apply Rid.
-unfold id.
-easy.
-split.
-apply Gsub.
-unfold sp.
-do 2 eexists.
-split.
-apply Rid.
-unfold id.
-easy.
-split.
-easy.
-do 2 eexists.
-split.
-exact H1.
-split.
-exact H.
-split.
-easy.
-apply Rid.
-unfold id.
-easy.
-exists nil.
-split.
+eapply rtcTrans.
+psplit.
+exact H2.
+eapply RTCStep.
+exact H0.
 constructor.
-rewrite app_nil_r.
-easy.
 Qed.
 
-Lemma spStable E VE F VF impl i (R : Relt E VE F) P ev :
-  R ->> R ==> R ->
-  Stable R (sp impl i VF R P ev).
-intros Rtrans.
-unfold Stable, stableRelt, sub, subRelt, sp.
-split.
+Lemma spStrong {E VE F VF impl i P} {e : @Event E} {R G : @Relt E F VE VF} :
+  prComp P (sp e impl i R) ==> G ->
+  Commit i impl G P e (sp e impl i R).
 intros.
-{
-  psimpl.
-  do 2 eexists.
-  split.
-  apply Rtrans.
-  psplit.
-  exact H.
-  exact H0.
-  split.
-  easy.
-  do 2 eexists.
-  split.
-  exact H2.
-  split.
-  exact H3.
-  easy.
-}
-{
-  intros.
-  psimpl.
-  do 2 eexists.
-  split.
-  exact H.
-  split.
-  easy.
-  do 2 eexists.
-  split.
-  exact H2.
-  split.
-  exact H3.
-  split.
-  easy.
-  apply Rtrans.
-  psplit.
-  exact H5.
-  easy.
-}
-Qed.
-
-Lemma strongBind {E F VF VE impl i R G P A B} {S : Post E VE F B} {m : E A} {k : A -> Prog E B} :
-  id ==> R ->
-  R ->> R ==> R ->
-  sp impl i VF R P (CallEv m) ==> G ->
-  (forall v,
-    sp impl i VF R (sp impl i VF R P (CallEv m)) (RetEv m v) ==> G) ->
-  (forall v,
-    VerifyProg VF i impl R G
-      (sp impl i VF R
-        (sp impl i VF R P (CallEv m)) (RetEv m v))
-      (k v)
-      S) ->
-  VerifyProg VF i impl R G P (Bind m k) S.
-intros Rid Rtrans Gsub1 Gsub2. intros.
-apply SafeBind with
-  (QI:= sp impl i VF R P (CallEv m))
-  (QR:= fun v => sp impl i VF R (sp impl i VF R P (CallEv m)) (RetEv m v)).
-apply spStable.
-easy.
-unfold Stable, stablePost.
-intros.
-apply spStable.
-easy.
-apply spStrongest.
-easy.
-easy.
-intros.
-split.
-apply spStrongest.
-easy.
-easy.
-apply H.
-Qed.
-
-Ltac strongBind := eapply strongBind; eauto with rely_lemmas.
-
-Axiom undef : forall a, a.
-
-Lemma weakenPrec E F A VE VF i impl (R : Relt E VE F) G P P' Q (C : Prog E A) :
-  VerifyProg VF i impl R G P C Q ->
-  P' ==> P ->
-  VerifyProg VF i impl R G P' C Q.
-intros.
-destruct C.
-dependent destruction H.
-apply SafeBind with (QI:=QI) (QR:=QR).
-easy.
-easy.
 unfold Commit.
 intros.
-apply H1.
+exists ρ.
+split.
+apply rt_refl.
+assert (prComp P (sp e impl i R) s ρ t ρ).
+unfold prComp.
+split.
 easy.
-apply H3.
-easy.
-easy.
-easy.
-dependent destruction H.
+unfold sp.
+psplit.
 constructor.
-intros.
-apply H.
-apply H0.
+psplit.
+split.
+exact H1.
 easy.
-Admitted.
+constructor.
+split.
+destruct H2.
+easy.
+apply H.
+easy.
+Qed.
 
 Theorem soundness {E F} (lay : Layer E F) VF :
   (exists R G P Q, VerifyImpl lay.(USpec) VF R G P lay.(LImpl) Q) ->
