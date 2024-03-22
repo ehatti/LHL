@@ -11,6 +11,8 @@ CoInductive Prog {E : ESig} {Ret : Type} : Type :=
 
 Arguments Prog : clear implicits.
 
+Notation "x <- m ; f" := (Bind m (fun x => f)) (at level 80, right associativity).
+
 Definition Impl {E : ESig} {F : ESig} := (forall Ret, F Ret -> Prog E Ret).
 Arguments Impl : clear implicits.
 

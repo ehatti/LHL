@@ -42,6 +42,7 @@ end.
 
 Ltac psimpl :=
 repeat lazymatch goal with
+| [ H : prComp ?P ?R ?s ?ρ ?t ?σ |- _ ] => destruct H
 | [ H : ReltCompose ?P ?Q ?s ?ρ ?t ?σ |- _] => destruct H
 | [ H : PrecCompose ?P ?Q ?s ?ρ |- _] => destruct H
 | [ H : ?P /\ ?Q |- _ ] => destruct H

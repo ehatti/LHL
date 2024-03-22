@@ -106,27 +106,20 @@ Definition ptop {E F VE VF} : @Prec E F VE VF :=
 Definition rtop {E F VE VF} : @Relt E F VE VF :=
   fun _ _ _ _ => True.
 
-Variant PossStep {F} {VF : Spec F} : Poss VF -> Poss VF -> Prop :=
-| PInvoke i ρ σ A (m : F A) :
-  σ.(PState) = ρ.(PState) ->
-  σ.(PCalls) = updThs ρ.(PCalls) i (Some (existT _ A m)) ->
-  σ.(PRets) = ρ.(PRets) ->
-  PossStep ρ σ
-| PCommitCall i ρ σ A (m : F A) :
+Variant PossStep {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
+| PCommitCall i A (m : F A) :
   VF.(Step) ρ.(PState) (i, CallEv m) σ.(PState) ->
   updThs σ.(PCalls) i (Some (existT _ A m)) = ρ.(PCalls) ->
   σ.(PRets) = ρ.(PRets) ->
   PossStep ρ σ
-| PCommitRet i ρ σ A (m : F A) v :
+| PCommitRet i A (m : F A) v :
   VF.(Step) ρ.(PState) (i, RetEv m v) σ.(PState) ->
   σ.(PCalls) = ρ.(PCalls) ->
   σ.(PRets) = updThs ρ.(PRets) i (Some (existT _ A v)) ->
-  PossStep ρ σ
-| PReturn i ρ σ A v :
-  σ.(PState) = ρ.(PState) ->
-  σ.(PCalls) = ρ.(PCalls) ->
-  updThs σ.(PRets) i (Some (existT _ A v)) = ρ.(PRets) ->
   PossStep ρ σ.
+
+Definition PossSteps {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
+  clos_refl_trans _ PossStep ρ σ.
 
 Definition Commit {E F} {VE : Spec E} {VF : Spec F} i (impl : Impl E F)
   (G : Relt VE VF)
@@ -137,28 +130,28 @@ Definition Commit {E F} {VE : Spec E} {VF : Spec F} i (impl : Impl E F)
   P s ρ ->
   InterStep (impl:=impl) i s (i, liftUEv ev) t ->
     exists σ,
-      clos_refl_trans _ PossStep ρ σ /\
+      PossSteps ρ σ /\
       Q s ρ t σ /\
       G s ρ t σ.
 
 CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i (impl : Impl E F) : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
-| SafeReturn A v R G Q Q0 :
-  Q ==> Q0 v ->
-  SafeProg i impl R G A Q (Return v) Q0
-| SafeBind A B R G (Q : Relt VE VF) QI QR Q0 (m : E A) k :
-  Stable R QI ->
-  Stable R QR ->
-  Commit i impl G Q (CallEv m) QI ->
-  (forall v,
-    Commit i impl G (Q ->> QI) (RetEv m v) (QR v) /\
-    SafeProg i impl R G B (Q ->> QI ->> QR v) (k v) Q0) ->
-  SafeProg i impl R G B Q (Bind m k) Q0
-| SafeNoOp R G A Q C Q0 :
-  SafeProg i impl R G A Q C Q0 ->
-  SafeProg i impl R G A Q (NoOp C) Q0
+| SafeReturn A v R G P Q :
+    P ==> Q v ->
+    SafeProg i impl R G A P (Return v) Q
+| SafeBind A B R G (P : Relt VE VF) QI QR Q (m : E A) k :
+    Stable R QI ->
+    Stable R QR ->
+    Commit i impl G P (CallEv m) QI ->
+    (forall v,
+      Commit i impl G (P ->> QI) (RetEv m v) (QR v) /\
+      SafeProg i impl R G B (P ->> QI ->> QR v) (k v) Q) ->
+    SafeProg i impl R G B P (Bind m k) Q
+| SafeNoOp R G A P C Q :
+    SafeProg i impl R G A P C Q ->
+    SafeProg i impl R G A P (NoOp C) Q
 .
 
-Arguments SafeProg {E F VE VF} i impl R G {A} Q C Q0.
+Arguments SafeProg {E F VE VF} i impl R G {A} P C Q.
 
 Definition VerifyProg {E F VE VF A} i (impl : Impl E F)
   (R G : @Relt E F VE VF)
@@ -166,12 +159,13 @@ Definition VerifyProg {E F VE VF A} i (impl : Impl E F)
   (C : Prog E A)
   (Q : Post VE VF A)
   : Prop :=
-  SafeProg i impl R G (prComp P R) C Q.
+  SafeProg i impl R G (prComp P id) C Q.
 
 Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
   fun s ρ =>
     fst s i = Idle /\
-    True. (* TODO: TraceIdle? *)
+    ρ.(PCalls) i = None /\
+    ρ.(PRets) i = None.
 
 Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F VE VF :=
   fun s ρ t σ =>
@@ -186,21 +180,17 @@ Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
     exists Ret (m : F Ret), TInvoke impl i Ret m s ρ t σ.
 
 Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F VE VF :=
-  fun t σ =>
+  fun s ρ =>
     exists (v : Ret), 
-      fst t i = Cont m (Return v) /\
-      exists ρ,
-        σ.(PState) = ρ.(PState) /\
-        σ.(PCalls) = ρ.(PCalls) /\
-        updThs σ.(PRets) i (Some (existT _ _ v)) = ρ.(PRets).
+      fst s i = Cont m (Return v) /\
+      ρ.(PRets) i = Some (existT _ _ v).
 
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
   fun s ρ t σ =>
-    fst t i = Idle /\
-    σ = ρ /\
     exists (v : Ret),
-      σ.(PState) = ρ.(PState) ->
-      σ.(PCalls) = ρ.(PCalls) ->
+      InterStep (impl:=impl) i s (i, ORetEv m v) t /\
+      σ.(PState) = ρ.(PState) /\
+      σ.(PCalls) = ρ.(PCalls) /\
       updThs σ.(PRets) i (Some (existT _ _ v)) = ρ.(PRets).
 
 Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
