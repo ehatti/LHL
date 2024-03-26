@@ -19,7 +19,8 @@ From Coq Require Import
   Arith.PeanoNat
   Program.Equality
   Lists.List
-  Relations.Relation_Operators.
+  Relations.Relation_Operators
+  Logic.FunctionalExtensionality.
 Import ListNotations.
 Open Scope list_scope.
 
@@ -66,219 +67,939 @@ Definition countState (s : @InterState E F VE) : RacyCounterState :=
 Definition lockState (s : @InterState E F VE) : LockState :=
   fst (snd s).
 
-Definition AtomicCounterSteps :
-  AtomicCounterState -> Trace (ThreadEvent CounterSig) -> AtomicCounterState -> Prop :=
-  Steps AtomicCounterStep.
+(*
+We start with the lock being unowned and the underlay counter equaling the overlay counter, and after R this should should still be true. We then proceed to acquiring the lock, and after R should now do nothing.
+*)
+
+Definition defined s (ρ : Poss VF) :=
+  exists k,
+    countState s = CounterDSt (CounterIdle k) /\
+    PState ρ = CounterIdle k.
 
 Definition invariant : Prec :=
   fun s ρ =>
-    exists s',
-      countState s = CounterDSt s' /\
-      (~(exists i, lockState s = LockOwned i) ->
-        ρ.(PState) = s').
+    lockState s = LockIdle ->
+      defined s ρ.
 
-Definition rely : ThreadName -> Relt :=
-  fun i s ρ t σ =>
-    (exists j,
-      i <> j /\
-      InvokeAny atomicCounterImpl j s ρ t σ) \/
-    (exists j,
-      i <> j /\
-      ReturnAny atomicCounterImpl j s ρ t σ) \/
-    (lockState s = LockOwned i ->
+Definition rely (i : ThreadName) : Relt :=
+  fun s ρ t σ =>
+    invariant t σ /\
+    PCalls ρ i = PCalls σ i /\
+    PRets ρ i = PRets σ i /\
+    fst s i = fst t i /\
+    (OwnsLock i (lockState s) ->
       countState s = countState t /\
-      ρ.(PState) = σ.(PState)).
+      PState ρ = PState σ /\
+      OwnsLock i (lockState t)).
 
-Definition guar : ThreadName -> Relt :=
-  fun i s ρ t σ =>
-    lockState s <> LockOwned i ->
+Definition guar (i : ThreadName) : Relt :=
+  fun s ρ t σ =>
+    invariant t σ /\
+    (forall j,
+      i <> j ->
+      PCalls ρ j = PCalls σ j) /\
+    (forall j,
+      i <> j ->
+      PRets ρ j = PRets σ j) /\
+    (forall j,
+      i <> j ->
+      fst s j = fst t j) /\
+    (forall j,
+      i <> j ->
+      OwnsLock j (lockState s) ->
       countState s = countState t /\
-      ρ.(PState) = σ.(PState).
+      PState ρ = PState σ /\
+      OwnsLock j (lockState t)).
 
 Definition precs : ThreadName -> forall Ret, CounterSig Ret -> Prec :=
   fun i Ret m s ρ =>
-    TIdle i s ρ /\
-    invariant s ρ /\
-    lockState s <> LockOwned i.
+    invariant s ρ.
 
 Definition posts : ThreadName -> forall Ret, CounterSig Ret -> Post Ret :=
-  fun i Ret m v _ _ t σ =>
-    invariant t σ /\
-    lockState t <> LockOwned i.
+  fun i Ret m v s ρ t σ =>
+    invariant t σ.
 
-Ltac rw_all :=
-repeat lazymatch goal with
-| [ H : ?x = ?y |- ?G ] => try (rewrite H in *; clear H)
-end.
+Definition runIncPoss i n (ρ : Poss VF) : Poss VF := MkPoss F VF
+  (CounterIncRunning i n)
+  (fun j => if i =? j then None else ρ.(PCalls) j)
+  ρ.(PRets).
 
-Lemma eqbNeq : forall i j, i <> j -> i =? j = false.
+Definition retIncPoss i n (ρ : Poss VF) : Poss VF := MkPoss F VF
+  (CounterIdle (S n))
+  ρ.(PCalls)
+  (fun j => if i =? j then Some (existT _ _ tt) else ρ.(PRets) j).
+
+Definition runGetPoss i n (ρ : Poss VF) : Poss VF := MkPoss F VF
+  (CounterGetRunning i n)
+  (fun j => if i =? j then None else ρ.(PCalls) j)
+  ρ.(PRets).
+
+Definition retGetPoss i n (ρ : Poss VF) : Poss VF := MkPoss F VF
+  (CounterIdle n)
+  ρ.(PCalls)
+  (fun j => if i =? j then Some (existT _ _ n) else ρ.(PRets) j).
+
+
+Definition acqPost i : Relt :=
+  fun s ρ t σ =>
+    defined t σ /\
+    PCalls ρ i = PCalls σ i /\
+    PRets ρ i = PRets σ i /\
+    OwnsLock i (lockState t).
+
+Ltac commit := unfold Commit, precs, guar, acqPost, invariant, defined, countState, lockState, id; intros; psimpl.
+Ltac stable := unfold Stable, stablePrec, stablePost, stableRelt, sub, subRelt, subPrec, invariant, precs, posts, rely, acqPost; intros; psimpl.
+
+Lemma acqPostStable i :
+  Stable (rely i) (acqPost i).
+stable.
+split; intros; psimpl.
+repeat split.
+easy.
+congruence.
+congruence.
+easy.
+assert (H7' := H7).
+apply H4 in H7'.
+unfold defined in *.
+psimpl.
+split.
+exists x1.
+split.
+congruence.
+congruence.
+split.
+congruence.
+split.
+congruence.
+easy.
+Qed.
+
+Lemma eqbNeq :
+  forall i j, i <> j -> i =? j = false.
 fix rec 1.
 intros.
 destruct i, j.
-all: congruence || (try easy).
+easy.
+easy.
+easy.
 simpl.
 apply rec.
 congruence.
 Qed.
-
-Lemma precsStable i A m : Stable (rely i) (precs i A m).
-unfold Stable, stablePrec, sub, subPrec, rely.
-intros.
-psimpl.
-destruct H0;
-unfold InvokeAny, ReturnAny, TInvoke, TReturn in *;
-psimpl; steps.
-unfold precs.
-split.
-{
-  split.
-  unfold updThs.
-  simpl.
-  rewrite eqbNeq.
-  do 2 destruct H.
-  all: easy.
-}
-split.
-{
-  unfold precs, invariant, countState, lockState in *.
-  psimpl.
-  exists x.
-  split.
-  easy.
-  intros.
-  apply H8 in H9.
-  congruence.
-}
-unfold lockState.
-simpl.
-destruct H.
-easy.
-destruct H0.
-psimpl.
-{
-  unfold precs, invariant, TIdle in *.
-  psimpl.
-  steps.
-  split.
-  split.
-  unfold updThs.
-  simpl in *.
-  rewrite eqbNeq.
-  easy.
-  easy.
-  easy.
-  split.
-  exists x5.
-  split.
-  easy.
-  intros.
-  all: unfold lockState in *.
-  all: simpl in *.
-  apply H6 in H7.
-  easy.
-  easy.
-}
-unfold precs, invariant, TIdle in *.
-psimpl.
-split.
-split.
-Admitted.
-
-Lemma postsStable i A m : Stable (rely i) (posts i A m).
-Admitted.
 
 Theorem atomicCounterCorrect :
   VerifyImpl VE VF rely guar precs atomicCounterImpl posts.
 unfold VerifyImpl.
 split.
 {
-  admit.
+  unfold sub, subRelt, guar, rely.
+  intros.
+  psimpl.
+  split.
+  easy.
+  split.
+  apply H1.
+  easy.
+  split.
+  apply H2.
+  easy.
+  split.
+  apply H3.
+  easy.
+  intros.
+  apply H4 with (j:=j).
+  easy.
+  unfold OwnsLock, not in *.
+  intros.
+  firstorder; congruence.
+}
+split.
+split.
+{
+  exists 0.
+  easy.
 }
 split.
 {
-  intros.
-  unfold precs, invariant, TIdle.
-  split.
-  repeat split.
-  exists (CounterIdle 0).
+  stable.
   easy.
-  easy.
-  split.
-  easy.
-  split.
-  eapply precsStable.
-  apply postsStable.
+}
+{
+  stable.
+  split; intros; psimpl; easy.
 }
 split.
-admit.
+{
+  unfold precs, posts, PrecToRelt, TReturn, sub, subPrec.
+  intros.
+  psimpl.
+  steps.
+  unfold invariant, defined, lockState, countState in *.
+  simpl in *.
+  intros.
+  apply H8 in H7.
+  psimpl.
+  exists x.
+  split.
+  congruence.
+  congruence.
+}
 intros.
 destruct m.
 simpl.
 unfold inc.
 eapply SafeBind with
-  (QI:= fun s ρ t σ =>
-    True)
-  (QR:=fun _ s (ρ : Poss VF) t (σ : Poss VF) =>
-    lockState t = LockOwned i /\
-    σ.(PCalls) i = Some (existT _ _ Inc) /\
-    σ.(PRets) i = None /\
-    countState t = countState s /\
-    σ = ρ /\
-    exists k,
-      countState s = CounterDSt (CounterIdle k) /\
-      ρ.(PState) = CounterIdle k).
-admit.
-admit.
-admit.
-split.
-admit.
-eapply SafeBind with
-  (QI:=fun s ρ t (σ : Poss VF) =>
-    lockState t = LockOwned i /\
-    σ.(PCalls) i = Some (existT _ _ Inc) /\
-    σ.(PRets) i = None /\
-    countState t = countState s /\
-    σ = ρ /\
-    exists k,
-      countState s = CounterDSt (CounterIdle k) /\
-      ρ.(PState) = CounterIdle k)
-  (QR:=fun _ s (ρ : Poss VF) t (σ : Poss VF) =>
-    lockState t = LockOwned i /\
-    σ.(PCalls) i = None /\
-    σ.(PRets) i = None /\
-    exists k,
-      ρ.(PState) = CounterIdle k /\
-      countState s = CounterDSt (CounterIdle k) /\
-      σ.(PState) = CounterIdle (S k) /\
-      countState s = CounterDSt (CounterIdle (S k))).
-admit.
-admit.
-admit.
+  (QI:= acqPost i)
+  (QR:=fun _ => acqPost i).
+apply acqPostStable.
+unfold Stable, stablePost.
+intros.
+apply acqPostStable.
+{
+  commit.
+  exists ρ.
+  split.
+  apply rt_refl.
+  steps.
+  symmetry in x0.
+  assert (x0' := x0).
+  apply H in x0. clear H.
+  psimpl.
+  split.
+  split.
+  exists x0.
+  split.
+  congruence.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  unfold OwnsLock.
+  left.
+  easy.
+  split.
+  intros.
+  exists x0.
+  split; congruence.
+  split.
+  easy.
+  split.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  split.
+  easy.
+  split.
+  easy.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
 split.
 {
-  unfold Commit, id.
-  intros.
-  psimpl.
+  commit.
+  exists ρ.
+  split.
+  apply rt_refl.
   steps.
-  dependent destruction H9.
+  split.
+  split.
+  exists x4.
+  split.
+  congruence.
+  congruence.
+  unfold OwnsLock.
+  firstorder.
+  split.
+  intros.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  unfold OwnsLock in *.
+  firstorder; congruence.
 }
 eapply SafeBind with
-  (QI:=fun s ρ t σ =>
-    True)
-  (QR:=fun _ s (ρ : Poss VF) t (σ : Poss VF) =>
-    lockState t <> LockOwned i /\
-    σ.(PCalls) i = None /\
-    σ.(PRets) i = None /\
-    σ = ρ /\
-    countState t = countState s).
-admit.
-admit.
-admit.
+  (QI:=fun s ρ t (σ : Poss VF) =>
+    OwnsLock i (lockState t) /\
+    PRets ρ i = PRets σ i /\
+    exists k,
+      countState t = CounterDSt (CounterIncRunning i k) /\
+      PState σ = CounterIncRunning i k)
+  (QR:=fun _ s ρ t (σ : Poss VF) =>
+    OwnsLock i (lockState t) /\
+    PRets σ i = Some (existT _ _ tt) /\
+    exists k,
+      countState t = CounterDSt (CounterIdle k) /\
+      PState σ = CounterIdle k).
+{
+  stable.
+  split; intros; psimpl.
+  split.
+  easy.
+  split.
+  rewrite <- H1 in *.
+  easy.
+  exists x1.
+  easy.
+  assert (H' := H).
+  apply H4 in H'. clear H4.
+  psimpl.
+  split.
+  easy.
+  split.
+  congruence.
+  exists x1.
+  split.
+  congruence.
+  congruence.
+}
+{
+  stable.
+  split; intros; psimpl.
+  split.
+  easy.
+  split.
+  easy.
+  exists x1.
+  easy.
+  apply H4 in H. clear H3.
+  psimpl.
+  split.
+  easy.
+  split.
+  congruence.
+  exists x1.
+  split.
+  congruence.
+  congruence.
+}
+{
+  commit.
+  exists (runIncPoss i x6 ρ).
+  steps.
+  congruence.
+  congruence.
+  dependent destruction H3.
+  split.
+  apply rt_step.
+  eapply PCommitCall.
+  simpl.
+  rewrite H11.
+  constructor.
+  simpl.
+  split.
+  congruence.
+  rewrite eqbEql.
+  easy.
+  easy.
+  split.
+  split.
+  unfold OwnsLock in *.
+  destruct H7.
+  left.
+  congruence.
+  destruct H3.
+  right.
+  left.
+  congruence.
+  right.
+  right.
+  congruence.
+  split.
+  easy.
+  exists n.
+  split.
+  easy.
+  assert (x6 = n).
+  congruence.
+  subst.
+  easy.
+  split.
+  intros.
+  rewrite H14 in *.
+  unfold OwnsLock.
+  firstorder; congruence.
+  split.
+  intros.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  split.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
 split.
-admit.
+{
+  commit.
+  steps.
+  congruence.
+  dependent destruction H7.
+  exists (retIncPoss i n ρ).
+  assert (x4 = n).
+  congruence.
+  subst.
+  split.
+  apply rt_step.
+  eapply PCommitRet.
+  rewrite H4.
+  simpl.
+  constructor.
+  easy.
+  simpl.
+  unfold TIdle in *.
+  psimpl.
+  etransitivity.
+  symmetry.
+  exact H2.
+  etransitivity.
+  symmetry.
+  exact H10.
+  etransitivity.
+  symmetry.
+  exact H13.
+  rewrite H22.
+  easy.
+  simpl.
+  rewrite eqbEql.
+  easy.
+  split.
+  unfold OwnsLock in *.
+  rewrite H18 in *.
+  split.
+  firstorder; congruence.
+  split.
+  simpl.
+  rewrite eqbEql.
+  easy.
+  exists (S n).
+  easy.
+  split.
+  intros.
+  rewrite H18 in *.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+  split.
+  intros.
+  easy.
+  split.
+  intros.
+  simpl.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  intros.
+  unfold OwnsLock in *.
+  rewrite H18 in *.
+  firstorder; congruence.
+}
+eapply SafeBind with
+  (QI:= acqPost i)
+  (QR:=fun _ s ρ t σ =>
+    invariant t σ /\
+    PRets ρ i = PRets σ i).
+apply acqPostStable.
+{
+  stable.
+  split; intros; psimpl.
+  split.
+  firstorder.
+  congruence.
+  split.
+  firstorder.
+  congruence.
+}
+{
+  commit.
+  steps.
+  exists ρ.
+  split.
+  apply rt_refl.
+  split.
+  split.
+  exists x6.
+  split.
+  congruence.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  right.
+  right.
+  easy.
+  split.
+  intros.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
+split.
+{
+  commit.
+  steps.
+  exists ρ.
+  split.
+  apply rt_refl.
+  split.
+  split.
+  intros.
+  exists x4.
+  split.
+  congruence.
+  congruence.
+  easy.
+  split.
+  intros.
+  exists x4.
+  split.
+  congruence.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  intros.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
 eapply SafeReturn.
 {
   unfold sub, subRelt.
   intros.
   psimpl.
+  steps.
+  psplit.
+  unfold posts.
+  exact H2.
+  unfold PrecToRelt, Returned.
+  split.
+  exists tt.
+  unfold acqPost in *.
+  psimpl.
+  congruence.
+  easy.
 }
+unfold get.
+eapply SafeBind with
+  (QI:= acqPost i)
+  (QR:=fun _ => acqPost i).
+apply acqPostStable.
+unfold Stable, stablePost.
+intros.
+apply acqPostStable.
+{
+  commit.
+  exists ρ.
+  split.
+  apply rt_refl.
+  steps.
+  symmetry in x0.
+  assert (x0' := x0).
+  apply H in x0. clear H.
+  psimpl.
+  split.
+  split.
+  exists x0.
+  split.
+  congruence.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  unfold OwnsLock.
+  left.
+  easy.
+  split.
+  intros.
+  exists x0.
+  split; congruence.
+  split.
+  easy.
+  split.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  split.
+  easy.
+  split.
+  easy.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
+split.
+{
+  commit.
+  exists ρ.
+  split.
+  apply rt_refl.
+  steps.
+  split.
+  split.
+  exists x4.
+  split.
+  congruence.
+  congruence.
+  unfold OwnsLock.
+  firstorder.
+  split.
+  intros.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
+eapply SafeBind with
+  (QI:=fun s ρ t (σ : Poss VF) =>
+    OwnsLock i (lockState t) /\
+    PRets ρ i = PRets σ i /\
+    exists k,
+      countState t = CounterDSt (CounterGetRunning i k) /\
+      PState σ = CounterGetRunning i k)
+  (QR:=fun _ s ρ t (σ : Poss VF) =>
+    OwnsLock i (lockState t) /\
+    exists k,
+    PRets σ i = Some (existT _ _ k) /\
+      countState t = CounterDSt (CounterIdle k) /\
+      PState σ = CounterIdle k).
+{
+  stable.
+  split; intros; psimpl.
+  split.
+  easy.
+  split.
+  rewrite <- H1 in *.
+  easy.
+  exists x1.
+  easy.
+  assert (H' := H).
+  apply H4 in H'. clear H4.
+  psimpl.
+  split.
+  easy.
+  split.
+  congruence.
+  exists x1.
+  split.
+  congruence.
+  congruence.
+}
+{
+  stable.
+  split; intros; psimpl.
+  split.
+  easy.
+  exists x1.
+  easy.
+  apply H4 in H. clear H3.
+  psimpl.
+  split.
+  easy.
+  exists x1.
+  split.
+  congruence.
+  split.
+  congruence.
+  congruence.
+}
+{
+  commit.
+  exists (runGetPoss i x6 ρ).
+  steps.
+  congruence.
+  dependent destruction H3.
+  split.
+  apply rt_step.
+  eapply PCommitCall.
+  simpl.
+  rewrite H11.
+  constructor.
+  simpl.
+  split.
+  congruence.
+  rewrite eqbEql.
+  easy.
+  easy.
+  split.
+  split.
+  unfold OwnsLock in *.
+  destruct H7.
+  left.
+  congruence.
+  destruct H3.
+  right.
+  left.
+  congruence.
+  right.
+  right.
+  congruence.
+  split.
+  easy.
+  exists n.
+  split.
+  easy.
+  assert (x6 = n).
+  congruence.
+  subst.
+  easy.
+  split.
+  intros.
+  rewrite H14 in *.
+  unfold OwnsLock.
+  firstorder; congruence.
+  split.
+  intros.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  split.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
+split.
+{
+  commit.
+  steps.
+  congruence.
+  dependent destruction H7.
+  exists (retGetPoss i v0 ρ).
+  assert (x4 = v0).
+  congruence.
+  subst.
+  split.
+  apply rt_step.
+  eapply PCommitRet.
+  rewrite H4.
+  simpl.
+  constructor.
+  easy.
+  simpl.
+  unfold TIdle in *.
+  psimpl.
+  etransitivity.
+  symmetry.
+  exact H2.
+  etransitivity.
+  symmetry.
+  exact H10.
+  etransitivity.
+  symmetry.
+  exact H13.
+  rewrite H22.
+  easy.
+  simpl.
+  rewrite eqbEql.
+  easy.
+  split.
+  unfold OwnsLock in *.
+  rewrite H18 in *.
+  split.
+  firstorder; congruence.
+  exists v0.
+  split.
+  simpl.
+  rewrite eqbEql.
+  easy.
+  split.
+  congruence.
+  easy.
+  split.
+  intros.
+  unfold OwnsLock in *.
+  rewrite H18 in *.
+  firstorder; congruence.
+  split.
+  easy.
+  split.
+  simpl.
+  intros.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
+eapply SafeBind with
+  (QI:= acqPost i)
+  (QR:=fun _ s ρ t σ =>
+    invariant t σ /\
+    PRets ρ i = PRets σ i).
+apply acqPostStable.
+{
+  stable.
+  split; intros; psimpl.
+  split.
+  firstorder.
+  congruence.
+  split.
+  firstorder.
+  congruence.
+}
+{
+  commit.
+  steps.
+  exists ρ.
+  split.
+  apply rt_refl.
+  split.
+  split.
+  exists x6.
+  split.
+  congruence.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  right.
+  right.
+  easy.
+  split.
+  intros.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
+split.
+{
+  commit.
+  steps.
+  exists ρ.
+  split.
+  apply rt_refl.
+  split.
+  split.
+  intros.
+  exists x4.
+  split.
+  congruence.
+  congruence.
+  easy.
+  split.
+  intros.
+  exists x4.
+  split.
+  congruence.
+  congruence.
+  split.
+  easy.
+  split.
+  easy.
+  intros.
+  split.
+  intros.
+  unfold updThs.
+  rewrite eqbNeq.
+  easy.
+  easy.
+  intros.
+  unfold OwnsLock in *.
+  firstorder; congruence.
+}
+eapply SafeReturn.
+{
+  unfold sub, subRelt.
+  intros.
+  psimpl.
+  steps.
+  psplit.
+  unfold posts.
+  exact H2.
+  unfold PrecToRelt, Returned.
+  split.
+  exists x8.
+  unfold acqPost in *.
+  psimpl.
+  congruence.
+  easy.
+}
+Qed.

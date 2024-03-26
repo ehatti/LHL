@@ -61,7 +61,8 @@ Ltac steps :=
 repeat match goal with
 | [ H : InterStep ?i ?st ?e ?st' |- _ ] => dependent destruction H
 | [ H : Step ?impl ?st ?ev ?st' |- _ ] => simpl in H; destruct H;  dependent destruction H
-end.
+end;
+simpl in *.
 
 Section lemmas.
 

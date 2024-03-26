@@ -25,3 +25,4 @@
 ./Examples/Lock.v
 ./Examples/CounterSpecs.v
 ./Examples/RacyCounter.v
+./Examples/AtomicCounter.v

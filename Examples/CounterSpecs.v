@@ -8,19 +8,20 @@ Variant CounterSig : ESig :=
 
 Variant AtomicCounterState :=
 | CounterIdle (n : nat)
-| CounterIncRunning (n : nat) (i : ThreadName)
-| CounterGetRunning (n : nat) (i : ThreadName).
+| CounterIncRunning (i : ThreadName) (n : nat)
+| CounterGetRunning (i : ThreadName) (n : nat).
 
 Variant AtomicCounterStep : AtomicCounterState -> ThreadEvent CounterSig -> AtomicCounterState -> Prop :=
-| CounterCallInc n i : AtomicCounterStep (CounterIdle n) (i, CallEv Inc) (CounterIncRunning n i)
-| CounterRetInc i n : AtomicCounterStep (CounterIncRunning n i) (i, RetEv Inc tt) (CounterIdle (S n))
-| CounterCallGet n i : AtomicCounterStep (CounterIdle n) (i, CallEv Get) (CounterGetRunning n i)
-| CounterRetGet i n : AtomicCounterStep (CounterGetRunning n i)  (i, RetEv Get n) (CounterIdle n).
+| CounterCallInc i n : AtomicCounterStep (CounterIdle n) (i, CallEv Inc) (CounterIncRunning i n)
+| CounterRetInc i n : AtomicCounterStep (CounterIncRunning i n) (i, RetEv Inc tt) (CounterIdle (S n))
+| CounterCallGet i n : AtomicCounterStep (CounterIdle n) (i, CallEv Get) (CounterGetRunning i n)
+| CounterRetGet i n : AtomicCounterStep (CounterGetRunning i n)  (i, RetEv Get n) (CounterIdle n).
 
 Variant RacyCounterState :=
 | CounterUB
 | CounterDSt (s : AtomicCounterState).
 
 Variant RacyCounterStep : RacyCounterState -> ThreadEvent CounterSig -> RacyCounterState -> Prop :=
-| CounterIncUB i j n : RacyCounterStep (CounterDSt (CounterIncRunning n i)) (j, CallEv Inc) CounterUB
+| CounterIncUB i j n : RacyCounterStep (CounterDSt (CounterIncRunning i n)) (j, CallEv Inc) CounterUB
+| CounterStepUB e : RacyCounterStep CounterUB e CounterUB
 | CounterDSp st e st' : AtomicCounterStep st e st' -> RacyCounterStep (CounterDSt st) e (CounterDSt st').

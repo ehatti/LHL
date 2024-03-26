@@ -109,13 +109,15 @@ Definition rtop {E F VE VF} : @Relt E F VE VF :=
 Variant PossStep {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
 | PCommitCall i A (m : F A) :
   VF.(Step) ρ.(PState) (i, CallEv m) σ.(PState) ->
-  updThs σ.(PCalls) i (Some (existT _ A m)) = ρ.(PCalls) ->
+  ρ.(PCalls) i = Some (existT _ A m) /\
+  σ.(PCalls) i = None ->
   σ.(PRets) = ρ.(PRets) ->
   PossStep ρ σ
 | PCommitRet i A (m : F A) v :
   VF.(Step) ρ.(PState) (i, RetEv m v) σ.(PState) ->
   σ.(PCalls) = ρ.(PCalls) ->
-  σ.(PRets) = updThs ρ.(PRets) i (Some (existT _ A v)) ->
+  ρ.(PRets) i = None ->
+  σ.(PRets) i = Some (existT _ A v) ->
   PossStep ρ σ.
 
 Definition PossSteps {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
@@ -172,7 +174,8 @@ Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F
     TIdle i s ρ /\
     InterStep (impl:=impl) i s (i, OCallEv m) t /\
     σ.(PState) = ρ.(PState) /\
-    σ.(PCalls) = updThs ρ.(PCalls) i (Some (existT _ _ m)) /\
+    ρ.(PCalls) i = None /\
+    σ.(PCalls) i = Some (existT _ _ m) /\
     σ.(PRets) = ρ.(PRets).
 
 Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
@@ -181,8 +184,7 @@ Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
 
 Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F VE VF :=
   fun s ρ =>
-    exists (v : Ret), 
-      fst s i = Cont m (Return v) /\
+    exists (v : Ret),
       ρ.(PRets) i = Some (existT _ _ v).
 
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
@@ -191,7 +193,8 @@ Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F R
       InterStep (impl:=impl) i s (i, ORetEv m v) t /\
       σ.(PState) = ρ.(PState) /\
       σ.(PCalls) = ρ.(PCalls) /\
-      updThs σ.(PRets) i (Some (existT _ _ v)) = ρ.(PRets).
+      ρ.(PRets) i = Some (existT _ _ v) /\
+      σ.(PRets) i = None.
 
 Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
@@ -215,7 +218,6 @@ Definition VerifyImpl
   (forall i j, i <> j -> G i ==> R j) /\
   (forall i Ret (m : F Ret) v,
     P i Ret m (allIdle, VE.(Init)) initPoss /\
-    P i Ret m ==> TIdle i /\
     Stable (R i) (P i Ret m) /\
     Stable (R i) (Q i Ret m v)) /\
   (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2) v,

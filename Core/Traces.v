@@ -126,6 +126,19 @@ Definition updThs {A} (ths : ThreadName -> A) i (st : A) : ThreadName -> A :=
         else
             ths j.
 
+Lemma eqbEql {i} : eqb i i = true.
+induction i.
+easy.
+simpl.
+easy.
+Qed.
+
+Lemma updThsEql {A ths i st} : @updThs A ths i st i = st.
+unfold updThs.
+rewrite eqbEql.
+easy.
+Qed.
+
 Inductive InterStep {E F : ESig} {spec : Spec E} {impl : Impl E F} (i : ThreadName) :
     InterState -> ThreadLEvent E F -> InterState -> Prop :=
     | IOCall ths st R m :
