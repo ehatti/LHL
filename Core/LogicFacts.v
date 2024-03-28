@@ -321,10 +321,14 @@ Lemma spStrong {E VE F VF impl i P} {e : @Event E} {R G : @Relt E F VE VF} :
 intros.
 unfold Commit.
 intros.
-exists ρ.
+exists ρs.
 split.
+intros.
+exists σ.
+split.
+easy.
 apply rt_refl.
-assert (prComp P (sp e impl i R) s ρ t ρ).
+assert (prComp P (sp e impl i R) s ρs t ρs).
 unfold prComp.
 split.
 easy.
