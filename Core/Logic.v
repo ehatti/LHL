@@ -17,16 +17,19 @@ Record Poss {F} {VF : Spec F} := MkPoss {
 }.
 Arguments Poss {F} VF.
 
+Definition PossSet {F} (VF : Spec F) :=
+  Poss VF -> Prop.
+
 Definition Prec {E F} (VE : Spec E) (VF : Spec F) :=
   @InterState E F VE ->
-  Poss VF ->
+  PossSet VF ->
   Prop.
 
 Definition Relt {E F} (VE : Spec E) (VF : Spec F) :=
   @InterState E F VE ->
-  Poss VF ->
+  PossSet VF ->
   @InterState E F VE ->
-  Poss VF ->
+  PossSet VF ->
   Prop.
 
 Definition Post {E F} (VE : Spec E) (VF : Spec F) A :=
@@ -128,13 +131,17 @@ Definition Commit {E F} {VE : Spec E} {VF : Spec F} i (impl : Impl E F)
   (P : Prec VE VF)
   (ev : @Event E)
   (Q : Relt VE VF) :=
-  forall s ρ t,
-  P s ρ ->
+  forall s ρs t,
+  P s ρs ->
   InterStep (impl:=impl) i s (i, liftUEv ev) t ->
-    exists σ,
-      PossSteps ρ σ /\
-      Q s ρ t σ /\
-      G s ρ t σ.
+    exists σs,
+      (forall σ,
+        σs σ ->
+        exists ρ,
+          ρs ρ /\
+          PossSteps ρ σ) /\
+      Q s ρs t σs /\
+      G s ρs t σs.
 
 CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i (impl : Impl E F) : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
 | SafeReturn A v R G P Q :
@@ -164,37 +171,61 @@ Definition VerifyProg {E F VE VF A} i (impl : Impl E F)
   SafeProg i impl R G (prComp P id) C Q.
 
 Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
-  fun s ρ =>
+  fun s ρs =>
     fst s i = Idle /\
-    ρ.(PCalls) i = None /\
-    ρ.(PRets) i = None.
+    forall ρ,
+      ρs ρ ->
+      ρ.(PCalls) i = None /\
+      ρ.(PRets) i = None.
 
 Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F VE VF :=
-  fun s ρ t σ =>
-    TIdle i s ρ /\
+  fun s ρs t σs =>
+    TIdle i s ρs /\
     InterStep (impl:=impl) i s (i, OCallEv m) t /\
-    σ.(PState) = ρ.(PState) /\
-    ρ.(PCalls) i = None /\
-    σ.(PCalls) i = Some (existT _ _ m) /\
-    σ.(PRets) = ρ.(PRets).
+    (forall ρ σ,
+      ρs ρ ->
+      σs σ ->
+      σ.(PState) = ρ.(PState)) /\
+    (forall ρ,
+      ρs ρ ->
+      ρ.(PCalls) i = None) /\
+    (forall σ,
+      σs σ ->
+      σ.(PCalls) i = Some (existT _ _ m)) /\
+    (forall ρ σ,
+      ρs ρ ->
+      σs σ ->
+      σ.(PRets) = ρ.(PRets)).
 
 Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
     exists Ret (m : F Ret), TInvoke impl i Ret m s ρ t σ.
 
 Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F VE VF :=
-  fun s ρ =>
-    exists (v : Ret),
+  fun s ρs =>
+    exists ρ (v : Ret),
+      fst s i = Cont m (Return v) /\
+      ρs ρ /\
       ρ.(PRets) i = Some (existT _ _ v).
 
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
-  fun s ρ t σ =>
+  fun s ρs t σs =>
     exists (v : Ret),
       InterStep (impl:=impl) i s (i, ORetEv m v) t /\
-      σ.(PState) = ρ.(PState) /\
-      σ.(PCalls) = ρ.(PCalls) /\
-      ρ.(PRets) i = Some (existT _ _ v) /\
-      σ.(PRets) i = None.
+      (forall ρ σ,
+        ρs ρ ->
+        σs σ ->
+        σ.(PState) = ρ.(PState)) /\
+      (forall ρ σ,
+        ρs ρ ->
+        σs σ ->
+        σ.(PCalls) = ρ.(PCalls)) /\
+      (exists ρ,
+        ρs ρ /\
+        ρ.(PRets) i = Some (existT _ _ v)) /\
+      (forall σ,
+        σs σ ->
+        σ.(PRets) i = None).
 
 Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
@@ -217,7 +248,7 @@ Definition VerifyImpl
   (* Side conditions *)
   (forall i j, i <> j -> G i ==> R j) /\
   (forall i Ret (m : F Ret) v,
-    P i Ret m (allIdle, VE.(Init)) initPoss /\
+    P i Ret m (allIdle, VE.(Init)) (eq initPoss) /\
     Stable (R i) (P i Ret m) /\
     Stable (R i) (Q i Ret m v)) /\
   (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2) v,

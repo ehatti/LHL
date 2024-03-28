@@ -258,6 +258,7 @@ intros.
 apply acqPostStable.
 {
   commit.
+  steps.
   exists ρ.
   split.
   apply rt_refl.
