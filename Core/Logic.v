@@ -203,7 +203,8 @@ Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
 
 Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F VE VF :=
   fun s ρs =>
-    exists ρ (v : Ret),
+    (* TODO: check nonempty *)
+    forall ρ (v : Ret),
       fst s i = Cont m (Return v) /\
       ρs ρ /\
       ρ.(PRets) i = Some (existT _ _ v).
@@ -220,6 +221,7 @@ Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F R
         ρs ρ ->
         σs σ ->
         σ.(PCalls) = ρ.(PCalls)) /\
+      (* TODO: should be σ? *)
       (exists ρ,
         ρs ρ /\
         ρ.(PRets) i = Some (existT _ _ v)) /\

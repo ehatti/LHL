@@ -24,8 +24,6 @@ From Coq Require Import
 Import ListNotations.
 Open Scope list_scope.
 
-From Hammer Require Import Hammer.
-
 Definition atomicCounterSpec : Spec CounterSig := {|
   State := AtomicCounterState;
   Step := AtomicCounterStep;

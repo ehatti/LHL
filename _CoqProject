@@ -22,7 +22,7 @@
 # Requires Paco
 ./Core/Eutt.v
 
-./Examples/Lock.v
-./Examples/CounterSpecs.v
-./Examples/RacyCounter.v
-./Examples/AtomicCounter.v
+./Examples/LockSpec.v
+./Examples/CounterSpec.v
+./Examples/FAISpec.v
+./Examples/YieldSpec.v

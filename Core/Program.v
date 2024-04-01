@@ -1,8 +1,19 @@
 Definition ESig : Type := Type -> Type.
 
+Class SigCoercion {E F : ESig} :=
+  coerceOp : forall A, E A -> F A.
+Arguments SigCoercion : clear implicits.
+
 Definition Sum (EL ER : ESig) (Ret : Type) := sum (EL Ret) (ER Ret).
 
 Notation "E |+| F" := (Sum E F) (right associativity, at level 41).
+
+Instance coerceId E : SigCoercion E E :=
+  fun _ e => e.
+Instance coerceSumLeft S E F `{SigCoercion S E} : SigCoercion S (Sum E F) :=
+  fun _ s => inl (coerceOp _ s).
+Instance coerceSumRight S E F `{SigCoercion S F} : SigCoercion S (Sum E F) :=
+  fun _ s => inr (coerceOp _ s).
 
 CoInductive Prog {E : ESig} {Ret : Type} : Type :=
 | Bind {A} : E A -> (A -> Prog) -> Prog
@@ -10,8 +21,6 @@ CoInductive Prog {E : ESig} {Ret : Type} : Type :=
 | NoOp : Prog -> Prog.
 
 Arguments Prog : clear implicits.
-
-Notation "x <- m ; f" := (Bind m (fun x => f)) (at level 80, right associativity).
 
 Definition Impl {E : ESig} {F : ESig} := (forall Ret, F Ret -> Prog E Ret).
 Arguments Impl : clear implicits.
@@ -31,7 +40,7 @@ CoFixpoint bindProg {E A B} (p : Prog E A) (f : A -> Prog E B) : Prog E B :=
     | Return a => f a
     | NoOp p' => NoOp (bindProg p' f)
   end.
-Notation "x <-- f ; m" := (bindProg f (fun x => m)) (at level 80, right associativity).
+Notation "x <- f ; m" := (bindProg f (fun x => m)) (at level 80, right associativity).
 
 CoFixpoint mapProg
            {E E'}
@@ -70,3 +79,21 @@ Definition implVComp {E F G} (impl : Impl E F) (impl' : Impl F G) : Impl E G :=
     fun Ret g => substProg impl (impl' Ret g).
 
 Notation "x |> y" := (implVComp x y) (at level 80, right associativity).
+
+(* Control/extra constructs *)
+
+Definition call {E F A} `{SigCoercion E F} (m : E A) : Prog F A :=
+  Bind (coerceOp A m) Return.
+
+Definition ret {E A} := Return (E:=E) (Ret:=A).
+
+(* This definition is guarded, but Coq can't see that *)
+Unset Guard Checking.
+CoFixpoint while {E} (x : Prog E bool) (e : Prog E unit) : Prog E unit :=
+  t <- x;
+  if t then
+    _ <- e;
+    NoOp (while x e)
+  else
+    ret tt.
+Set Guard Checking.
