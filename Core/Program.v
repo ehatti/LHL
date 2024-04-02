@@ -1,12 +1,11 @@
 Definition ESig : Type := Type -> Type.
 
+Definition Sum (EL ER : ESig) (Ret : Type) := sum (EL Ret) (ER Ret).
+Notation "E |+| F" := (Sum E F) (right associativity, at level 41).
+
 Class SigCoercion {E F : ESig} :=
   coerceOp : forall A, E A -> F A.
 Arguments SigCoercion : clear implicits.
-
-Definition Sum (EL ER : ESig) (Ret : Type) := sum (EL Ret) (ER Ret).
-
-Notation "E |+| F" := (Sum E F) (right associativity, at level 41).
 
 Instance coerceId E : SigCoercion E E :=
   fun _ e => e.

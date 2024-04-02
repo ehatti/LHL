@@ -42,6 +42,10 @@ Definition Relt := Relt VE VF.
 Definition Prec := Prec VE VF.
 Definition Post := Post VE VF.
 
+Definition faiState (s : State VE) := fst s.
+Definition countState (s : State VE) := fst (snd s).
+Definition yieldState (s : State VE) := snd (snd s).
+
 Definition Rely (i : ThreadName) : Relt :=
   fun s ρ t σ => True.
 
