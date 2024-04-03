@@ -3,9 +3,6 @@ From LHL.Core Require Import
   Traces
   Program.
 
-From LHL.Util Require Import
-  Util.
-
 Variant FAISig : ESig :=
 | FAI : FAISig nat.
 

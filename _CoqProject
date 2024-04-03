@@ -13,6 +13,7 @@
 ./Core/Logic.v
 ./Core/LogicFacts.v
 ./Core/Tensor.v
+./Core/ProgramRules.v
 
 ./Core/ProgramFacts.v
 # ./Core/TracesFacts.v
@@ -26,3 +27,4 @@
 ./Examples/CounterSpec.v
 ./Examples/FAISpec.v
 ./Examples/YieldSpec.v
+./Examples/VarSpec.v
