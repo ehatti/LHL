@@ -1,6 +1,6 @@
 From LHL.Core Require Import
-    Program
-    Specs.
+  Program
+  Specs.
 
 Variant LockSig : ESig :=
 | Acq : LockSig unit
@@ -19,12 +19,20 @@ Variant LockStep : LockState -> ThreadEvent LockSig -> LockState -> Prop :=
 | LockRetRel i : LockStep (LockRelRunning i) (i, RetEv Rel tt) LockIdle.
 
 Definition lockSpec : Spec LockSig := {|
-    State := LockState;
-    Step := LockStep;
-    Init := LockIdle
+  State := LockState;
+  Step := LockStep;
+  Init := LockIdle
 |}.
 
 Definition OwnsLock i s :=
-    s = LockAcqRunning i \/
-    s = LockOwned i \/
-    s = LockRelRunning i.
+  s = LockAcqRunning i \/
+  s = LockOwned i \/
+  s = LockRelRunning i.
+
+Definition owner s :=
+  match s with
+  | LockIdle => None
+  | LockAcqRunning i => Some i
+  | LockOwned i => Some i
+  | LockRelRunning i => Some i
+  end.
