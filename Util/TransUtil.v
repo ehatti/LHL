@@ -34,10 +34,6 @@ Inductive PointStep {Index Ev State : Type} (step : State -> Ev -> State -> Prop
     (forall m, m <> fst n -> ts m = ts' m) ->
     PointStep step ts n ts'.
 
-Definition IsPathOf {Ev State : Type} 
-    (st : State) (t : list Ev) (st' : State) 
-    (steps : State -> list Ev -> State -> Prop) : Prop := steps st t st'.
-
 Definition Incl {A} (s : A -> Prop) (s' : A -> Prop) := forall a, s a -> s' a.
 
 Theorem Incl_refl {A} : 

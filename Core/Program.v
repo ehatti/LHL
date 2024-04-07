@@ -14,12 +14,13 @@ Instance coerceSumLeft S E F `{SigCoercion S E} : SigCoercion S (Sum E F) :=
 Instance coerceSumRight S E F `{SigCoercion S F} : SigCoercion S (Sum E F) :=
   fun _ s => inr (coerceOp _ s).
 
-CoInductive Prog {E : ESig} {Ret : Type} : Type :=
+CoInductive Prog {E : ESig} {B : Type} : Type :=
 | Bind {A} : E A -> (A -> Prog) -> Prog
-| Return : Ret -> Prog
+| Return : B -> Prog
 | NoOp : Prog -> Prog.
-
 Arguments Prog : clear implicits.
+Arguments Return {E A} : rename.
+Arguments NoOp {E A} : rename.
 
 Definition Impl {E : ESig} {F : ESig} := (forall Ret, F Ret -> Prog E Ret).
 Arguments Impl : clear implicits.
@@ -84,7 +85,7 @@ Notation "x |> y" := (implVComp x y) (at level 80, right associativity).
 Definition call {E F A} `{SigCoercion E F} (m : E A) : Prog F A :=
   Bind (coerceOp A m) Return.
 
-Definition ret {E A} := Return (E:=E) (Ret:=A).
+Definition ret {E A} := @Return E A.
 
 (* This definition is guarded, but Coq can't see that *)
 Unset Guard Checking.

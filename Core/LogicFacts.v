@@ -57,12 +57,12 @@ repeat lazymatch goal with
 | [ H : ?A, H' : ?A |- _] => clear H'
 end.
 
-Ltac steps :=
+(* Ltac steps :=
 repeat match goal with
 | [ H : InterStep ?i ?st ?e ?st' |- _ ] => dependent destruction H
 | [ H : Step ?impl ?st ?ev ?st' |- _ ] => simpl in H; destruct H;  dependent destruction H
 end;
-simpl in *.
+simpl in *. *)
 
 Section lemmas.
 
@@ -275,79 +275,7 @@ repeat lazymatch goal with
   clear H H0 t σ
 end.
 
-Definition sp {E F VE VF} (e : @Event E) impl i
-  (R : @Relt E F VE VF)
-  : Relt VE VF :=
-  RTC R ->>
-  StReltToRelt (fun s t => InterStep (impl:=impl) i s (i, liftUEv e) t) ->>
-  RTC R.
-
-Lemma spStable {E F VE VF impl i} {e : @Event E} {R : @Relt E F VE VF} :
-  Stable R (sp e impl i R).
-unfold Stable, stableRelt, sub, subRelt.
-split.
-intros.
-unfold sp in *.
-psimpl.
-psplit.
-eapply RTCStep.
-exact H.
-exact H0.
-psplit.
-split.
-exact H1.
-easy.
-easy.
-unfold sp.
-intros.
-psimpl.
-psplit.
-exact H.
-psplit.
-split.
-exact H1.
-easy.
-eapply rtcTrans.
-psplit.
-exact H2.
-eapply RTCStep.
-exact H0.
-constructor.
-Qed.
-
-Lemma spStrong {E VE F VF impl i P} {e : @Event E} {R G : @Relt E F VE VF} :
-  prComp P (sp e impl i R) ==> G ->
-  Commit i impl G P e (sp e impl i R).
-intros.
-unfold Commit.
-intros.
-exists ρs.
-split.
-intros.
-exists σ.
-split.
-easy.
-apply rt_refl.
-assert (prComp P (sp e impl i R) s ρs t ρs).
-unfold prComp.
-split.
-easy.
-unfold sp.
-psplit.
-constructor.
-psplit.
-split.
-exact H1.
-easy.
-constructor.
-split.
-destruct H2.
-easy.
-apply H.
-easy.
-Qed.
-
 Theorem soundness {E F} (lay : Layer E F) VF :
   (exists R G P Q, VerifyImpl lay.(USpec) VF R G P lay.(LImpl) Q) ->
-  specRefines (overObj lay) VF.
+  Lin (overObj lay) VF.
 Admitted.

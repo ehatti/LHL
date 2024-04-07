@@ -3,33 +3,26 @@ From LHL.Core Require Import
 
 Definition ThreadName := nat.
 
-Variant Event {E : ESig} : Type :=
-| CallEv {Ret : Type} (m : E Ret)
-| RetEv {Ret : Type} (m : E Ret) (n : Ret)
-.
+Variant Event {E : ESig} :=
+| CallEv {A} (m : E A)
+| RetEv {A} (m : E A) (n : A).
+Arguments Event : clear implicits.
 
-Definition ThreadEvent (E : ESig) : Type := ThreadName * Event (E := E).
+Definition ThreadEvent (E : ESig) : Type := ThreadName * Event E.
 
-Record Spec {E : ESig} : Type := 
-    {
-        State : Type;
-        Step : State -> ThreadEvent E -> State -> Prop;
-        Init : State
-    }.
+Record Spec {E : ESig} : Type :=  {
+    State : Type;
+    Step : State -> ThreadEvent E -> State -> Prop;
+    Init : State
+}.
 Arguments Spec : clear implicits.
 
-Record Layer {E F : ESig} : Type :=
-    {
-        USpec : Spec E;
-        LImpl : Impl E F; 
-    }.
+Record Layer {E F : ESig} : Type := mkLayer {
+    USpec : Spec E;
+    LImpl : Impl E F; 
+}.
 Arguments Layer : clear implicits.
-
-Definition mkLayer {E F : ESig} (spec : Spec E) (impl : Impl E F) : (Layer E F) := 
-    {|
-        USpec := spec;
-        LImpl := impl
-    |}.
+Arguments mkLayer {E F} USpec LImpl.
 Notation "x :> y" := (mkLayer x y) (at level 80, right associativity).
 
 Definition idLayer {E : ESig} (spec : Spec E) :=
@@ -40,16 +33,15 @@ Definition idLayer {E : ESig} (spec : Spec E) :=
 
 (* Layer Events *)
 
-Variant LEvent {E F : ESig} : Type :=
-| OCallEv {Ret : Type} (m : F Ret)
-| ORetEv {Ret : Type} (m : F Ret) (n : Ret)
-| UCallEv {A : Type} (m : E A)
-| URetEv {A : Type} (m : E A) (n : A)
-| Silent
+Variant LEvent {E F : ESig} :=
+| UEvent (ev : option (Event E))
+| OEvent (ev : Event F)
 .
 Arguments LEvent : clear implicits.
 
-Definition ThreadLEvent E F : Type := nat * @LEvent E F.
+Definition Silent {E} : option (Event E) := None.
+
+Definition ThreadLEvent E F : Type := nat * LEvent E F.
 
 (* Layer Composition *)
 

@@ -1,12 +1,20 @@
 From LHL.Util Require Import
   Util
-  TransUtil.
+  TransUtil
+  Tactics.
 
 From LHL.Core Require Import
   Program
   Specs
   Traces
   Eutt.
+
+From Coq Require Import
+  Program.Equality
+  Relations.Relation_Operators.
+
+From Paco Require Import
+  paco.
 
 (* Basic Refinement Properties *)
 
@@ -28,12 +36,18 @@ Theorem eutt_layerRefines {E F} :
   layerRefines (spec :> impl) (spec :> impl').
 Admitted.
 
+(* Lemma foo {E F} {spec : Spec F} {impl : Impl E F} p :
+  IsTraceOfSpec p (overObj (spec :> impl)) ->
+  IsTraceOfSpec p spec. *)
+
 (* Crucial Refinement Properties *)
 
 Theorem mkLayer_monotonic {E F} :
   forall (spec : Spec E) (spec' : Spec E) (impl : Impl E F),
   specRefines spec' spec -> 
   layerRefines (spec' :> impl) (spec :> impl).
+unfold layerRefines, specRefines, Incl, IsTraceOfSpec.
+intros.
 Admitted.
 
 Theorem layerRefines_VComp_assoc {E F G} : 

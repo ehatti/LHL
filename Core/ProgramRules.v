@@ -17,12 +17,11 @@ Context
   {E F : ESig}
   {VE : Spec E}
   {VF : Spec F}
-  {R G : Relt VE VF}
-  {impl : Impl E F}.
+  {R G : Relt VE VF}.
 
 Lemma lemNoOp {A P Q} {C : Prog E A} :
-  VerifyProg i impl R G P C Q ->
-  VerifyProg i impl R G P (NoOp C) Q.
+  VerifyProg i R G P C Q ->
+  VerifyProg i R G P (NoOp C) Q.
 intros.
 constructor.
 exact H.
@@ -30,7 +29,7 @@ Qed.
 
 Lemma lemRet {A P Q} {v : A} :
   (forall s ρ t σ, P s ρ -> Q v s ρ t σ) ->
-  VerifyProg i impl R G P (ret v) Q.
+  VerifyProg i R G P (ret v) Q.
 intros.
 constructor.
 unfold sub, subRelt, id.
@@ -43,9 +42,9 @@ Qed.
 Lemma lemCall {A P Q S} {m : E A} :
   Stable R Q ->
   Stable R S ->
-  Commit i impl G P (CallEv m) Q ->
-  (forall v, Commit i impl G (prComp P id ->> Q) (RetEv m v) (S v)) ->
-  VerifyProg i impl R G P (call m) (fun v => Q ->> S v).
+  Commit i G P (CallEv m) Q ->
+  (forall v, Commit i G (prComp P id ->> Q) (RetEv m v) (S v)) ->
+  VerifyProg i R G P (call m) (fun v => Q ->> S v).
 intros.
 econstructor.
 exact H.
@@ -56,7 +55,8 @@ psimpl.
 apply H1.
 easy.
 easy.
-intros.
+easy.
+easy.
 split.
 apply H2.
 constructor.
@@ -69,22 +69,22 @@ easy.
 Qed.
 
 Lemma lemBind {A B P Q S} {C : Prog E A} {k : A -> Prog E B} :
-  VerifyProg i impl R G P C Q ->
-  (forall v, VerifyProg i impl R G (P <<- Q) (k v) S) ->
-  VerifyProg i impl R G P (x <- C; k x) (fun v => Q ->> S v).
+  VerifyProg i R G P C Q ->
+  (forall v, VerifyProg i R G (P <<- Q) (k v) S) ->
+  VerifyProg i R G P (x <- C; k x) (fun v => Q ->> S v).
 intros.
 Admitted.
 
 Lemma weakenPost {A P Q Q'} {C : Prog E A} :
-  VerifyProg i impl R G P C Q ->
+  VerifyProg i R G P C Q ->
   (forall v, Q v ==> Q' v) ->
-  VerifyProg i impl R G P C Q'.
+  VerifyProg i R G P C Q'.
 Admitted.
 
 Lemma weakenPrec {A P P' Q} {C : Prog E A} :
-  VerifyProg i impl R G P C Q ->
+  VerifyProg i R G P C Q ->
   P' ==> P ->
-  VerifyProg i impl R G P' C Q.
+  VerifyProg i R G P' C Q.
 Admitted.
 
 Lemma unfoldWhile {x : Prog E bool} {C : Prog E unit} :
@@ -95,9 +95,9 @@ Lemma lemWhile {P} {T : Post VE VF bool} {Q : Post VE VF unit} {t : Prog E bool}
   (forall v, id ==> Q v) ->
   P <<- T <<- Q ==> P ->
   (forall v, (Q ->> T ->> Q v) ==> Q v) ->
-  VerifyProg i impl R G P t T ->
-  VerifyProg i impl R G (P <<- T) C Q ->
-  VerifyProg i impl R G P (while t C) (fun v => T ->> Q v).
+  VerifyProg i R G P t T ->
+  VerifyProg i R G (P <<- T) C Q ->
+  VerifyProg i R G P (while t C) (fun v => T ->> Q v).
 intros idQ subP inv safe_t safe_C.
 cofix rec.
 rewrite unfoldWhile.

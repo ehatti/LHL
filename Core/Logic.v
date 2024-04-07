@@ -126,14 +126,16 @@ Variant PossStep {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
 Definition PossSteps {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
   clos_refl_trans _ PossStep ρ σ.
 
-Definition Commit {E F} {VE : Spec E} {VF : Spec F} i (impl : Impl E F)
+Definition Commit {E F} {VE : Spec E} {VF : Spec F} i
   (G : Relt VE VF)
   (P : Prec VE VF)
-  (ev : @Event E)
+  (ev : Event E)
   (Q : Relt VE VF) :=
   forall s ρs t,
   P s ρs ->
-  InterStep (impl:=impl) i s (i, liftUEv ev) t ->
+  Util.differ_pointwise (fst s) (fst t) i ->
+  UnderThreadStep (fst s i) (Some ev) (fst t i) ->
+  VE.(Step) (snd s) (i, ev) (snd t) ->
     exists σs,
       (forall σ,
         σs σ ->
@@ -143,32 +145,32 @@ Definition Commit {E F} {VE : Spec E} {VF : Spec F} i (impl : Impl E F)
       Q s ρs t σs /\
       G s ρs t σs.
 
-CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i (impl : Impl E F) : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
+CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
 | SafeReturn A v R G P Q :
     P ==> Q v ->
-    SafeProg i impl R G A P (Return v) Q
+    SafeProg i R G A P (Return v) Q
 | SafeBind A B R G (P : Relt VE VF) QI QR Q (m : E A) k :
     Stable R QI ->
     Stable R QR ->
-    Commit i impl G P (CallEv m) QI ->
+    Commit i G P (CallEv m) QI ->
     (forall v,
-      Commit i impl G (P ->> QI) (RetEv m v) (QR v) /\
-      SafeProg i impl R G B (P ->> QI ->> QR v) (k v) Q) ->
-    SafeProg i impl R G B P (Bind m k) Q
+      Commit i G (P ->> QI) (RetEv m v) (QR v) /\
+      SafeProg i R G B (P ->> QI ->> QR v) (k v) Q) ->
+    SafeProg i R G B P (Bind m k) Q
 | SafeNoOp R G A P C Q :
-    SafeProg i impl R G A P C Q ->
-    SafeProg i impl R G A P (NoOp C) Q
+    SafeProg i R G A P C Q ->
+    SafeProg i R G A P (NoOp C) Q
 .
 
-Arguments SafeProg {E F VE VF} i impl R G {A} P C Q.
+Arguments SafeProg {E F VE VF} i R G {A} P C Q.
 
-Definition VerifyProg {E F VE VF A} i (impl : Impl E F)
+Definition VerifyProg {E F VE VF A} i
   (R G : @Relt E F VE VF)
   (P : Prec VE VF)
   (C : Prog E A)
   (Q : Post VE VF A)
   : Prop :=
-  SafeProg i impl R G (prComp P id) C Q.
+  SafeProg i R G (prComp P id) C Q.
 
 Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
   fun s ρs =>
@@ -181,7 +183,7 @@ Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
 Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     TIdle i s ρs /\
-    InterStep (impl:=impl) i s (i, OCallEv m) t /\
+    InterOStep impl i s (CallEv m) t /\
     (forall ρ σ,
       ρs ρ ->
       σs σ ->
@@ -212,7 +214,7 @@ Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F V
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     exists (v : Ret),
-      InterStep (impl:=impl) i s (i, ORetEv m v) t /\
+      InterOStep impl i s (RetEv m v) t /\
       (forall ρ σ,
         ρs ρ ->
         σs σ ->
@@ -257,7 +259,7 @@ Definition VerifyImpl
     P i Ret1 m1 <<- TInvoke impl i Ret1 m1 <<- Q i Ret1 m1 v <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i Ret2 m2) /\
   (* Verification task *)
   (forall i Ret (m : F Ret),
-    VerifyProg i impl (R i) (G i)
+    VerifyProg i (R i) (G i)
       (P i Ret m <<- TInvoke impl i Ret m)
       (impl Ret m)
       (fun v => Q i Ret m v ->> PrecToRelt (Returned i m))).
