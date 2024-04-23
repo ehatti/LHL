@@ -8,6 +8,7 @@
 ./Core/Program.v
 ./Core/Specs.v
 ./Core/Traces.v
+./Core/TracesFacts.v
 ./Core/Linearizability.v
 ./Core/Simulates.v
 ./Core/Logic.v

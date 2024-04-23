@@ -36,10 +36,24 @@ Definition projOverEv {E F : ESig} (ev : @ThreadLEvent E F) : option (ThreadEven
   | _ => None
   end.
 
-Definition projUnderEv {E F : ESig} (ev : @ThreadLEvent E F) : option (ThreadEvent E) := 
+Definition projUnderEv {E F : ESig} (ev : @ThreadLEvent E F) : option (nat * option (Event E)) := 
   match ev with
-  | (i, UEvent (Some ev)) => Some (i, ev)
+  | (i, UEvent ev) => Some (i, ev)
   | _ => None
+  end.
+
+Fixpoint projUnderThr {E F} (p : Trace (ThreadLEvent E F)) : Trace (ThreadEvent E) :=
+  match p with
+  | nil => nil
+  | cons (i, UEvent (Some ev)) q => cons (i, ev) (projUnderThr q)
+  | cons _ q => projUnderThr q
+  end.
+
+Fixpoint projSilent {E} (p : Trace (ThreadName * option (Event E))) : Trace (ThreadEvent E) :=
+  match p with
+  | nil => nil
+  | cons (i, None) q => projSilent q
+  | cons (i, Some e) q => cons (i, e) (projSilent q)
   end.
 
 Definition liftUEv {E F} (ev : @Event E) : @LEvent E F :=
@@ -98,14 +112,11 @@ Variant UnderThreadStep {E F : ESig} :
   th' = Cont om p ->
   UnderThreadStep th None th'.
 
-Variant ThreadStep {E F : ESig} (M : Impl E F) :
-  ThreadState E F -> LEvent E F -> ThreadState E F -> Prop :=
-| UThreadStep th e th' :
-  UnderThreadStep th e th' ->
-  ThreadStep M th (UEvent e) th'
-| OThreadStep th e th' :
-  OverThreadStep M th e th' ->
-  ThreadStep M th (OEvent e) th'.
+Definition ThreadStep {E F : ESig} (M : Impl E F) (s : ThreadState E F) (e : LEvent E F) (t : ThreadState E F) :=
+  match e with
+  | UEvent e => UnderThreadStep s e t
+  | OEvent e => OverThreadStep M s e t
+  end.
 
 Definition ThreadsStep E F (M : Impl E F)
   : ThreadsSt E F -> ThreadLEvent E F -> ThreadsSt E F -> Prop :=
@@ -119,13 +130,29 @@ Definition IsTraceOfImpl {E F : ESig} (t : Trace (ThreadLEvent E F)) (M : Impl E
 Definition IsTraceOfSpec {E : ESig} (t : Trace (ThreadEvent E)) (spec : Spec E) : Prop := 
   exists st, Steps spec.(Step) spec.(Init) t st.
 
-Definition IsTraceOfLayer {E F : ESig} (t : Trace (ThreadLEvent E F)) (lay : @Layer E F) : Prop :=
-  IsTraceOfSpec (projUnder t) lay.(USpec) /\ IsTraceOfImpl t lay.(LImpl).
+Definition IsTraceOfSpecBwd {E : ESig} (t : bwd_list (ThreadEvent E)) (spec : Spec E) : Prop :=
+  exists st, BwdSteps spec.(Step) spec.(Init) t st.
 
 (* Interactions *)
 
 Definition InterState {E : ESig} F (spec : Spec E) : Type :=
   ThreadsSt E F * spec.(State).
+
+Definition InterStep {E F : ESig} {spec : Spec E} (impl : Impl E F) i
+  (s : InterState F spec)
+  (ev : LEvent E F)
+  (t : InterState F spec) :=
+  differ_pointwise (fst s) (fst t) i /\
+  match ev with
+  | OEvent ev =>
+    OverThreadStep impl (fst s i) ev (fst t i)
+  | UEvent ev =>
+    UnderThreadStep (fst s i) ev (fst t i) /\
+    match ev with
+    | Some ev => spec.(Step) (snd s) (i, ev) (snd t)
+    | None => True
+    end
+  end.
 
 Definition InterUStep {E F : ESig} {spec : Spec E} (i : ThreadName)
   (s : InterState F spec)
@@ -135,19 +162,34 @@ Definition InterUStep {E F : ESig} {spec : Spec E} (i : ThreadName)
   UnderThreadStep (fst s i) ev (fst t i) /\
   match ev with
   | Some ev => spec.(Step) (snd s) (i, ev) (snd t)
-  | None => True
+  | None => snd s = snd t
   end.
 
-Definition InterOStep {E F : ESig} {spec : Spec E} (impl : Impl E F) (i : ThreadName)
-  (s : InterState F spec)
+Definition InterOStep {E F : ESig} (impl : Impl E F) (i : ThreadName)
+  (s : ThreadsSt E F)
   (ev : Event F)
-  (t : InterState F spec) :=
-  differ_pointwise (fst s) (fst t) i /\
-  OverThreadStep impl (fst s i) ev (fst t i).
+  (t : ThreadsSt E F) :=
+  differ_pointwise s t i /\
+  OverThreadStep impl (s i) ev (t i).
 
-Definition InterUSteps {E : ESig} F (spec : Spec E) : 
-  InterState F spec -> Trace (option (Event E)) -> InterState F spec -> Prop := 
-  Steps (fun s ev t => exists i, InterUStep i s ev t).
+Definition InterUSteps {E : ESig} F (spec : Spec E) :
+  InterState F spec -> Trace (ThreadName * option (Event E)) -> InterState F spec -> Prop := 
+  Steps (fun s ev t => InterUStep (fst ev) s (snd ev) t).
+
+Definition InterOSteps {E : ESig} F (impl : Impl E F) : 
+  ThreadsSt E F -> Trace (ThreadEvent F) -> ThreadsSt E F -> Prop := 
+  Steps (fun s ev t => InterOStep impl (fst ev) s (snd ev) t).
+
+Definition InterSteps {E F : ESig} {spec : Spec E} (impl : Impl E F)
+  (s : InterState F spec)
+  (evs : Trace (ThreadLEvent E F))
+  (t : InterState F spec) :=
+  Steps
+    (fun s ev t =>
+      InterStep impl (fst ev) s (snd ev) t)
+    s
+    evs
+    t.
 
 Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F := 
   {|
@@ -155,7 +197,8 @@ Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F :=
     Step thst ev thst'' :=
       exists thst' p,
         InterUSteps thst p thst' /\
-        InterOStep lay.(LImpl) (fst ev) thst' (snd ev) thst'';
+        InterOStep lay.(LImpl) (fst ev) (fst thst') (snd ev) (fst thst'') /\
+        snd thst' = snd thst'';
     Init := (allIdle, lay.(USpec).(Init))
   |}.
 
@@ -165,4 +208,4 @@ Definition specRefines {E : ESig} (spec : Spec E) (spec': Spec E) : Prop :=
   Incl (fun t => IsTraceOfSpec t spec) (fun t => IsTraceOfSpec t spec'). 
 
 Definition layerRefines {E E' F} (lay : @Layer E F) (lay': @Layer E' F)  := 
-   specRefines (overObj lay) (overObj lay').
+  specRefines (overObj lay) (overObj lay').

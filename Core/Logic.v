@@ -183,7 +183,7 @@ Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
 Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     TIdle i s ρs /\
-    InterOStep impl i s (CallEv m) t /\
+    InterOStep impl i (fst s) (CallEv m) (fst t) /\
     (forall ρ σ,
       ρs ρ ->
       σs σ ->
@@ -214,7 +214,7 @@ Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F V
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     exists (v : Ret),
-      InterOStep impl i s (RetEv m v) t /\
+      InterOStep impl i (fst s) (RetEv m v) (fst t) /\
       (forall ρ σ,
         ρs ρ ->
         σs σ ->

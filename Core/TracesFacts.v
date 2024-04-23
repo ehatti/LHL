@@ -1,10 +1,14 @@
 From Coq Require Import 
     Init.Nat
-    Arith.
+    Arith
+    FunctionalExtensionality
+    PropExtensionality
+    Program.Equality.
 
 From LHL.Util Require Import
   Util
-  TransUtil.
+  TransUtil
+  Tactics.
 
 From LHL.Core Require Import
     Program
@@ -21,13 +25,164 @@ Proof.
     intros. exists spec.(Init). apply TransUtil.StepsNone.
 Qed.
 
+Lemma IsTraceOf_iso {E} t spec :
+  IsTraceOfSpec (E:=E) t spec ->
+  IsTraceOfSpecBwd (to_bwd t) spec.
+intros.
+destruct H.
+exists x.
+apply Steps_iso.
+easy.
+Qed.
+
+Lemma BwdIsTraceOf_iso {E} t spec :
+  IsTraceOfSpecBwd (E:=E) (to_bwd t) spec ->
+  IsTraceOfSpec t spec.
+intros.
+destruct H.
+exists x.
+apply BwdSteps_iso.
+easy.
+Qed.
+
 (* State Properties *)
 
 (* Step Properties *)
 
+(* overObj and InterStep Properties *)
+
+Fixpoint projOverThr {E F : ESig} (p : Trace (ThreadLEvent E F)) : Trace (ThreadEvent F) :=
+  match p with
+  | nil => nil
+  | cons (i, UEvent _) p => projOverThr p
+  | cons (i, OEvent e) p => cons (i, e) (projOverThr p)
+  end.
+
+Lemma overObj_iso {E F : ESig} {lay : Layer E F} :
+  forall s p t,
+  Steps (Step (overObj lay)) s p t ->
+  exists q,
+    p = projOverThr q /\
+    InterSteps lay.(LImpl) s q t.
+Admitted.
+
+Lemma InterSteps_iso {E F : ESig} {lay : Layer E F} :
+  forall s p t,
+  InterSteps (spec:=lay.(USpec)) lay.(LImpl) s p t ->
+  Steps (Step (overObj lay)) s (projOverThr p) t.
+Admitted.
+
+Lemma decompInterSteps {E F : ESig} {spec : Spec E} {impl : Impl E F} :
+  InterSteps (spec:=spec) impl =
+  (fun s p t =>
+    InterOSteps impl (fst s) (projOver p) (fst t) /\
+    InterUSteps s (projUnder p) t).
+Admitted.
+
+Lemma decompUnderSteps {E F : ESig} {spec : Spec E} :
+  InterUSteps (F:=F) (spec:=spec) =
+  fun s p t =>
+    Steps (Step spec) (snd s) (projSilent p) (snd t) /\
+    Steps (PointStep UnderThreadStep) (fst s) p (fst t).
+extensionality s.
+extensionality p.
+extensionality t.
+apply propositional_extensionality.
+split.
+intros.
+split.
+generalize dependent s.
+induction p.
+intros.
+dependent destruction H.
+constructor.
+intros.
+dependent destruction H.
+unfold InterUStep in H.
+destruct_all.
+destruct a, o.
+simpl in *.
+econstructor.
+exact H2.
+apply IHp.
+easy.
+simpl in *.
+rewrite H2.
+apply IHp.
+easy.
+generalize dependent s.
+induction p.
+intros.
+dependent destruction H.
+constructor.
+intros.
+dependent destruction H.
+unfold InterUStep in H.
+destruct_all.
+econstructor.
+econstructor.
+exact H1.
+unfold differ_pointwise in H.
+intros.
+apply H in H3.
+easy.
+apply IHp.
+easy.
+intros.
+destruct_all.
+generalize dependent s.
+induction p.
+intros.
+dependent destruction H.
+dependent destruction H0.
+destruct s, t.
+simpl in *.
+subst.
+constructor.
+intros.
+simpl in *.
+destruct a, o.
+dependent destruction H.
+dependent destruction H1.
+dependent destruction H1.
+simpl in *.
+eapply StepsMore with (st'':=(st''0, st'')).
+unfold InterUStep.
+simpl.
+split.
+unfold differ_pointwise.
+intros.
+symmetry.
+apply H2.
+easy.
+split.
+easy.
+easy.
+apply IHp.
+easy.
+easy.
+simpl in *.
+dependent destruction H0.
+dependent destruction H0.
+simpl in *.
+eapply StepsMore with (st'':=(st'', snd s)).
+unfold InterUStep.
+simpl.
+split.
+unfold differ_pointwise.
+intros.
+symmetry.
+apply H1.
+easy.
+easy.
+apply IHp.
+easy.
+easy.
+Qed.
+
 (* Eutt *)
 
-Inductive euttTS_ {E E' F : ESig}  (RR : IRel E E') :
+(* Inductive euttTS_ {E E' F : ESig}  (RR : IRel E E') :
     ThreadState (E := E) (F := F) -> ThreadState (E := E') -> Prop :=
 | euttTS_Idle : euttTS_ RR Idle Idle
 | euttTS_Cont Ret m p p' : 
@@ -90,4 +245,4 @@ Lemma euttTS_isPathOf {E F} (spec : Spec E) :
         IsPathOf thst0 t thst1 (Steps (overObj (spec :> impl)).(Step)) ->
         exists thst1',  
             IsPathOf thst0' t thst1' (Steps (overObj (spec :> impl')).(Step)).
-Admitted.
+Admitted. *)
