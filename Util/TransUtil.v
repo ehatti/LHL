@@ -1,4 +1,9 @@
-Require Import Coq.Program.Equality.
+From Coq Require Import
+  Program.Equality
+  Logic.PropExtensionality.
+
+From LHL.Util Require Import
+  Tactics.
 
 Inductive Steps_ {Ev State} 
     (step : State -> Ev -> State -> Prop) 
@@ -71,12 +76,36 @@ exact IHBwdSteps.
 easy.
 Qed.
 
-Lemma Steps_app {E A} (step : A -> E -> A -> Prop) (xs ys : list E) s s' s''
-  : Steps step s xs s' -> Steps step s' ys s'' -> Steps step s  (xs ++ ys) s''.
-Proof.
-  unfold Steps.
-  induction 1; cbn; auto.
-  econstructor; eauto.
+Lemma Steps_app {E A} (step : A -> E -> A -> Prop) (xs ys : list E) s s'' :
+  (exists s', Steps step s xs s' /\ Steps step s' ys s'') =
+  Steps step s  (xs ++ ys) s''.
+apply propositional_extensionality.
+firstorder.
+induction H.
+easy.
+simpl.
+econstructor.
+exact H.
+apply IHSteps_.
+easy.
+generalize dependent s.
+induction xs.
+intros.
+exists s.
+split.
+constructor.
+easy.
+intros.
+simpl in *.
+dependent destruction H.
+apply IHxs in H0.
+destruct_all.
+exists x.
+split.
+econstructor.
+exact H.
+easy.
+easy.
 Qed.
 
 Lemma Steps_iso {Ev State} {step : State -> Ev -> State -> Prop} (st st' : State) (xs : list Ev) :

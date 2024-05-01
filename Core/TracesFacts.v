@@ -51,34 +51,6 @@ Qed.
 
 (* overObj and InterStep Properties *)
 
-Fixpoint projOverThr {E F : ESig} (p : Trace (ThreadLEvent E F)) : Trace (ThreadEvent F) :=
-  match p with
-  | nil => nil
-  | cons (i, UEvent _) p => projOverThr p
-  | cons (i, OEvent e) p => cons (i, e) (projOverThr p)
-  end.
-
-Lemma overObj_iso {E F : ESig} {lay : Layer E F} :
-  forall s p t,
-  Steps (Step (overObj lay)) s p t ->
-  exists q,
-    p = projOverThr q /\
-    InterSteps lay.(LImpl) s q t.
-Admitted.
-
-Lemma InterSteps_iso {E F : ESig} {lay : Layer E F} :
-  forall s p t,
-  InterSteps (spec:=lay.(USpec)) lay.(LImpl) s p t ->
-  Steps (Step (overObj lay)) s (projOverThr p) t.
-Admitted.
-
-Lemma decompInterSteps {E F : ESig} {spec : Spec E} {impl : Impl E F} :
-  InterSteps (spec:=spec) impl =
-  (fun s p t =>
-    InterOSteps impl (fst s) (projOver p) (fst t) /\
-    InterUSteps s (projUnder p) t).
-Admitted.
-
 Lemma decompUnderSteps {E F : ESig} {spec : Spec E} :
   InterUSteps (F:=F) (spec:=spec) =
   fun s p t =>
@@ -178,6 +150,248 @@ easy.
 apply IHp.
 easy.
 easy.
+Qed.
+
+Fixpoint decompOverObjLift {E F} (p : Trace (ThreadName * option (Event E))) : Trace (ThreadLEvent E F) :=
+  match p with
+  | nil => nil
+  | cons (i, e) p => cons (i, UEvent e) (decompOverObjLift p)
+  end.
+
+Lemma projUnderThr_app {E F} {p q : Trace (ThreadLEvent E F)} :
+  projUnderThr (p ++ q)%list = (projUnderThr p ++ projUnderThr q)%list.
+induction p.
+easy.
+destruct a, l.
+destruct ev.
+simpl.
+f_equal.
+easy.
+simpl.
+easy.
+simpl.
+easy.
+Qed.
+
+Lemma projOver_app {E F} {p q : Trace (ThreadLEvent E F)} :
+  projOver (p ++ q)%list = (projOver p ++ projOver q)%list.
+induction p.
+easy.
+destruct a, l.
+simpl.
+easy.
+simpl.
+f_equal.
+easy.
+Qed.
+
+Lemma projSilent_help {E F} {p : Trace (ThreadName * option (Event E))} :
+  projUnderThr (F:=F) (decompOverObjLift p) = projSilent p.
+induction p.
+easy.
+destruct a, o.
+simpl.
+f_equal.
+easy.
+simpl.
+easy.
+Qed.
+
+Inductive IsUnderTrace {E F} : Trace (ThreadLEvent E F) -> Prop :=
+| NilUnder :
+    IsUnderTrace nil
+| ConsUnder i e p :
+    IsUnderTrace p ->
+    IsUnderTrace (cons (i, UEvent e) p).
+
+Lemma projOverUnder {E F} {p : Trace (ThreadLEvent E F)} :
+  IsUnderTrace p ->
+  projOver p = nil.
+intros.
+induction H; easy.
+Qed.
+
+Inductive IsOverObjTrace {E F} : Trace (ThreadLEvent E F) -> Prop :=
+| NilOverObj : IsOverObjTrace nil
+| ConsOverObj i e p q :
+    IsUnderTrace p ->
+    IsOverObjTrace q ->
+    IsOverObjTrace (p ++ cons (i, OEvent e) q)%list.
+
+Lemma decompOverObj {E F} {lay : Layer E F} :
+    Steps (Step (overObj lay)) =
+    fun s p t =>
+      exists (q : Trace (ThreadLEvent E F)),
+        p = projOver q /\
+        Steps (Step lay.(USpec)) (snd s) (projUnderThr q) (snd t) /\
+        Steps (ThreadsStep lay.(LImpl)) (fst s) q (fst t) /\
+        IsOverObjTrace q.
+extensionality s.
+extensionality p.
+extensionality t.
+apply propositional_extensionality.
+firstorder.
+{
+  generalize dependent s.
+  induction p.
+  exists nil.
+  split.
+  easy.
+  dependent destruction H.
+  constructor.
+  intros.
+  constructor.
+  split.
+  constructor.
+  constructor.
+  intros.
+  dependent destruction H.
+  apply IHp in H0. clear IHp.
+  simpl in H.
+  destruct_all.
+  rewrite decompUnderSteps in H.
+  subst. simpl in *.
+  destruct_all.
+  eexists (decompOverObjLift x1 ++ cons (fst a, OEvent (snd a)) x)%list.
+  split.
+  clear.
+  induction x1.
+  destruct a.
+  easy.
+  rewrite IHx1.
+  destruct a0.
+  simpl.
+  easy.
+  split.
+  rewrite projUnderThr_app.
+  rewrite <- Steps_app.
+  eexists.
+  split.
+  2: exact H1.
+  rewrite H5 in *.
+  rewrite projSilent_help.
+  easy.
+  split.
+  rewrite <- Steps_app.
+  exists (fst x0).
+  split.
+  clear H3 H5 H2 H1 x H4 H3 H st'' t a.
+  induction H0.
+  constructor.
+  destruct ev.
+  simpl.
+  econstructor.
+  destruct H.
+  simpl in *.
+  econstructor.
+  simpl.
+  exact u.
+  easy.
+  easy.
+  simpl.
+  econstructor.
+  destruct H4.
+  econstructor.
+  simpl.
+  exact o.
+  intros.
+  symmetry.
+  apply d.
+  easy.
+  easy.
+  clear H2 H1 H5 H4 H0 H x0 st'' s t.
+  assert (IsUnderTrace (F:=F) (decompOverObjLift x1)).
+  clear.
+  induction x1.
+  constructor.
+  destruct a.
+  simpl.
+  econstructor.
+  easy.
+  econstructor.
+  easy.
+  easy.
+}
+{
+  subst.
+  generalize dependent s.
+  induction H2.
+  destruct s, t.
+  simpl in *.
+  intros.
+  dependent destruction H0.
+  dependent destruction H1.
+  constructor.
+  intros.
+  rewrite <- Steps_app in H1.
+  rewrite projUnderThr_app in H0.
+  rewrite <- Steps_app in H0.
+  destruct_all.
+  rewrite projOver_app.
+  rewrite projOverUnder.
+  simpl.
+  dependent destruction H3.
+  eapply StepsMore with (st'':=(st'', x0)).
+  exists (x, x0).
+  exists (projUnder p).
+  split.
+  {
+    rewrite decompUnderSteps.
+    split.
+    simpl.
+    assert (projSilent (projUnder p) = projUnderThr p).
+    clear.
+    induction p.
+    constructor.
+    destruct a, l.
+    destruct ev.
+    simpl.
+    f_equal.
+    easy.
+    easy.
+    easy.
+    rewrite H6.
+    easy.
+    clear IHIsOverObjTrace H3 H2 H0 H4.
+    simpl in *.
+    generalize dependent s.
+    induction H.
+    simpl in *.
+    intros.
+    dependent destruction H1.
+    constructor.
+    simpl.
+    intros.
+    dependent destruction H1.
+    econstructor.
+    dependent destruction H0.
+    simpl in *.
+    split.
+    simpl.
+    exact t0.
+    easy.
+    specialize (IHIsUnderTrace (st''0, x0)).
+    apply IHIsUnderTrace.
+    easy.
+  }
+  split.
+  clear IHIsOverObjTrace.
+  simpl in *.
+  dependent destruction H3.
+  simpl in *.
+  split.
+  unfold differ_pointwise.
+  intros.
+  symmetry.
+  apply H5.
+  easy.
+  easy.
+  easy.
+  apply IHIsOverObjTrace.
+  easy.
+  easy.
+  easy.
+}
 Qed.
 
 (* Eutt *)

@@ -87,10 +87,9 @@ Definition allIdle {E F : ESig} : ThreadsSt E F := fun n => Idle.
 
 Variant OverThreadStep {E F : ESig} (M : Impl E F) :
   ThreadState E F -> Event F -> ThreadState E F -> Prop :=
-| OCallThreadStep th th' A (m : F A) C :
+| OCallThreadStep th th' A (m : F A) :
   th = Idle ->
-  eutt ieq (M _ m) C ->
-  th' = Cont m C ->
+  th' = Cont m (M _ m) ->
   OverThreadStep M th (CallEv m) th'
 | ORetThreadStep th th' A (m : F A) v :
   th = Cont m (Return v) ->
@@ -150,7 +149,7 @@ Definition InterStep {E F : ESig} {spec : Spec E} (impl : Impl E F) i
     UnderThreadStep (fst s i) ev (fst t i) /\
     match ev with
     | Some ev => spec.(Step) (snd s) (i, ev) (snd t)
-    | None => True
+    | None => snd s = snd t
     end
   end.
 

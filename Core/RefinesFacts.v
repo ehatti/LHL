@@ -12,7 +12,8 @@ From LHL.Core Require Import
 
 From Coq Require Import
   Program.Equality
-  Relations.Relation_Operators.
+  Relations.Relation_Operators
+  Logic.PropExtensionality.
 
 From Paco Require Import
   paco.
@@ -52,6 +53,33 @@ rewrite IHp.
 all: easy.
 Qed.
 
+Lemma projUnderSteps {E F} {lay : Layer E F} :
+  forall s p t,
+  BwdSteps (Step (overObj lay)) s p t ->
+  exists q,
+  BwdSteps (Step lay.(USpec)) (snd s) q (snd t).
+intros.
+generalize dependent t.
+induction p.
+intros.
+dependent destruction H.
+exists Start.
+constructor.
+intros.
+dependent destruction H.
+apply IHp in H.
+simpl in H0.
+destruct_all.
+eexists.
+eapply BwdSteps_app.
+exact H.
+rewrite decompUnderSteps in H0.
+destruct_all.
+rewrite <- H2.
+apply Steps_iso in H0.
+exact H0.
+Qed.
+
 Theorem mkLayer_monotonic {E F} :
   forall (spec spec' : Spec E) (impl : Impl E F),
   specRefines spec' spec -> 
@@ -59,30 +87,27 @@ Theorem mkLayer_monotonic {E F} :
 unfold layerRefines, specRefines, Incl, IsTraceOfSpec.
 intros.
 destruct_all.
-apply overObj_iso in H0.
+repeat rewrite decompOverObj in *.
 destruct_all.
 subst.
-rewrite decompInterSteps in H1.
-destruct_all.
-rewrite decompUnderSteps in H1.
-destruct_all.
+simpl in *.
 eassert (exists st, Steps _ _ _ st).
 exists (snd x).
 exact H1.
-apply H in H3. clear H.
+apply H in H0.
 destruct_all.
-exists (fst x, x1).
-apply InterSteps_iso.
-simpl in *.
-rewrite decompInterSteps.
+eexists (fst x, x1).
+exists x0.
 split.
-exact H0.
-rewrite decompUnderSteps.
+easy.
 simpl.
+split.
+easy.
 easy.
 Qed.
 
 Theorem layerRefines_VComp_assoc {E F G} : 
   forall  (spec : Spec E) (impl : Impl E F) (impl' : Impl F G),
     layerRefines ((overObj (spec :> impl)) :> impl') ((spec :> impl) :|> impl').
+unfold layerRefines, specRefines, Incl, IsTraceOfSpec.
 Admitted.
