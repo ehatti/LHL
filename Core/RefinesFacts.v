@@ -480,8 +480,7 @@ Lemma full_trace {E F G} :
   projOver p = projUnderThr q ->
   exists (r : Trace (ThreadLEvent E G)),
     projUnder r = projUnder p /\
-    projOver r = projOver q /\
-    IsOverObjTrace r.
+    projOver r = projOver q.
 Admitted.
 
 Lemma swapEx {A B} {P : A -> B -> Prop} :
@@ -495,6 +494,31 @@ Lemma takeThr {E F G} :
     projUnder p = projUnder q ->
     projUnderThr p = projUnderThr q.
 Admitted.
+
+Fixpoint projUnderSeq {E F} (p : Trace (LEvent E F)) : Trace (option (Event E)) :=
+  match p with
+  | nil => nil
+  | cons (UEvent e) p => cons e (projUnderSeq p)
+  | cons _ p => projUnderSeq p
+  end.
+
+Open Scope list.
+
+Inductive assoc_view {E F G} : Trace (LEvent E F) -> Trace (LEvent F G) -> Trace (LEvent E G) -> Prop :=
+| AVNil :
+    assoc_view nil nil nil
+| AVGEv e tL tH tF :
+    assoc_view tL tH tF ->
+    assoc_view tL (OEvent e :: tH) (OEvent e :: tF)
+| AVFEv e tL tH tF :
+    assoc_view tL tH tF ->
+    assoc_view (OEvent e :: tL) (UEvent (Some e) :: tH) tF
+| AVFSl tL tH tF :
+    assoc_view tL tH tF ->
+    assoc_view tL (UEvent None :: tH) tF
+| AVEEv e tL tH tF :
+    assoc_view tL tH tF ->
+    assoc_view (UEvent e :: tL) tH (UEvent e :: tF).
 
 Theorem layerRefines_VComp_assoc {E F G} : 
   forall  (spec : Spec E) (impl : Impl E F) (impl' : Impl F G),
@@ -530,6 +554,7 @@ cut (
   apply takeThr in H.
   rewrite H.
   easy.
+  apply isOverObjTrace.
 }
 unfold ThreadsSt.
 unfold ThreadsStep in *.
@@ -553,16 +578,37 @@ rewrite (decompPointSteps eqb (ThreadStep impl')) in H1.
 2: exact threadDecEq.
 apply choice.
 intros.
-{
-  specialize (H3 x3).
-  specialize (H1 x3).
-  move H6 at bottom.
-  move H4 before H2.
-  rename x1 into tL.
-  rename x0 into tH.
-  rename x2 into tF.
-  move tL after tH.
-  move H' after H.
-  move x3 after x.
-  rename x3 into i.
-}
+specialize (H3 x3).
+specialize (H1 x3).
+move H4 before H2.
+rename x1 into tL.
+rename x0 into tH.
+rename x2 into tF.
+clear H4 H2 H0.
+assert (assoc_view (projPoint x3 eqb tL) (projPoint x3 eqb tH) (projPoint x3 eqb tF)).
+admit.
+revert H0 H1 H3.
+cut (
+  forall p q r,
+  assoc_view p q r ->
+  Steps (ThreadStep impl') (allIdle x3) q (fst x x3) ->
+  Steps (ThreadStep impl) (allIdle x3) p (fst (snd x) x3) ->
+  exists y,
+    Steps (ThreadStep (impl |> impl')) (allIdle x3) r y
+).
+intros.
+eapply H0.
+exact H1.
+easy.
+easy.
+intros.
+destruct x, p0.
+simpl in *.
+clear H H' H5 tH tL tF s.
+induction H0.
+repeat econstructor.
+apply IHassoc_view in H2. clear IHassoc_view.
+destruct_all.
+exists x.
+dependent destruction H1.
+econstructor.
