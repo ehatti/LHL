@@ -3,7 +3,8 @@ From Coq Require Import
     Arith
     FunctionalExtensionality
     PropExtensionality
-    Program.Equality.
+    Program.Equality
+    Lists.List.
 
 From LHL.Util Require Import
   Util
@@ -60,97 +61,7 @@ extensionality s.
 extensionality p.
 extensionality t.
 apply propositional_extensionality.
-split.
-intros.
-split.
-generalize dependent s.
-induction p.
-intros.
-dependent destruction H.
-constructor.
-intros.
-dependent destruction H.
-unfold InterUStep in H.
-destruct_all.
-destruct a, o.
-simpl in *.
-econstructor.
-exact H2.
-apply IHp.
-easy.
-simpl in *.
-rewrite H2.
-apply IHp.
-easy.
-generalize dependent s.
-induction p.
-intros.
-dependent destruction H.
-constructor.
-intros.
-dependent destruction H.
-unfold InterUStep in H.
-destruct_all.
-econstructor.
-econstructor.
-exact H1.
-unfold differ_pointwise in H.
-intros.
-apply H in H3.
-easy.
-apply IHp.
-easy.
-intros.
-destruct_all.
-generalize dependent s.
-induction p.
-intros.
-dependent destruction H.
-dependent destruction H0.
-destruct s, t.
-simpl in *.
-subst.
-constructor.
-intros.
-simpl in *.
-destruct a, o.
-dependent destruction H.
-dependent destruction H1.
-dependent destruction H1.
-simpl in *.
-eapply StepsMore with (st'':=(st''0, st'')).
-unfold InterUStep.
-simpl.
-split.
-unfold differ_pointwise.
-intros.
-symmetry.
-apply H2.
-easy.
-split.
-easy.
-easy.
-apply IHp.
-easy.
-easy.
-simpl in *.
-dependent destruction H0.
-dependent destruction H0.
-simpl in *.
-eapply StepsMore with (st'':=(st'', snd s)).
-unfold InterUStep.
-simpl.
-split.
-unfold differ_pointwise.
-intros.
-symmetry.
-apply H1.
-easy.
-easy.
-apply IHp.
-easy.
-easy.
-Qed.
+Admitted.
 
 Fixpoint decompOverObjLift {E F} (p : Trace (ThreadName * option (Event E))) : Trace (ThreadLEvent E F) :=
   match p with
@@ -218,14 +129,18 @@ Inductive IsOverObjTrace {E F} : Trace (ThreadLEvent E F) -> Prop :=
     IsOverObjTrace q ->
     IsOverObjTrace (p ++ cons (i, OEvent e) q)%list.
 
+Lemma isOverObjTrace {E F} :
+  forall p, @IsOverObjTrace E F p.
+Admitted.
+
 Lemma decompOverObj {E F} {lay : Layer E F} :
-    Steps (Step (overObj lay)) =
-    fun s p t =>
-      exists (q : Trace (ThreadLEvent E F)),
-        p = projOver q /\
-        Steps (Step lay.(USpec)) (snd s) (projUnderThr q) (snd t) /\
-        Steps (ThreadsStep lay.(LImpl)) (fst s) q (fst t) /\
-        IsOverObjTrace q.
+  Steps (Step (overObj lay)) =
+  fun s p t =>
+    exists (q : Trace (ThreadLEvent E F)),
+      p = projOver q /\
+      Steps (Step lay.(USpec)) (snd s) (projUnderThr q) (snd t) /\
+      Steps (ThreadsStep lay.(LImpl)) (fst s) q (fst t) /\
+      IsOverObjTrace q.
 extensionality s.
 extensionality p.
 extensionality t.
@@ -295,8 +210,7 @@ firstorder.
   simpl.
   exact o.
   intros.
-  symmetry.
-  apply d.
+  apply e.
   easy.
   easy.
   clear H2 H1 H5 H4 H0 H x0 st'' s t.
@@ -375,15 +289,12 @@ firstorder.
     easy.
   }
   split.
-  clear IHIsOverObjTrace.
-  simpl in *.
+  unfold InterOStep.
+  simpl.
+  unfold ThreadsStep in *.
   dependent destruction H3.
   simpl in *.
-  split.
-  unfold differ_pointwise.
-  intros.
-  symmetry.
-  apply H5.
+  econstructor.
   easy.
   easy.
   easy.
@@ -394,27 +305,228 @@ firstorder.
 }
 Qed.
 
+Lemma exProjOver E {F} :
+  forall (p : Trace (ThreadEvent F)),
+  exists (q : Trace (ThreadLEvent E F)),
+  p = projOver q.
+intros.
+induction p.
+exists nil.
+easy.
+destruct_all.
+subst.
+destruct a.
+eexists (cons (t, OEvent e) x).
+simpl.
+easy.
+Qed.
+
+Lemma projInterSteps {E F} {lay : Layer E F} :
+  Steps (Step (overObj lay)) =
+  fun s p t =>
+    exists q,
+      p = projOver q /\
+      InterSteps lay.(LImpl) s q t.
+extensionality s.
+extensionality p.
+extensionality t.
+apply propositional_extensionality.
+firstorder.
+{
+  generalize dependent s.
+  induction p.
+  exists nil.
+  dependent destruction H.
+  repeat constructor.
+  intros.
+  dependent destruction H.
+  apply IHp in H0. clear IHp.
+  simpl in *.
+  destruct_all.
+  subst.
+  destruct a.
+  eexists (map (fun e => (fst e, UEvent (snd e))) x1 ++ (t0, OEvent e) :: x).
+  split.
+  clear.
+  induction x1.
+  easy.
+  simpl.
+  rewrite IHx1.
+  easy.
+  unfold InterSteps.
+  rewrite <- Steps_app.
+  exists x0.
+  split.
+  clear H1 x H2.
+  generalize dependent s.
+  induction x1.
+  intros.
+  dependent destruction H.
+  constructor.
+  intros.
+  dependent destruction H.
+  apply IHx1 in H0. clear IHx1.
+  simpl.
+  econstructor.
+  2: exact H0.
+  clear H0.
+  unfold InterUStep, InterStep in *.
+  destruct_all.
+  split.
+  dependent destruction H.
+  all: simpl in *.
+  econstructor.
+  simpl.
+  easy.
+  easy.
+  easy.
+  econstructor.
+  unfold InterStep, InterOStep in *.
+  simpl in *.
+  split.
+  2: exact H3.
+  dependent destruction H2.
+  econstructor.
+  easy.
+  easy.
+  easy.
+}
+{
+  subst.
+  assert (IsOverObjTrace x) by apply isOverObjTrace.
+  generalize dependent s.
+  induction H.
+  intros.
+  dependent destruction H0.
+  constructor.
+  intros.
+  unfold InterSteps in H1.
+  rewrite <- Steps_app in H1.
+  destruct_all.
+  dependent destruction H2.
+  apply IHIsOverObjTrace in H3.
+  clear IHIsOverObjTrace.
+  rewrite projOver_app.
+  rewrite projOverUnder.
+  2: easy.
+  simpl.
+  eapply StepsMore with (st'':=st'').
+  eexists x, (projUnder p).
+  split.
+  clear H3 H2.
+  generalize dependent s.
+  induction H.
+  intros.
+  dependent destruction H1.
+  constructor.
+  intros.
+  dependent destruction H1.
+  apply IHIsUnderTrace in H2.
+  clear IHIsUnderTrace.
+  apply StepsMore with (st'':=st''0).
+  clear H2.
+  {
+    unfold InterStep, InterUStep in *.
+    destruct_all.
+    simpl in *.
+    split.
+    2: easy.
+    dependent destruction H1.
+    simpl in *.
+    econstructor.
+    easy.
+    easy.
+  }
+  exact H2.
+  clear H3 H1.
+  unfold InterStep, InterOStep in *.
+  simpl in *.
+  destruct_all.
+  split.
+  {
+    dependent destruction H1.
+    simpl in *.
+    econstructor.
+    easy.
+    easy.
+  }
+  easy.
+  easy.
+}
+Qed.
+
+Lemma decompSplitSteps {A B E} (stepL : A -> E -> A -> Prop) (stepR : B -> E -> B -> Prop) :
+  Steps
+    (fun s e t =>
+      stepL (fst s) e (fst t) /\
+      stepR (snd s) e (snd t)) =
+  fun s p t =>
+    Steps stepL (fst s) p (fst t) /\
+    Steps stepR (snd s) p (snd t).
+extensionality s.
+extensionality p.
+extensionality t.
+apply propositional_extensionality.
+split.
+intros.
+generalize dependent s.
+induction p.
+intros.
+dependent destruction H.
+repeat constructor.
+intros.
+dependent destruction H.
+apply IHp in H0.
+destruct_all.
+split.
+econstructor.
+exact H.
+easy.
+econstructor.
+exact H2.
+easy.
+intros.
+generalize dependent s.
+induction p.
+intros.
+destruct_all.
+destruct s, t.
+simpl in *.
+dependent destruction H.
+dependent destruction H0.
+econstructor.
+intros.
+destruct_all.
+dependent destruction H.
+dependent destruction H1.
+eapply StepsMore with (st'':=(st'', st''0)).
+easy.
+apply IHp.
+easy.
+Qed.
+
+
 (* Eutt *)
 
-(* Inductive euttTS_ {E E' F : ESig}  (RR : IRel E E') :
-    ThreadState (E := E) (F := F) -> ThreadState (E := E') -> Prop :=
-| euttTS_Idle : euttTS_ RR Idle Idle
-| euttTS_Cont Ret m p p' : 
-    eutt RR p p' -> 
-    euttTS_ RR (Cont m (Ret := Ret) p) (Cont m (Ret := Ret) p')
-| euttTS_UCall A Ret m k k' : 
-    forall (x : A), eutt RR (k x) (k' x) ->
-    euttTS_ RR (UCall m k) (UCall m (Ret := Ret) k').
+Inductive euttTS_ {E F : ESig} :
+    ThreadState E F -> ThreadState E F -> Prop :=
+| euttTS_Idle : euttTS_ Idle Idle
+| euttTS_Cont A m (p p' : Prog E A) : 
+    eutt p p' -> 
+    euttTS_ (Cont m p) (Cont m p')
+| euttTS_UCall A B m (k k' : A -> Prog E B) : 
+    (forall (x : A), eutt (k x) (k' x)) ->
+    euttTS_ (UCall m k) (UCall m k').
 
-Definition euttTS {E E' F : ESig}  (RR : IRel E E') :
-    ThreadsSt (E := E) (F := F) -> ThreadsSt (E := E') -> Prop :=
-    fun ths ths' => forall (i : ThreadName), euttTS_ RR (ths i) (ths' i).
+Definition euttTS {E F : ESig} :
+    ThreadsSt E F -> ThreadsSt E F -> Prop :=
+    fun ths ths' => forall (i : ThreadName), euttTS_ (ths i) (ths' i).
 
-Definition euttIS {A E E' F} (RR : IRel E E') :
-    ThreadsSt (E := E) (F := F) * A -> ThreadsSt (E := E') * A -> Prop :=
-        fun ost ost' => euttTS RR (fst ost) (fst ost') /\ (snd ost = snd ost').
+Definition euttIS {A E F} :
+    ThreadsSt E F * A -> ThreadsSt E F * A -> Prop :=
+        fun ost ost' => euttTS (fst ost) (fst ost') /\ (snd ost = snd ost').
         
-Lemma eutt_InterStep {E F} (RR : IRel E E) (spec : Spec E) (impl : Impl E F) (impl' : Impl E F): 
+(* Lemma eutt_InterStep {E F} (RR : IRel E E) (spec : Spec E) (impl : Impl E F) (impl' : Impl E F): 
     euttImpl RR impl impl' ->
     forall i ist0 ev ist1 ist0',
         euttIS (A := spec.(State)) RR ist0 ist0' ->

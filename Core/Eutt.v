@@ -26,54 +26,52 @@ From LHL.Util Require Import
 From LHL.Core Require Import
   Program.
 
-Inductive euttF {E E'} (RR : IRel E E') {Ret}
-  (_eutt : Prog E Ret -> Prog E' Ret -> Prop)
-  : Prog E Ret -> Prog E' Ret -> Prop :=
-| euttF_Return r : euttF RR _eutt (Return r) (Return r)
-| euttF_Bind X (e : E X) (e' : E' X) k k'
-  : RR X e e' ->
-    (forall x, _eutt (k x) (k' x)) ->
-    euttF RR _eutt (Bind e k) (Bind e' k')
-| euttF_NoOp p p' : _eutt p p' -> euttF RR _eutt (NoOp p) (NoOp p')
-| euttF_L p p' : euttF RR _eutt p p' -> euttF RR _eutt (NoOp p) p'
-| euttF_R p p' : euttF RR _eutt p p' -> euttF RR _eutt p (NoOp p')
+Inductive euttF {E A}
+  (_eutt : Prog E A -> Prog E A -> Prop)
+  : Prog E A -> Prog E A -> Prop :=
+| euttF_Return r : euttF _eutt (Return r) (Return r)
+| euttF_Bind X (e : E X) k k' : (forall x, _eutt (k x) (k' x)) ->
+    euttF _eutt (Bind e k) (Bind e k')
+| euttF_NoOp p p' : _eutt p p' -> euttF _eutt (NoOp p) (NoOp p')
+| euttF_L p p' : euttF _eutt p p' -> euttF _eutt (NoOp p) p'
+| euttF_R p p' : euttF _eutt p p' -> euttF _eutt p (NoOp p')
 .
 
-Definition eutt {E E'} (RR : IRel E E') R
-  : Prog E R -> Prog E' R -> Prop := paco2 (euttF RR) bot2.
-Arguments eutt {E E'} RR [R].
+Definition eutt {E} R
+  : Prog E R -> Prog E R -> Prop := paco2 euttF bot2.
+Arguments eutt {E} [R].
 
-Definition euttImpl {E E' F} (RR : IRel E E')
-  (impl : Impl E F) (impl' : Impl E' F) : Prop := 
-    forall Ret (f : F Ret) , eutt RR (impl Ret f) (impl' Ret f).
-Arguments euttImpl {E E' F} RR.
+Definition euttImpl {E F}
+  (impl : Impl E F) (impl' : Impl E F) : Prop := 
+    forall Ret (f : F Ret) , eutt (impl Ret f) (impl' Ret f).
+Arguments euttImpl {E F}.
 
-Lemma monotone_euttF {E E'} (RR : IRel E E') R
-  : monotone2 (euttF RR (Ret := R)).
+Lemma monotone_euttF {E} R
+  : monotone2 (euttF (E:=E) (A:=R)).
 Proof.
   induction 1; constructor; auto.
 Qed.
 Hint Resolve monotone_euttF : paco.
 
-Lemma eutt_NoOp_l {E E'} (RR : IRel E E') {R}
-  : forall (p1 : Prog E R) (p2 : Prog E' R),
-    eutt RR p1 p2 ->
-    eutt RR (NoOp p1) p2.
+Lemma eutt_NoOp_l {E R}
+  : forall (p1 p2 : Prog E R),
+    eutt p1 p2 ->
+    eutt (NoOp p1) p2.
 Proof.
   intros. punfold H. pfold.
   constructor. assumption.
 Qed.
 
-Lemma eutt_NoOp_r (E E' : ESig) (RR : forall X : Type, E X -> E' X -> Prop)
-    (R : Type) (p : Prog E R) (p' : Prog E' R)
-  : eutt RR p p' -> eutt RR p (NoOp p').
+Lemma eutt_NoOp_r (E : ESig)
+    (R : Type) (p p' : Prog E R)
+  : eutt p p' -> eutt p (NoOp p').
 Proof.
   intros. punfold H. pfold.
   constructor. assumption.
 Qed.
 
 Lemma Reflexive_eutt_ieq {E R}
-  : forall (p : Prog E R), eutt ieq p p.
+  : forall (p : Prog E R), eutt p p.
 Proof.
   pcofix self.
   pfold.
@@ -196,46 +194,24 @@ Proof.
 Qed.
 *)
 
-Lemma Symmetric_eutt_ {M1 M2} (RR : IRel M1 M2) (RR' : IRel M2 M1) {R}
-      (SYM : forall X m1 m2, RR X m1 m2 -> RR' X m2 m1)
-  : forall (p1 : Prog M1 R) (p2 : Prog M2 R),
-    eutt RR p1 p2 -> eutt RR' p2 p1.
+Lemma Symmetric_eutt {E R}
+  : forall (p1 p2 : Prog E R),
+    eutt p1 p2 -> eutt p2 p1.
 Proof.
   pcofix self.
   intros p1 p2 H; punfold H; pfold.
   induction H; constructor; pclearbot; auto.
-  right; apply self, H0.
-Qed.
-
-Lemma Symmetric_eutt {M} (RR : IRel M M) {R}
-      (SYM : forall X m1 m2, RR X m1 m2 -> RR X m2 m1)
-  : forall (p1 : Prog M R) (p2 : Prog M R),
-    eutt RR p1 p2 -> eutt RR p2 p1.
-Proof.
-  revert SYM; apply Symmetric_eutt_.
-Qed.
-
-Lemma Symmetric_eutt_ieq {M} {R}
-  : forall (p1 : Prog M R) (p2 : Prog M R),
-    eutt ieq p1 p2 -> eutt ieq p2 p1.
-Proof.
-  apply Symmetric_eutt. intros ? ? ? []; constructor.
+  right.
+  apply self.
+  apply H.
 Qed.
 
 Section Trans.
 
-Context {E1 E2 E3 : ESig}
-  (R12 : IRel E1 E2)
-  (R23 : IRel E2 E3)
-  (R13 : IRel E1 E3).
-
-Context
-  (RRR : forall A e1 e2 e3, R12 A e1 e2 -> R23 A e2 e3 -> R13 A e1 e3).
-
-Lemma inv_eutt_Noop_left {R}
-  : forall (p1 : Prog E2 R) (p2 : Prog E3 R),
-    euttF R23 (upaco2 (euttF R23 (Ret := R)) bot2) (NoOp p1) p2 ->
-    euttF R23 (upaco2 (euttF R23 (Ret := R)) bot2) p1 p2.
+Lemma inv_eutt_Noop_left {E R}
+  : forall (p1 p2 : Prog E R),
+    euttF (upaco2 (euttF (A:=R)) bot2) (NoOp p1) p2 ->
+    euttF (upaco2 (euttF (A:=R)) bot2) p1 p2.
 Proof.
   intros p1 p2 H; remember (NoOp p1) as NoOp_p1 eqn:EQp1.
   induction H; try discriminate.
@@ -248,10 +224,10 @@ Proof.
   - constructor; auto.
 Qed.
 
-Lemma inv_eutt_Noop_right {R}
-  : forall (p1 : Prog E1 R) (p2 : Prog E2 R),
-    euttF R12 (upaco2 (euttF R12 (Ret := R)) bot2) p1 (NoOp p2) ->
-    euttF R12 (upaco2 (euttF R12 (Ret := R)) bot2) p1 p2.
+Lemma inv_eutt_Noop_right {E R}
+  : forall (p1 p2 : Prog E R),
+    euttF (upaco2 (euttF (A:=R)) bot2) p1 (NoOp p2) ->
+    euttF (upaco2 (euttF (A:=R)) bot2) p1 p2.
 Proof.
   intros p1 p2 H; remember (NoOp p2) as Noop_p1 eqn:EQp1.
   induction H; try discriminate.
@@ -264,112 +240,14 @@ Proof.
   - inversion EQp1. subst. auto.
 Qed.
 
-Lemma Transitive_eutt {R}
- : forall (p1 : Prog E1 R) (p2 : Prog E2 R) (p3 : Prog E3 R),
-   eutt R12 p1 p2 ->
-   eutt R23 p2 p3 ->
-   eutt R13 p1 p3.
-Proof.
-  pcofix SELF.
-  intros p1 p2 p3 I1 I2.
-  punfold I1; punfold I2.
-  remember p2 as p2' in I2.
-  pfold.
-  revert p2' Heqp2' I2.
-  induction I1 as [ | | p1 p2 | | ]; intros p2' Heqp2' I2.
-  - (* Return *)
-    induction I2; try discriminate;
-    try lazymatch goal with
-    | [ H : ?con _ = ?con _ |- _ ] => inversion H; clear H; subst
-    end;
-    solve [ constructor; auto ].
-
-  - (* Bind *)
-    induction I2; try (discriminate + solve [ constructor; eauto ]).
-
-    (* Bind = Bind *)
-    inversion Heqp2'; clear Heqp2'. subst.
-    injpair_; subst.
-    constructor.
-    { apply (RRR _ e e' e'0); auto. }
-    intros x.
-    specialize (H0 x).
-    destruct H0; [| contradiction ].
-    specialize (H2 x).
-    destruct H2; [| contradiction ].
-    right; eauto.
-
-  - (* Noop p1 | Noop p2 | p3 *)
-    destruct H; [ | contradiction ].
-    revert p2 Heqp2' H.
-    induction I2 as [ | | | p2' p3 | ];
-      intros p2'' EQp2 REL12; try rename p2'' into p2;
-      try discriminate.
-    + (* (p2, p3) -> (Noop p2, Noop p3) *)
-      destruct H; [ | contradiction ].
-      inversion EQp2; subst.
-      constructor; eauto.
-    + (* (p2, p3) -> (Noop p2, p3) *)
-      inversion EQp2; subst.
-      clear IHI2 EQp2.
-      punfold REL12.
-      { remember p2 as p2' in REL12. revert p2' Heqp2' REL12.
-        induction I2; intros.
-        - constructor.
-          induction REL12; try discriminate;
-          try lazymatch goal with
-          | [ H : ?con _ = ?con _ |- _ ] => inversion H; clear H; subst
-          end;
-          solve [ constructor; auto ].
-
-        - constructor.
-          induction REL12; try (discriminate + solve [ constructor; eauto ]).
-
-          (* Bind = Bind *)
-          inversion Heqp2'; clear Heqp2'. subst.
-          injpair_; subst.
-          constructor.
-          { eapply RRR; eauto. }
-          intros x.
-          specialize (H0 x).
-          destruct H0; [| contradiction ].
-          specialize (H2 x).
-          destruct H2; [| contradiction ].
-          right; eauto.
-
-        - constructor.
-          destruct H; [| contradiction ].
-          subst p2'.
-          apply inv_eutt_Noop_right in REL12.
-          right; eapply SELF; eauto; pfold; eauto.
-
-        - subst p2'; apply inv_eutt_Noop_right in REL12. eauto.
-
-        - constructor.
-          subst p2'.
-          right; eapply SELF; pfold; eauto.
-      }
-
-    + (* (p2, p3) -> (p2, Noop p3) *)
-      apply euttF_R. eauto.
-
-  - (* Noop p1 | p2 | p3 *)
-    constructor; eauto.
-
-  - subst. apply inv_eutt_Noop_left in I2. eauto.
-Qed.
+Lemma Transitive_eutt {E R}
+ : forall (p1 p2 p3 : Prog E R),
+   eutt p1 p2 ->
+   eutt p2 p3 ->
+   eutt p1 p3.
+Admitted.
 
 End Trans.
-
-Lemma Transitive_eutt_ieq {M R}
- : forall (p1 : Prog M R) (p2 : Prog M R) (p3 : Prog M R),
-   eutt ieq p1 p2 ->
-   eutt ieq p2 p3 ->
-   eutt ieq p1 p3.
-Proof.
-  apply Transitive_eutt.
-  intros ? ? ? ? [] []. constructor.
-Qed.
 
 (*
 Local Notation fI := flattenObject.
@@ -392,10 +270,10 @@ Inductive flattenProg_bisim {M1 M2 N1 N2}
 .
 *)
 
-Lemma euttF_Noop_L {E1 E2} (RR : IRel E1 E2) {R}
-      (_eutt : Prog E1 R -> Prog E2 R -> Prop)
-  : forall (p1 : Prog E1 R) (p2 : Prog E2 R),
-    paco2 (euttF RR) _eutt p1 p2 -> paco2 (euttF RR) _eutt (NoOp p1) p2.
+Lemma euttF_Noop_L {E R}
+      (_eutt : Prog E R -> Prog E R -> Prop)
+  : forall (p1 p2 : Prog E R),
+    paco2 euttF _eutt p1 p2 -> paco2 euttF _eutt (NoOp p1) p2.
 Proof.
   pcofix self.
   intros p1 p2 H. pfold. punfold H. induction H.

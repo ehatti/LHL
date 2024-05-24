@@ -49,7 +49,7 @@ CoFixpoint mapProg
            (p : Prog E Ret) :
   Prog E' Ret :=
   match p with
-    | @Bind _ _ A e f' => Bind (f A e) (fun a => mapProg f (f' a))
+    | Bind e f' => Bind (f _ e) (fun a => mapProg f (f' a))
     | Return r => Return r
     | NoOp p' => NoOp (mapProg f p')
   end.
@@ -61,7 +61,7 @@ CoFixpoint substProg
            (p : Prog F Ret) :
   Prog E Ret :=
   match p with
-    | @Bind _ _ A m f => NoOp (bindSubstProg impl f (impl A m))
+    | Bind m f => NoOp (bindSubstProg impl f (impl _ m))
     | Return a => Return a
     | NoOp p' => NoOp (substProg impl p')
   end

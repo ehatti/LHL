@@ -137,28 +137,24 @@ Definition IsTraceOfSpecBwd {E : ESig} (t : bwd_list (ThreadEvent E)) (spec : Sp
 Definition InterState {E : ESig} F (spec : Spec E) : Type :=
   ThreadsSt E F * spec.(State).
 
-Definition InterStep {E F : ESig} {spec : Spec E} (impl : Impl E F) i
-  (s : InterState F spec)
-  (ev : LEvent E F)
-  (t : InterState F spec) :=
-  differ_pointwise (fst s) (fst t) i /\
-  match ev with
-  | OEvent ev =>
-    OverThreadStep impl (fst s i) ev (fst t i)
-  | UEvent ev =>
-    UnderThreadStep (fst s i) ev (fst t i) /\
-    match ev with
-    | Some ev => spec.(Step) (snd s) (i, ev) (snd t)
-    | None => snd s = snd t
-    end
+Definition StateStep {E F : ESig} {spec : Spec E} (s : State spec) (ev : ThreadLEvent E F) (t : State spec) :=
+  match snd ev with
+  | UEvent (Some e) => spec.(Step) s (fst ev, e) t
+  | _ => s = t
   end.
+
+Definition InterStep {E F : ESig} {spec : Spec E} (impl : Impl E F)
+  (s : InterState F spec)
+  (ev : ThreadLEvent E F)
+  (t : InterState F spec) :=
+  ThreadsStep impl (fst s) ev (fst t) /\
+  StateStep (snd s) ev (snd t).
 
 Definition InterUStep {E F : ESig} {spec : Spec E} (i : ThreadName)
   (s : InterState F spec)
   (ev : option (Event E))
   (t : InterState F spec) :=
-  differ_pointwise (fst s) (fst t) i /\
-  UnderThreadStep (fst s i) ev (fst t i) /\
+  PointStep UnderThreadStep (fst s) (i, ev) (fst t) /\
   match ev with
   | Some ev => spec.(Step) (snd s) (i, ev) (snd t)
   | None => snd s = snd t
@@ -168,8 +164,7 @@ Definition InterOStep {E F : ESig} (impl : Impl E F) (i : ThreadName)
   (s : ThreadsSt E F)
   (ev : Event F)
   (t : ThreadsSt E F) :=
-  differ_pointwise s t i /\
-  OverThreadStep impl (s i) ev (t i).
+  PointStep (OverThreadStep impl) s (i, ev) t.
 
 Definition InterUSteps {E : ESig} F (spec : Spec E) :
   InterState F spec -> Trace (ThreadName * option (Event E)) -> InterState F spec -> Prop := 
@@ -179,16 +174,8 @@ Definition InterOSteps {E : ESig} F (impl : Impl E F) :
   ThreadsSt E F -> Trace (ThreadEvent F) -> ThreadsSt E F -> Prop := 
   Steps (fun s ev t => InterOStep impl (fst ev) s (snd ev) t).
 
-Definition InterSteps {E F : ESig} {spec : Spec E} (impl : Impl E F)
-  (s : InterState F spec)
-  (evs : Trace (ThreadLEvent E F))
-  (t : InterState F spec) :=
-  Steps
-    (fun s ev t =>
-      InterStep impl (fst ev) s (snd ev) t)
-    s
-    evs
-    t.
+Definition InterSteps {E F : ESig} {spec : Spec E} (impl : Impl E F) :=
+  Steps (InterStep (spec:=spec) impl).
 
 Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F := 
   {|

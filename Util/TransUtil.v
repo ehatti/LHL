@@ -182,6 +182,14 @@ apply rec.
 easy.
 Qed.
 
+Lemma Steps_rw {E A} {step : A -> E -> A -> Prop} (s t : A) (xs : list E):
+  Steps step s xs t = BwdSteps step s (to_bwd xs) t.
+apply propositional_extensionality.
+split.
+apply Steps_iso.
+apply BwdSteps_iso.
+Qed.
+
 Lemma Steps_nil {E A} (step : A -> E -> A -> Prop) x y
   : Steps step x nil y <-> x = y.
 Proof.
@@ -197,18 +205,18 @@ Inductive PointStep {Index Ev State : Type} (step : State -> Ev -> State -> Prop
     (forall m, m <> fst n -> ts m = ts' m) ->
     PointStep step ts n ts'.
 
-Fixpoint projPoint {A} i (t : list (nat * A)) : list A :=
+Fixpoint projPoint {I A} i (ieq : I -> I -> bool) (t : list (I * A)) : list A :=
   match t with
   | nil => nil
   | cons (j, x) t =>
-    if eqb i j then
-      x :: projPoint i t
+    if ieq i j then
+      x :: projPoint i ieq t
     else
-      projPoint i t 
+      projPoint i ieq t
   end.
 
 Lemma help10 :
-  forall (P Q : nat -> Prop),
+  forall I (P Q : I -> Prop),
     (forall i, P i /\ Q i) ->
     ((forall i, P i) /\ (forall i, Q i)).
 firstorder.
@@ -233,11 +241,34 @@ apply rec.
 congruence.
 Qed.
 
-Lemma decompPointSteps {E A : Type} (step : A -> E -> A -> Prop) :
+Lemma unprojPointTrace {I A} {ieq : I -> I -> bool} :
+  (forall i, ieq i i = true) ->
+  (exists i : I, True) ->
+  forall p : list A,
+    exists i (q : list (I * A)),
+      p = projPoint i ieq q.
+intros.
+destruct_all.
+exists x, (List.map (fun e => (x, e)) p).
+induction p.
+easy.
+simpl.
+rewrite H.
+rewrite IHp at 1.
+easy.
+Qed.
+
+Record IsEqDec {I} (ieq : I -> I -> bool) := {
+  ieqT i j : ieq i j = true <-> i = j;
+  ieqF i j : ieq i j = false <-> i <> j
+}.
+
+Lemma decompPointSteps {I E A : Type} (ieq : I -> I -> bool) (step : A -> E -> A -> Prop) :
+  IsEqDec ieq ->
   forall s p t,
-  Steps (PointStep (Index:=nat) step) s p t =
+  Steps (PointStep (Index:=I) step) s p t =
   forall i,
-    Steps step (s i) (projPoint i p) (t i).
+    Steps step (s i) (projPoint i ieq p) (t i).
 intros.
 apply propositional_extensionality.
 firstorder.
@@ -254,18 +285,23 @@ firstorder.
   destruct a.
   simpl in *.
   specialize (H0 i).
-  assert (i = n \/ i <> n).
+  assert (i = i0 \/ i <> i0).
   apply excluded_middle.
   destruct H2.
   subst.
-  rewrite eqbT.
+  assert (ieq i0 i0 = true).
+  rewrite ieqT0.
+  easy.
+  rewrite H2.
   econstructor.
   exact H.
   easy.
-  rewrite eqbF.
+  assert (ieq i i0 = false).
+  rewrite ieqF0.
+  easy.
+  rewrite H3.
   apply H0 in H2.
   rewrite H2.
-  easy.
   easy.
 }
 {
@@ -282,24 +318,28 @@ firstorder.
   destruct a.
   simpl in *.
   assert (
-    forall i, exists r,
-      (if i =? n then step (s i) e r else s i = r) /\
-      Steps step r (projPoint i p) (t i)
+    forall j, exists r,
+      (if ieq j i then step (s j) e r else s j = r) /\
+      Steps step r (projPoint j ieq p) (t j)
   ).
   intros.
-  specialize (H i).
-  assert (i = n \/ i <> n).
+  specialize (H j).
+  assert (i = j \/ i <> j).
   apply excluded_middle.
   destruct H0.
   subst.
-  repeat rewrite eqbT in *.
+  assert (ieq j j = true).
+  rewrite ieqT0.
+  easy.
+  repeat rewrite H0 in *.
   dependent destruction H.
   exists st''.
   firstorder.
-  rewrite eqbF in *.
-  exists (s i).
+  assert (ieq j i = false).
+  rewrite ieqF0.
   easy.
-  easy.
+  rewrite H1 in *.
+  exists (s j).
   easy.
   apply choice in H0.
   destruct_all.
@@ -313,17 +353,21 @@ firstorder.
   clear IHp H1.
   econstructor.
   all: simpl.
-  specialize (H0 n).
-  rewrite eqbT in H0.
+  specialize (H0 i).
+  assert (ieq i i = true).
+  rewrite ieqT0.
+  easy.
+  rewrite H1 in H0.
   easy.
   intros.
   specialize (H0 m).
-  rewrite eqbF in H0.
+  assert (ieq m i = false).
+  rewrite ieqF0.
   easy.
+  rewrite H2 in H0.
   easy.
 }
 Qed.
-
 
 Definition Incl {A} (s : A -> Prop) (s' : A -> Prop) := forall a, s a -> s' a.
 
