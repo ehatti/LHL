@@ -21,6 +21,8 @@ From Coq Require Import
   Arith.EqNat
   Arith.PeanoNat.
 
+Require Import FunInd.
+
 From Paco Require Import
   paco.
 
@@ -116,30 +118,54 @@ Inductive euttThreadTrace {E F} : Trace (ThreadLEvent E F) -> Trace (ThreadLEven
     euttThreadTrace p q ->
     euttThreadTrace (cons (i, OEvent e) p) (cons (i, OEvent e) q).
 
-(* Lemma compEuttTrace *)
-
-Lemma help12 {E F} :
-  forall (p : Trace (ThreadLEvent E F)),
-  forall (qc : nat -> Trace (LEvent E F)),
-  (forall i, euttTrace (projPoint i eqb p) (qc i)) ->
-  exists q,
-    euttThreadTrace p q /\
-    forall i, projPoint i eqb q = qc i.
-intros.
-Admitted.
-
-Lemma euttOver {E F} :
-  forall (p q : Trace (ThreadLEvent E F)),
-  euttThreadTrace p q ->
-  projOver p = projOver q.
+Lemma euttTraceThread_app {E F} :
+  forall p1 p2 q1 q2 : Trace (ThreadLEvent E F),
+  euttThreadTrace p1 q1 ->
+  euttThreadTrace p2 q2 ->
+  euttThreadTrace (app p1 p2) (app q1 q2).
 intros.
 induction H.
 easy.
-easy.
-easy.
+simpl.
+constructor.
 easy.
 simpl.
-f_equal.
+constructor.
+easy.
+simpl.
+constructor.
+easy.
+simpl.
+constructor.
+easy.
+Qed.
+
+(* Fixpoint interleave {E F} *)
+
+Fixpoint projLSilent {E F} (p : Trace (LEvent E F)) : Trace (Event E + Event F) :=
+  match p with
+  | nil => nil
+  | cons (UEvent (Some e)) p => cons (inl e) (projLSilent p)
+  | cons (OEvent e) p => cons (inr e) (projLSilent p)
+  | cons _ p => projLSilent p
+  end.
+
+Fixpoint projLESilent {E F} (p : Trace (ThreadLEvent E F)) : Trace (ThreadName * (Event E + Event F)) :=
+  match p with
+  | nil => nil
+  | cons (i, UEvent (Some e)) p => cons (i, inl e) (projLESilent p)
+  | cons (i, OEvent e) p => cons (i, inr e) (projLESilent p)
+  | cons _ p => projLESilent p
+  end.
+
+Lemma help21 {A} {x : A} {xs : list A} :
+  ~(xs = cons x xs).
+unfold not.
+intros.
+induction xs.
+discriminate.
+apply IHxs.
+dependent destruction H.
 easy.
 Qed.
 
@@ -148,19 +174,6 @@ Fixpoint nones {E F} n : Trace (LEvent E F) :=
   | 0 => nil
   | S n => cons (UEvent None) (nones n)
   end.
-
-Lemma euttTrace_nones {E F} :
-  forall n m,
-  @euttTrace E F (nones n) (nones m).
-intros.
-induction n.
-induction m.
-constructor.
-constructor.
-easy.
-constructor.
-easy.
-Qed.
 
 Inductive help_view {E F} : Trace (LEvent E F) -> Prop :=
 | HelpViewNil :
@@ -217,6 +230,295 @@ easy.
 easy.
 Qed.
 
+Fixpoint get_nones {E F} i (p : Trace (LEvent E F)) : Trace (ThreadLEvent E F) * Trace (LEvent E F) :=
+  match p with
+  | nil => (nil, nil)
+  | cons (UEvent None) p =>
+    let (ns, es) := get_nones i p in
+    (cons (i, UEvent None) ns, es)
+  | cons _ q => (nil, q)
+  end.
+
+Lemma get_nones_beh {E F} :
+  forall i n e p,
+  e <> UEvent None ->
+  @get_nones E F i (app (nones n) (cons e p)) = (List.map (fun e => (i, e)) (nones n), p).
+intros.
+induction n.
+simpl.
+destruct e.
+destruct ev.
+easy.
+congruence.
+easy.
+simpl in *.
+rewrite IHn.
+easy.
+Qed.
+
+Fixpoint interleave {E F}
+  (qc : nat -> Trace (LEvent E F))
+  (p : Trace (ThreadLEvent E F))
+  : Trace (ThreadLEvent E F) :=
+  match p with
+  | nil => nil
+  | cons (i, UEvent None) p => interleave qc p
+  | cons (i, e) p =>
+    let (ns, q) := get_nones i (qc i) in
+    let qc' j := if i =? j then q else qc j in
+    app ns (cons (i, e) (interleave qc' p))
+  end.
+
+Lemma help22 {E F} :
+  forall p q,
+  @euttTrace E F (cons (UEvent None) p) q ->
+  euttTrace p q.
+fix rec 3.
+intros.
+dependent destruction H.
+exact H.
+constructor.
+apply rec.
+exact H.
+Qed.
+
+Lemma help23 {E F} :
+  forall p q,
+  @euttTrace E F p (cons (UEvent None) q) ->
+  euttTrace p q.
+fix rec 3.
+intros.
+dependent destruction H.
+constructor.
+apply rec.
+exact H.
+apply H.
+Qed.
+
+Lemma help23_t {E F} :
+  forall p q n,
+  @euttTrace E F p (app (nones n) q) ->
+  euttTrace p q.
+intros.
+induction n.
+easy.
+apply IHn.
+simpl in H.
+apply help23 in H.
+easy.
+Qed.
+
+Lemma help31 : forall n : nat, n =? n = true.
+intros.
+induction n.
+easy.
+simpl.
+f_equal.
+easy.
+Qed.
+
+Lemma help32 : forall n m : nat, n <> m -> n =? m = false.
+fix rec 1.
+intros.
+destruct n.
+destruct m.
+easy.
+easy.
+destruct m.
+easy.
+simpl in *.
+apply rec.
+congruence.
+Qed.
+
+Lemma euttTraceEvt {E F} :
+  forall p q e,
+  e <> UEvent None ->
+  @euttTrace E F (cons e p) q ->
+  exists n r,
+    euttTrace p r /\
+    q = app (nones n) (cons e r).
+intros.
+induction q.
+destruct e.
+destruct ev.
+dependent destruction H0.
+congruence.
+dependent destruction H0.
+destruct e.
+destruct ev.
+destruct a.
+destruct ev.
+dependent destruction H0.
+exists 0, q.
+easy.
+apply help23 in H0.
+apply IHq in H0. clear IHq.
+destruct_all.
+exists (S x), x0.
+split.
+easy.
+simpl.
+subst.
+easy.
+dependent destruction H0.
+congruence.
+destruct a.
+destruct ev0.
+dependent destruction H0.
+apply help23 in H0.
+apply IHq in H0. clear IHq.
+destruct_all.
+subst.
+eexists (S x), x0.
+easy.
+dependent destruction H0.
+exists 0, q.
+easy.
+Qed.
+
+Open Scope list.
+
+Lemma help12 {E F} :
+  forall (p : Trace (ThreadLEvent E F)),
+  forall (qc : nat -> Trace (LEvent E F)),
+  (forall i, euttTrace (projPoint i eqb p) (qc i)) ->
+  exists q,
+    euttThreadTrace p q /\
+    forall i, projPoint i eqb q = qc i.
+intros.
+exists (interleave qc p).
+split.
+{
+  generalize dependent qc.
+  induction p.
+  constructor.
+  destruct a, l.
+  destruct ev.
+  2:{
+    simpl.
+    constructor.
+    apply IHp.
+    intros.
+    specialize (H i).
+    simpl in H.
+    destruct (i =? n).
+    apply help22 in H.
+    easy.
+    easy.
+  }
+  {
+    intros.
+    simpl in *.
+    assert (H' := H).
+    specialize (H n).
+    rewrite help31 in H.
+    apply euttTraceEvt in H.
+    destruct_all.
+    rewrite H0.
+    rewrite get_nones_beh.
+    change ((n, UEvent (Some e)) :: p)
+    with (nil ++ (n, UEvent (Some e)) :: p).
+    apply euttTraceThread_app.
+    clear.
+    induction x.
+    constructor.
+    simpl.
+    constructor.
+    easy.
+    constructor.
+    apply IHp.
+    intros.
+    specialize (H' i).
+    assert (n =? i = (i =? n)) by admit.
+    rewrite H1. clear H1.
+    assert (i = n \/ i <> n) by admit.
+    destruct H1.
+    subst.
+    repeat rewrite help31 in *.
+    rewrite H0 in H'.
+    apply help23_t in H'.
+    dependent destruction H'.
+    easy.
+    rewrite help32. rewrite help32 in H'.
+    easy.
+    easy.
+    easy.
+    easy.
+    easy.
+  }
+  {
+    intros.
+    simpl in *.
+    assert (H' := H).
+    specialize (H n).
+    rewrite help31 in H.
+    apply euttTraceEvt in H.
+    destruct_all.
+    rewrite H0.
+    rewrite get_nones_beh.
+    change ((n, OEvent ev) :: p)
+    with (nil ++ (n, OEvent ev) :: p).
+    apply euttTraceThread_app.
+    clear.
+    induction x.
+    constructor.
+    simpl.
+    constructor.
+    easy.
+    constructor.
+    apply IHp.
+    intros.
+    specialize (H' i).
+    assert (n =? i = (i =? n)) by admit.
+    rewrite H1. clear H1.
+    assert (i = n \/ i <> n) by admit.
+    destruct H1.
+    subst.
+    repeat rewrite help31 in *.
+    rewrite H0 in H'.
+    apply help23_t in H'.
+    dependent destruction H'.
+    easy.
+    rewrite help32. rewrite help32 in H'.
+    easy.
+    easy.
+    easy.
+    easy.
+    easy.
+  }
+}
+
+
+Lemma euttOver {E F} :
+  forall (p q : Trace (ThreadLEvent E F)),
+  euttThreadTrace p q ->
+  projOver p = projOver q.
+intros.
+induction H.
+easy.
+easy.
+easy.
+easy.
+simpl.
+f_equal.
+easy.
+Qed.
+
+Lemma euttTrace_nones {E F} :
+  forall n m,
+  @euttTrace E F (nones n) (nones m).
+intros.
+induction n.
+induction m.
+constructor.
+constructor.
+easy.
+constructor.
+easy.
+Qed.
+
+
 Lemma euttTS_refl {E F} :
   forall s, @euttTS_ E F s s.
 intros.
@@ -229,13 +531,11 @@ intros.
 apply Reflexive_eutt_ieq.
 Qed.
 
-Lemma state_finite {E F} {impl impl' : Impl E F} :
-  forall s s' t n,
-    ~(exists A (m : F A) p, t = Cont m (NoOp p)) ->
-    euttTS_ s s' ->
-    Steps (ThreadStep impl) s (nones n) t ->
-    exists n', Steps (ThreadStep impl') s' (nones n') t.
-Admitted.
+Fixpoint noops {E A} n (p : Prog E A) :=
+  match n with
+  | 0 => p
+  | S n => NoOp (noops n p)
+  end.
 
 Theorem eutt_layerRefines {E F} : 
   forall (spec : Spec E) (impl impl' : Impl E F), 
@@ -343,6 +643,9 @@ specialize (H0 i).
 revert H0.
 cut (
   forall p s s',
+    (forall A (m : F A) c,
+      s' = Cont m c ->
+      exists n c', c = noops n c') ->
     euttTS_ s s' ->
     Steps (ThreadStep impl) s p (t i) ->
     exists q,
@@ -353,6 +656,7 @@ cut (
 {
   intros.
   apply H0 with (s:=Idle).
+  easy.
   constructor.
   easy.
 }
@@ -376,9 +680,9 @@ repeat econstructor.
   constructor.
 }
 intros.
-rewrite <- Steps_app in H3.
+rewrite <- Steps_app in H4.
 destruct_all.
-dependent destruction H4.
+dependent destruction H5.
 move H3 after st''.
 assert (
   exists st''',
@@ -386,7 +690,7 @@ assert (
     ThreadStep impl' x e st'''
 ).
 {
-  clear H5 H3 IHhelp_view.
+  clear H6 H4 IHhelp_view.
   destruct e, ev.
   2: congruence.
   exists st''.
@@ -394,7 +698,7 @@ assert (
   apply euttTS_refl.
   easy.
   unfold ThreadStep in *.
-  dependent destruction H4.
+  dependent destruction H5.
   exists (Cont m (impl' _ m)).
   split.
   constructor.
@@ -406,37 +710,21 @@ assert (
   split.
   apply euttTS_refl.
   unfold ThreadStep in *.
-  dependent destruction H4.
+  dependent destruction H5.
   constructor.
   easy.
   easy.
 }
 destruct_all.
-apply IHhelp_view with (s':=x0) in H5.
+apply IHhelp_view with (s':=x0) in H6.
 destruct_all.
 assert (
   exists n',
     Steps (ThreadStep impl') s' (nones n') x
 ).
 {
-  eapply state_finite.
-  unfold ThreadStep in H4.
-  unfold not.
-  intros.
-  destruct e.
-  dependent destruction H4.
-  destruct_all.
-  subst.
-  discriminate.
-  destruct_all.
-  subst.
-  discriminate.
-  congruence.
-  destruct_all.
-  subst.
-  dependent destruction H4.
-  exact H2.
-  exact H3.
+  clear IHhelp_view.
+  admit.
 }
 destruct_all.
 eexists (nones x3 ++ e :: x1)%list.
@@ -457,8 +745,14 @@ exists x.
 split.
 easy.
 econstructor.
-exact H7.
+exact H8.
 easy.
+{
+  intros.
+  subst.
+  exists 0, c.
+  easy.
+}
 easy.
 Qed.
 
@@ -564,7 +858,25 @@ Lemma takeThr {E F G} :
   forall (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent E G)),
     projUnder p = projUnder q ->
     projUnderThr p = projUnderThr q.
-Admitted.
+intros.
+cut (forall E F (p : Trace (ThreadLEvent E F)), projSilent (projUnder p) = projUnderThr p).
+{
+  intros.
+  repeat rewrite <- H0.
+  rewrite H.
+  easy.
+}
+intros.
+induction p0.
+easy.
+destruct a, l.
+destruct ev.
+simpl.
+f_equal.
+easy.
+easy.
+easy.
+Qed.
 
 Fixpoint projUnderSeq {E F} (p : Trace (LEvent E F)) : Trace (option (Event E)) :=
   match p with
@@ -576,23 +888,25 @@ Fixpoint projUnderSeq {E F} (p : Trace (LEvent E F)) : Trace (option (Event E)) 
 
 Open Scope list.
 
-Inductive assoc_view {E F G} : bwd_list (LEvent E F) -> bwd_list (LEvent F G) -> bwd_list (LEvent E G) -> Prop :=
+Inductive assoc_view {E F G} : list (LEvent E F) -> list (LEvent F G) -> list (LEvent E G) -> Prop :=
 | AVNil :
-    assoc_view Start Start Start
+    assoc_view nil nil nil
 | AVGEv e tL tH tF :
     assoc_view tL tH tF ->
-    assoc_view tL (Snoc tH (OEvent e)) (Snoc tF (OEvent e))
+    assoc_view tL (OEvent e :: tH) (OEvent e :: tF)
 | AVFEv e tL tH tF :
     assoc_view tL tH tF ->
-    assoc_view (Snoc tL (OEvent e)) (Snoc tH (UEvent (Some e))) tF
+    assoc_view (OEvent e :: tL) (UEvent (Some e) :: tH) tF
 | AVFSl tL tH tF :
     assoc_view tL tH tF ->
-    assoc_view tL (Snoc tH (UEvent None)) tF
+    assoc_view tL (UEvent None :: tH) tF
 | AVEEv e tL tH tF :
     assoc_view tL tH tF ->
-    assoc_view (Snoc tL (UEvent e)) tH (Snoc tF (UEvent e)).
+    assoc_view (UEvent e :: tL) tH (UEvent e :: tF).
 
-Definition compTS {E F G} (t : ThreadState F G) (s : ThreadState E F) : ThreadState E G.
+Axiom undef:forall{a},a.
+
+Definition compTS {E F G} (impl : Impl E F) (impl' : Impl F G) (t : ThreadState F G) (s : ThreadState E F) : ThreadState E G.
 Admitted.
 
 Theorem layerRefines_VComp_assoc {E F G} : 
@@ -677,82 +991,67 @@ intros.
 destruct x, p0.
 simpl in *.
 clear H H' H5 tH tL tF s.
-exists (compTS (t x3) (t0 x3)).
+exists (compTS impl impl' (t x3) (t0 x3)).
 cut (
-  BwdSteps (ThreadStep (impl |> impl')) (allIdle x3) (to_bwd r) (compTS (t x3) (t0 x3))
+  Steps (ThreadStep (impl |> impl')) (allIdle x3) r (compTS impl impl' (t x3) (t0 x3))
 ).
 {
   intros.
   destruct_all.
-  apply BwdSteps_iso.
   easy.
 }
-apply Steps_iso in H0.
-apply Steps_iso in H1.
-generalize dependent (t x3).
-generalize dependent (t0 x3).
-assert (assoc_view (to_bwd p) (to_bwd q) (to_bwd r)) by admit.
-induction H.
+assert (
+  @allIdle E G x3 = compTS impl impl' (@allIdle F G x3) (@allIdle E F x3)
+).
 {
-  intros.
-  dependent destruction H1.
-  dependent destruction H0.
   admit.
 }
+rewrite H. clear H.
+generalize dependent (@allIdle E F x3).
+generalize dependent (@allIdle F G x3).
+eassert (assoc_view p q r) by admit.
+induction H; intros.
 {
-  intros.
   dependent destruction H0.
-  econstructor.
-  apply (IHassoc_view _ H1 _ H0).
-  clear H1 H0 IHassoc_view.
-  unfold ThreadStep in *.
-  dependent destruction H2.
-  subst.
+  dependent destruction H1.
   constructor.
-  admit.
-  admit.
-  subst.
-  econstructor.
-  admit.
-  admit.
 }
 {
-  intros.
   dependent destruction H0.
-  dependent destruction H1.
-  eassert _ by apply (IHassoc_view _ H1 _ H2).
-  clear IHassoc_view.
-  unfold ThreadStep in H0, H3.
-  dependent destruction H3;
+  unfold ThreadStep in H0.
   dependent destruction H0.
-  admit. (* impossible case *)
-  admit. (* impossible case *)
+  {
+    subst.
+    eapply StepsMore with (st'':= compTS impl impl' (Cont m (impl' _ m)) t2).
+    econstructor.
+    admit.
+    admit.
+    apply IHassoc_view; easy.
+  }
+  {
+    subst.
+    eapply StepsMore with (st'':= compTS impl impl' Idle t2).
+    econstructor.
+    admit.
+    admit.
+    apply IHassoc_view; easy.
+  }
 }
 {
-  intros.
   dependent destruction H0.
-  unfold ThreadStep in H2.
   dependent destruction H2.
-  subst.
-  admit.
+  unfold ThreadStep in H0, H2.
+  destruct e.
+  {
+    dependent destruction H0.
+    dependent destruction H2.
+  }
 }
 {
-  intros.
-  dependent destruction H1.
-  econstructor.
+  
+  dependent destruction H0.
+  unfold ThreadStep in H0.
+  dependent destruction H0.
+  subst.
   apply IHassoc_view.
-  exact H1.
-  exact H2.
-  clear H2 H1 IHassoc_view.
-  unfold ThreadStep in *.
-  dependent destruction H0; subst.
-  econstructor.
-  admit.
-  admit.
-  econstructor.
-  admit.
-  admit.
-  econstructor.
-  admit.
-  admit.
 }
