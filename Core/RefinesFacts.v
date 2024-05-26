@@ -379,6 +379,21 @@ Qed.
 
 Open Scope list.
 
+Axiom excluded_middle : forall P, P \/ ~P.
+
+Lemma beq_comm : forall n m, n =? m = (m =? n).
+fix rec 1.
+intros.
+destruct n.
+destruct m.
+reflexivity.
+reflexivity.
+destruct m.
+reflexivity.
+simpl.
+apply rec.
+Qed.
+
 Lemma help12 {E F} :
   forall (p : Trace (ThreadLEvent E F)),
   forall (qc : nat -> Trace (LEvent E F)),
@@ -430,9 +445,9 @@ split.
     apply IHp.
     intros.
     specialize (H' i).
-    assert (n =? i = (i =? n)) by admit.
+    assert (n =? i = (i =? n)) by apply beq_comm.
     rewrite H1. clear H1.
-    assert (i = n \/ i <> n) by admit.
+    assert (i = n \/ i <> n) by apply excluded_middle.
     destruct H1.
     subst.
     repeat rewrite help31 in *.
@@ -470,9 +485,9 @@ split.
     apply IHp.
     intros.
     specialize (H' i).
-    assert (n =? i = (i =? n)) by admit.
+    assert (n =? i = (i =? n)) by apply beq_comm.
     rewrite H1. clear H1.
-    assert (i = n \/ i <> n) by admit.
+    assert (i = n \/ i <> n) by apply excluded_middle.
     destruct H1.
     subst.
     repeat rewrite help31 in *.
@@ -487,6 +502,12 @@ split.
     easy.
     easy.
   }
+}
+{
+  intros.
+  specialize (H i).
+  induction p.
+  simpl in *.
 }
 
 
