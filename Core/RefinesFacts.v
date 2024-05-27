@@ -25,8 +25,68 @@ From Coq Require Import
 From Paco Require Import
   paco.
 
+Lemma help31 : forall n : nat, n =? n = true.
+intros.
+induction n.
+easy.
+simpl.
+f_equal.
+easy.
+Qed.
+
+Lemma help32 : forall n m : nat, n <> m -> n =? m = false.
+fix rec 1.
+intros.
+destruct n.
+destruct m.
+easy.
+easy.
+destruct m.
+easy.
+simpl in *.
+apply rec.
+congruence.
+Qed.
+
 Lemma threadDecEq : @IsEqDec ThreadName eqb.
-Admitted.
+constructor.
+intros.
+firstorder.
+generalize dependent i.
+generalize dependent j.
+fix rec 1.
+destruct i, j.
+easy.
+simpl in *.
+discriminate.
+simpl in *.
+discriminate.
+simpl in *.
+intros.
+f_equal.
+apply rec.
+easy.
+subst.
+rewrite help31.
+easy.
+intros.
+firstorder.
+generalize dependent i.
+generalize dependent j.
+fix rec 1.
+intros.
+destruct i, j.
+simpl in *.
+discriminate.
+easy.
+easy.
+simpl in *.
+apply rec in H. clear rec.
+congruence.
+rewrite help32.
+easy.
+easy.
+Qed.
 
 (* Basic Refinement Properties *)
 
@@ -225,29 +285,6 @@ constructor.
 easy.
 easy.
 easy.
-Qed.
-
-Lemma help31 : forall n : nat, n =? n = true.
-intros.
-induction n.
-easy.
-simpl.
-f_equal.
-easy.
-Qed.
-
-Lemma help32 : forall n m : nat, n <> m -> n =? m = false.
-fix rec 1.
-intros.
-destruct n.
-destruct m.
-easy.
-easy.
-destruct m.
-easy.
-simpl in *.
-apply rec.
-congruence.
 Qed.
 
 Fixpoint get_nones {E F} i (p : Trace (LEvent E F)) : Trace (ThreadLEvent E F) * Trace (LEvent E F) :=
@@ -994,11 +1031,30 @@ apply rec.
 Qed.
 
 
+Lemma proj_notin {E F} :
+  forall i (p : Trace (ThreadLEvent E F)),
+  ~List.In i (map fst p) ->
+  projPoint i eqb p = nil.
+intros.
+induction p.
+easy.
+destruct a.
+simpl in *.
+rewrite help41 in H.
+destruct_all.
+rewrite help32.
+apply IHp.
+easy.
+easy.
+Qed.
+
 Lemma help12 {E F} :
   forall (p : Trace (ThreadLEvent E F)),
   forall (qc : nat -> Trace (LEvent E F)),
-  (forall i, ~List.In i (dedup (List.map fst p)) -> qc i = nil) ->
-  (forall i, euttTrace (projPoint i eqb p) (qc i)) ->
+  (forall i, ~In i (dedup (map fst p)) ->
+    qc i = nil) ->
+  (forall i,
+    euttTrace (projPoint i eqb p) (qc i)) ->
   exists q,
     euttThreadTrace p q /\
     forall i, projPoint i eqb q = qc i.
@@ -1241,6 +1297,40 @@ split.
 }
 Qed.
 
+Lemma help13 {E F} :
+  forall (p : Trace (ThreadLEvent E F)),
+  forall (qc : nat -> Trace (LEvent E F)),
+  (forall i, ~In i (dedup (map fst p)) ->
+    qc i = nil) ->
+  (forall i, In i (dedup (map fst p)) ->
+    euttTrace (projPoint i eqb p) (qc i)) ->
+  exists q,
+    euttThreadTrace p q /\
+    forall i, projPoint i eqb q = qc i.
+intros.
+cut (forall i, euttTrace (projPoint i eqb p) (qc i)).
+{
+  intros.
+  apply help12.
+  easy.
+  easy.
+}
+intros.
+specialize (H i).
+specialize (H0 i).
+assert (In i (dedup (map fst p)) \/ ~In i (dedup (map fst p))).
+apply excluded_middle.
+destruct H1.
+apply H0.
+easy.
+assert (H1' := H1).
+apply H in H1'.
+rewrite H1'.
+rewrite proj_notin.
+constructor.
+rewrite dedup_correct.
+easy.
+Qed.
 
 Lemma euttOver {E F} :
   forall (p q : Trace (ThreadLEvent E F)),
@@ -1309,8 +1399,8 @@ simpl in *.
 destruct_all.
 cut (
   forall i, exists q : Trace (LEvent E F),
-    (euttTrace (projPoint i eqb x) q) /\
-    (~List.In i (map fst x) -> q = nil) /\
+    (In i (map fst x) -> euttTrace (projPoint i eqb x) q) /\
+    (~In i (map fst x) -> q = nil) /\
     exists stf,
       Steps (ThreadStep impl') (allIdle i) q stf
 ).
@@ -1318,9 +1408,14 @@ intros.
 {
   apply choice in H2.
   destruct_all.
-  assert (forall i, euttTrace (projPoint i eqb x) (x0 i)).
-  intros.
+  assert (
+    forall i,
+      In i (dedup (map fst x)) ->
+      euttTrace (projPoint i eqb x) (x0 i)
+  ).
+  intros i.
   specialize (H2 i).
+  rewrite <- dedup_correct.
   easy.
   assert (
     forall i, exists stf,
@@ -1333,7 +1428,7 @@ intros.
   clear H2.
   apply choice in H4.
   destruct_all.
-  apply help12 in H3.
+  apply help13 in H3.
   2:{
     intros.
     specialize (H2' i).
@@ -1411,7 +1506,7 @@ cut (
     euttTS_ s s' ->
     Steps (ThreadStep impl) s p (t i) ->
     exists q,
-      (euttTrace p q) /\
+      (In i (map fst x) -> euttTrace p q) /\
       (~ In i (map fst x) -> q = nil) /\
       exists stf,
         Steps (ThreadStep impl') s' q stf
@@ -1420,6 +1515,8 @@ cut (
   intros.
   apply H0 with (s':=Idle) in H1. clear H0.
   easy.
+  intros.
+  exists 0, c.
   easy.
   constructor.
 }
@@ -1428,7 +1525,11 @@ clear s t.
 intros t p.
 assert (help_view p) by apply get_view.
 induction H0.
-repeat econstructor.
+{
+  intros.
+  exists nil.
+  repeat econstructor.
+}
 {
   intros.
   exists nil.
@@ -1438,6 +1539,7 @@ repeat econstructor.
   constructor.
   simpl.
   constructor.
+  apply IHn.
   easy.
   split.
   easy.
@@ -1493,22 +1595,27 @@ assert (
 }
 destruct_all.
 eexists (
-  if (classicT (List.In i (map fst x))) then
+  if classicT (List.In i (map fst x)) then
     nones x4 ++ e :: x2
   else
     nil
 )%list.
 destruct (classicT (In i (map fst x))).
 split.
+intros.
 apply euttTrace_app.
 apply euttTrace_nones.
 destruct e, ev.
 constructor.
+apply H6.
 easy.
+constructor.
 congruence.
 constructor.
+apply H6.
 easy.
 constructor.
+apply H6.
 easy.
 split.
 {
@@ -1524,7 +1631,11 @@ econstructor.
 exact H8.
 easy.
 {
-  admit.
+  repeat split.
+  intros.
+  contradiction.
+  exists s'.
+  constructor.
 }
 {
   intros.
@@ -1533,7 +1644,6 @@ easy.
   easy.
 }
 easy.
-Qed.
 
 (* Crucial Refinement Properties *)
 
