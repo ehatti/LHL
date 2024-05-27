@@ -133,6 +133,21 @@ Lemma isOverObjTrace {E F} :
   forall p, @IsOverObjTrace E F p.
 Admitted.
 
+Lemma projPoint_app {I A} (xs ys : list (I * A)) (eqb : I -> I -> bool) :
+  forall i,
+  projPoint i eqb (xs ++ ys) = projPoint i eqb xs ++ projPoint i eqb ys.
+intros.
+induction xs.
+easy.
+destruct a.
+simpl in *.
+destruct (eqb i i0).
+simpl.
+f_equal.
+easy.
+easy.
+Qed.
+
 Lemma decompOverObj {E F} {lay : Layer E F} :
   Steps (Step (overObj lay)) =
   fun s p t =>
