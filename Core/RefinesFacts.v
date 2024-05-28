@@ -1956,13 +1956,99 @@ Fixpoint projOver_bwd {E F} (p : bwd_list (ThreadLEvent E F)) : bwd_list (Thread
   | Snoc p _ => projOver_bwd p
   end.
 
+Inductive over_under_view {E F G} : Trace (ThreadLEvent E F) -> Trace (ThreadLEvent F G) -> Prop :=
+| OUVNil :
+    over_under_view nil nil
+| OUVFEvt i e p q :
+    over_under_view p q ->
+    over_under_view ((i, OEvent e) :: p) ((i, UEvent (Some e)) :: q)
+| OVUFSilent i p q :
+    over_under_view p q ->
+    over_under_view p ((i, UEvent None) :: q)
+| OUVEEvt i e p q :
+    over_under_view p q ->
+    over_under_view ((i, UEvent e) :: p) q
+| OUVGEvt i e p q :
+    over_under_view p q ->
+    over_under_view p ((i, OEvent e) :: q).
+
+
 Lemma full_trace {E F G} :
   forall (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)),
   projOver p = projUnderThr q ->
   exists (r : Trace (ThreadLEvent E G)),
     projUnder r = projUnder p /\
     projOver r = projOver q.
-Admitted.
+intros.
+assert (over_under_view p q).
+{
+  generalize dependent p.
+  induction q.
+  {
+    intros.
+    induction p.
+    constructor.
+    destruct a, l; simpl in *.
+    constructor.
+    apply IHp.
+    easy.
+    congruence.
+  }
+  {
+    intros.
+    destruct a, l; simpl in *.
+    destruct ev; simpl in *.
+    2:{
+      constructor.
+      apply IHq.
+      easy.
+    }
+    2:{
+      constructor.
+      apply IHq.
+      easy.
+    }
+    {
+      generalize dependent q.
+      induction p; intros; simpl in *.
+      congruence.
+      destruct a, l; simpl in *.
+      constructor.
+      apply IHp.
+      easy.
+      easy.
+      dependent destruction H.
+      constructor.
+      apply IHq.
+      easy.
+    }
+  }
+}
+clear H.
+induction H0.
+exists nil.
+easy.
+simpl.
+easy.
+simpl.
+easy.
+simpl.
+destruct_all.
+exists ((i, UEvent e) :: x).
+simpl.
+split.
+f_equal.
+easy.
+easy.
+simpl.
+destruct_all.
+exists ((i, OEvent e) :: x).
+simpl.
+split.
+easy.
+f_equal.
+easy.
+Qed.
 
 Lemma swapEx {A B} {P : A -> B -> Prop} :
   (exists x y, P x y) ->
