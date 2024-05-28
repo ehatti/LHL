@@ -1379,6 +1379,94 @@ Fixpoint noops {E A} n (p : Prog E A) :=
   | S n => NoOp (noops n p)
   end.
 
+Inductive eutt_finite {E F A} (om : F A) : Prog E A -> Prog E A -> ThreadState E F -> Prop :=
+| EFRet x : eutt_finite om (Return x) (Return x) (Cont om (Return x))
+| EFBind A (m : E A) k k' :
+    (forall x, eutt (k x) (k' x)) ->
+    eutt_finite om (Bind m k) (Bind m k') (Cont om (Bind m k))
+| EFLNoOp p p' s :
+    eutt_finite om p p' s ->
+    eutt_finite om (NoOp p) p' s
+| EFRNoOp p p' s :
+    eutt_finite om p p' s ->
+    eutt_finite om p (NoOp p') s.
+
+Lemma contra_eutt_finite {E F A} :
+  forall om p p' (s : ThreadState E F),
+  (s = Idle \/ exists A B m' k, s = UCall (A:=A) (B:=B) m' k) ->
+  @eutt_finite E F A om p p' s ->
+  False.
+intros.
+induction H0.
+destruct H.
+congruence.
+destruct_all.
+congruence.
+destruct H.
+congruence.
+destruct_all.
+congruence.
+apply IHeutt_finite.
+easy.
+apply IHeutt_finite.
+easy.
+Qed.
+
+Lemma derive_eutt_finite {E F A} {impl : Impl E F} :
+  forall (m : F A) (p p' : Prog E A) n s s' e,
+  e <> UEvent None ->
+  euttF (upaco2 euttF bot2) p p' ->
+  Steps (ThreadStep impl) (Cont m p) (nones n) s ->
+  ThreadStep impl s e s' ->
+  eutt_finite m p p' s.
+intros.
+generalize dependent p.
+induction n; intros.
+{
+  simpl in *.
+  dependent destruction H1.
+  destruct e.
+  destruct ev.
+  2:{
+    congruence.
+  }
+  {
+    unfold ThreadStep in H2.
+    dependent destruction H2.
+    clear H.
+    dependent induction H0.
+    constructor.
+    intros.
+    specialize (H x).
+    destruct H.
+    2: destruct H.
+    easy.
+    constructor.
+    apply IHeuttF; easy.
+  }
+  {
+    unfold ThreadStep in H2.
+    dependent destruction H2.
+    clear H.
+    dependent induction H0.
+    constructor.
+    constructor.
+    apply IHeuttF; easy.
+  }
+}
+{
+  simpl in *.
+  dependent destruction H1.
+  unfold ThreadStep in H1.
+  dependent destruction H1.
+  constructor.
+  apply IHn.
+  2: easy.
+  apply inv_eutt_Noop_left in H0.
+  easy.
+}
+Qed.
+
 Theorem eutt_layerRefines {E F} : 
   forall (spec : Spec E) (impl impl' : Impl E F), 
   euttImpl impl impl' -> 
@@ -1500,9 +1588,6 @@ specialize (H0 i).
 revert H0.
 cut (
   forall p s s',
-    (forall A (m : F A) c,
-      s' = Cont m c ->
-      exists n c', c = noops n c') ->
     euttTS_ s s' ->
     Steps (ThreadStep impl) s p (t i) ->
     exists q,
@@ -1516,8 +1601,6 @@ cut (
   apply H0 with (s':=Idle) in H1. clear H0.
   easy.
   intros.
-  exists 0, c.
-  easy.
   constructor.
 }
 generalize dependent (t i).
@@ -1547,103 +1630,247 @@ induction H0.
   constructor.
 }
 intros.
-rewrite <- Steps_app in H4.
+rewrite <- Steps_app in H3.
 destruct_all.
-dependent destruction H5.
+dependent destruction H4.
 move H3 after st''.
+assert (
+  exists n' x0',
+    match x0 with
+    | Cont m (Bind um k) =>
+        exists k',
+          x0' = Cont m (Bind um k') /\
+          forall x, eutt (k x) (k' x)
+    | UCall m k =>
+        exists k',
+          x0' = UCall m k' /\
+          forall x, eutt (k x) (k' x)
+    | _ => x0' = x0
+    end /\
+    Steps (ThreadStep impl') s' (nones n') x0'
+).
+{
+  clear IHhelp_view H5.
+  destruct H2.
+  {
+    destruct n; simpl in *; dependent destruction H3.
+    exists 0, Idle.
+    repeat constructor.
+    unfold ThreadStep in H2.
+    dependent destruction H2.
+  }
+  2:{
+    destruct n; simpl in *; dependent destruction H3.
+    exists 0, (UCall m k').
+    split.
+    exists k'.
+    easy.
+    constructor.
+    unfold ThreadStep in H3.
+    dependent destruction H3.
+  }
+  {
+    punfold H2.
+    assert (eutt_finite m p0 p' x0).
+    eapply derive_eutt_finite.
+    exact H1.
+    easy.
+    exact H3.
+    exact H4.
+    clear H4 H3 st'' H2 H1.
+    induction H5.
+    {
+      exists 0, (Cont m (Return x0)).
+      repeat constructor.
+    }
+    {
+      exists 0, (Cont m (Bind m0 k')).
+      repeat constructor.
+      exists k'.
+      easy.
+    }
+    {
+      apply IHeutt_finite.
+    }
+    {
+      destruct_all.
+      destruct s.
+      {
+        subst.
+        exfalso.
+        eapply contra_eutt_finite.
+        2: exact H5.
+        left.
+        easy.
+      }
+      2:{
+        destruct_all.
+        subst.
+        exfalso.
+        eapply contra_eutt_finite.
+        2: exact H5.
+        right.
+        repeat econstructor.
+      }
+      {
+        destruct p1.
+        destruct_all.
+        subst.
+        exists (S x0), (Cont m0 (Bind e0 x2)).
+        split.
+        exists x2.
+        easy.
+        simpl.
+        econstructor.
+        eapply USilentThreadStep.
+        easy.
+        easy.
+        easy.
+        subst.
+        exists (S x0), (Cont m0 (Return a)).
+        split.
+        easy.
+        simpl.
+        econstructor.
+        eapply USilentThreadStep.
+        easy.
+        easy.
+        easy.
+        subst.
+        exists (S x0), (Cont m0 (NoOp p1)).
+        split.
+        easy.
+        simpl.
+        econstructor.
+        eapply USilentThreadStep.
+        easy.
+        easy.
+        easy.
+      }
+    }
+  }
+}
+destruct_all.
 assert (
   exists st''',
     euttTS_ st'' st''' /\
-    ThreadStep impl' x0 e st'''
+    ThreadStep impl' x2 e st'''
 ).
 {
-  clear H6 H4 IHhelp_view.
-  destruct e, ev.
-  2: congruence.
-  exists st''.
-  split.
-  apply euttTS_refl.
-  easy.
-  unfold ThreadStep in *.
-  dependent destruction H5.
+  clear H7 H5 x1 H3.
+  unfold ThreadStep in H4.
+  destruct x0.
+  subst.
+  destruct e.
+  dependent destruction H4.
+  dependent destruction H4.
   exists (Cont m (impl' _ m)).
   split.
   constructor.
   apply H.
+  constructor; easy.
+  destruct p0.
+  destruct_all.
+  subst.
+  destruct e.
+  dependent destruction H4.
+  eexists (UCall _ x0).
+  split.
   constructor.
   easy.
+  unfold ThreadStep.
+  eapply UCallThreadStep.
   easy.
-  exists st''.
+  easy.
+  dependent destruction H4.
+  subst.
+  destruct e.
+  dependent destruction H4.
+  dependent destruction H4.
+  exists Idle.
+  repeat constructor.
+  subst.
+  destruct e.
+  dependent destruction H4.
+  exists (Cont om p1).
   split.
   apply euttTS_refl.
-  unfold ThreadStep in *.
-  dependent destruction H5.
+  eapply USilentThreadStep.
+  easy.
+  easy.
+  dependent destruction H4.
+  subst.
+  destruct e.
+  dependent destruction H4.
+  destruct_all.
+  exists (Cont om (x0 v)).
+  split.
   constructor.
+  apply H4.
+  subst.
+  eapply URetThreadStep.
   easy.
   easy.
+  dependent destruction H4.
 }
 destruct_all.
-apply IHhelp_view with (s':=x1) in H6.
-destruct_all.
-assert (
-  exists n',
-    Steps (ThreadStep impl') s' (nones n') x0
-).
-{
-  clear IHhelp_view.
-  admit.
-}
+apply IHhelp_view in H8.
 destruct_all.
 eexists (
   if classicT (List.In i (map fst x)) then
-    nones x4 ++ e :: x2
+    nones x1 ++ e :: x4
   else
     nil
 )%list.
 destruct (classicT (In i (map fst x))).
-split.
-intros.
-apply euttTrace_app.
-apply euttTrace_nones.
-destruct e, ev.
-constructor.
-apply H6.
-easy.
-constructor.
-congruence.
-constructor.
-apply H6.
-easy.
-constructor.
-apply H6.
-easy.
-split.
-{
-  intros.
-  contradiction.
-}
-exists x3.
-rewrite <- Steps_app.
-exists x0.
-split.
-easy.
-econstructor.
-exact H8.
-easy.
-{
+3: easy.
+2:{
   repeat split.
   intros.
   contradiction.
   exists s'.
   constructor.
 }
+repeat split.
 {
   intros.
-  subst.
-  exists 0, c.
+  apply euttTrace_app.
+  apply euttTrace_nones.
+  destruct e.
+  destruct ev.
+  2:{
+    repeat constructor.
+    apply H8.
+    easy.
+  }
+  {
+    constructor.
+    apply H8.
+    easy.
+  }
+  {
+    constructor.
+    apply H8.
+    easy.
+  }
+}
+{
+  intros.
+  contradiction.
+}
+{
+  exists x5.
+  rewrite <- Steps_app.
+  exists x2.
+  split.
+  2:{
+    eapply StepsMore with (st'':=x3).
+    easy.
+    easy.
+  }
   easy.
 }
-easy.
+Qed.
 
 (* Crucial Refinement Properties *)
 
