@@ -2087,29 +2087,305 @@ Fixpoint projUnderSeq {E F} (p : Trace (LEvent E F)) : Trace (option (Event E)) 
   | cons _ p => projUnderSeq p
   end.
 
+Fixpoint projUnderThrSeq {E F} (p : Trace (LEvent E F)) : Trace (Event E) :=
+  match p with
+  | nil => nil
+  | cons (UEvent (Some e)) p => cons e (projUnderThrSeq p)
+  | cons _ p => projUnderThrSeq p
+  end.
 
-Open Scope list.
+Fixpoint projOverSeq {E F} (p : Trace (LEvent E F)) : Trace (Event F) :=
+  match p with
+  | nil => nil
+  | cons (OEvent e) p => cons e (projOverSeq p)
+  | cons _ p => projOverSeq p
+  end.
 
-Inductive assoc_view {E F G} : list (LEvent E F) -> list (LEvent F G) -> list (LEvent E G) -> Prop :=
+Inductive assoc_view {E F G} : list (LEvent E F) -> list (LEvent F G) -> Prop :=
 | AVNil :
-    assoc_view nil nil nil
-| AVGEv e tL tH tF :
-    assoc_view tL tH tF ->
-    assoc_view tL (OEvent e :: tH) (OEvent e :: tF)
-| AVFEv e tL tH tF :
-    assoc_view tL tH tF ->
-    assoc_view (OEvent e :: tL) (UEvent (Some e) :: tH) tF
-| AVFSl tL tH tF :
-    assoc_view tL tH tF ->
-    assoc_view tL (UEvent None :: tH) tF
-| AVEEv e tL tH tF :
-    assoc_view tL tH tF ->
-    assoc_view (UEvent e :: tL) tH (UEvent e :: tF).
+    assoc_view nil nil
+| AVGCall e tL tH :
+    assoc_view tL tH ->
+    assoc_view tL (OEvent e :: tH)
+| AVFEv e tL tH :
+    assoc_view tL tH ->
+    assoc_view (OEvent e :: tL) (UEvent (Some e) :: tH)
+| AVFSl tL tH :
+    assoc_view tL tH ->
+    assoc_view tL (UEvent None :: tH)
+| AVEEvt e tL tH :
+    assoc_view tL tH ->
+    assoc_view (UEvent e :: tL) tH.
 
-Axiom undef:forall{a},a.
+Require Import Coq.Program.Wf.
+Require Import Lia.
 
-Definition compTS {E F G} (impl : Impl E F) (impl' : Impl F G) (t : ThreadState F G) (s : ThreadState E F) : ThreadState E G.
-Admitted.
+Lemma projOver_if {E F} :
+  forall i j ev p,
+  @projOverSeq E F (if i =? j then UEvent ev :: p else p) =
+  @projOverSeq E F p.
+intros.
+destruct (i =? j).
+simpl.
+easy.
+easy.
+Qed.
+
+Lemma projUnderThr_if_sil {E F} :
+  forall i j p,
+  @projUnderThrSeq E F (if i =? j then UEvent None :: p else p) =
+  @projUnderThrSeq E F p.
+intros.
+destruct (i =? j).
+simpl.
+easy.
+easy.
+Qed.
+
+Lemma projUnderThr_if_oev {E F} :
+  forall i j p ev,
+  @projUnderThrSeq E F (if i =? j then OEvent ev :: p else p) =
+  @projUnderThrSeq E F p.
+intros.
+destruct (i =? j).
+simpl.
+easy.
+easy.
+Qed.
+
+Program Fixpoint seq_proj_assoc {E F G} i (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)) {measure (length p + length q)} : 
+  projOver p = projUnderThr q ->
+  projOverSeq (projPoint i eqb p) = projUnderThrSeq (projPoint i eqb q) := _.
+Next Obligation.
+destruct p, q.
+easy.
+
+{
+  destruct t, l.
+  destruct ev; simpl in *.
+  congruence.
+  destruct (i =? n).
+  apply (@seq_proj_assoc E F G) with (p:=nil).
+  simpl.
+  lia.
+  easy.
+  apply (@seq_proj_assoc E F G) with (p:=nil).
+  simpl.
+  lia.
+  easy.
+  simpl.
+  destruct (i =? n).
+  apply (@seq_proj_assoc E F G) with (p:=nil).
+  simpl.
+  lia.
+  easy.
+  apply (@seq_proj_assoc E F G) with (p:=nil).
+  simpl.
+  lia.
+  easy.
+}
+
+{
+  destruct t, l; simpl in *.
+  destruct ev; simpl in *.
+  destruct (i =? n).
+  simpl.
+  apply (@seq_proj_assoc E F G) with (q:=nil).
+  simpl.
+  lia.
+  easy.
+  apply (@seq_proj_assoc E F G) with (q:=nil).
+  simpl.
+  lia.
+  easy.
+  destruct (i =? n).
+  simpl.
+  apply (@seq_proj_assoc E F G) with (q:=nil).
+  simpl.
+  lia.
+  easy.
+  apply (@seq_proj_assoc E F G) with (q:=nil).
+  simpl.
+  lia.
+  easy.
+  congruence.
+}
+{
+  destruct t, t0.
+  destruct l, l0.
+  {
+    simpl (@projOverSeq E F _).
+    rewrite (projOver_if (E:=E) (F:=F)).
+    apply seq_proj_assoc.
+    simpl.
+    lia.
+    easy.
+  }
+  {
+    simpl (projUnderThrSeq _).
+    rewrite (projUnderThr_if_oev (E:=F) (F:=G)).
+    apply seq_proj_assoc.
+    simpl.
+    lia.
+    easy.
+  }
+  destruct ev0.
+  {
+    simpl in *.
+    dependent destruction H.
+    assert (i = n0 \/ i <> n0) by apply excluded_middle.
+    destruct H.
+    subst.
+    rewrite help31.
+    simpl.
+    f_equal.
+    apply seq_proj_assoc.
+    simpl.
+    lia.
+    easy.
+    rewrite help32.
+    2: easy.
+    apply seq_proj_assoc.
+    simpl.
+    lia.
+    easy.
+  }
+  {
+    simpl (projUnderThrSeq _).
+    rewrite (projUnderThr_if_sil (E:=F) (F:=G)).
+    apply seq_proj_assoc.
+    simpl.
+    lia.
+    easy.
+  }
+  {
+    simpl (projUnderThrSeq _).
+    rewrite (projUnderThr_if_oev (E:=F) (F:=G)).
+    apply seq_proj_assoc.
+    simpl.
+    lia.
+    easy.
+  }
+}
+Qed.
+
+
+Program Fixpoint get_assoc_view {E F G} (p : Trace (LEvent E F)) (q : Trace (LEvent F G)) {measure (length p + length q)} : 
+  projOverSeq p = projUnderThrSeq q ->
+  assoc_view p q := _.
+Next Obligation.
+intros.
+destruct p, q.
+constructor.
+{
+  destruct l; simpl in *.
+  destruct ev.
+  congruence.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+}
+{
+  destruct l; simpl in *.
+  destruct ev.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  congruence.
+}
+{
+  destruct l, l0.
+  destruct ev, ev0.
+  simpl in *.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  simpl in *.
+  constructor.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  simpl in *.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  simpl in *.
+  constructor.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  simpl in *.
+  constructor.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  simpl in *.
+  destruct ev0.
+  dependent destruction H.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+  simpl in *.
+  constructor.
+  apply get_assoc_view.
+  simpl.
+  lia.
+  easy.
+}
+Qed.
+
+Lemma derive_is_nil {E F} :
+  forall p : Trace (LEvent E F),
+  projUnderSeq p = nil ->
+  projOverSeq p = nil ->
+  p = nil.
+intros.
+destruct p.
+easy.
+destruct l.
+simpl in *.
+congruence.
+simpl in *.
+congruence.
+Qed.
+
+Definition substTS {E F G} (impl : Impl E F) (s : ThreadState F G) : ThreadState E G :=
+  match s with
+  | Idle => Idle
+  | Cont m p => Cont m (substProg impl p)
+  | UCall m k => UCall m (fun x => substProg impl (k x))
+  end.
 
 Theorem layerRefines_VComp_assoc {E F G} : 
   forall  (spec : Spec E) (impl : Impl E F) (impl' : Impl F G),
@@ -2123,142 +2399,37 @@ subst.
 simpl (USpec (overObj (spec :> impl) :> impl')) in H0.
 rewrite decompOverObj in H0.
 destruct_all.
-simpl in *.
 symmetry in H.
-assert (H' := H).
-apply full_trace in H.
-destruct_all.
-apply swapEx.
-exists x2.
-move H' after H5.
-repeat (unfold InterState in *; simpl in *).
-cut (
-  exists st : ThreadsSt E G,
-    Steps (ThreadsStep (impl |> impl')) allIdle x2 st
-).
-{
-  intros.
-  destruct_all.
-  exists (x3, snd (snd x)).
-  repeat split; try easy.
-  simpl.
-  apply takeThr in H.
-  rewrite H.
-  easy.
-  apply isOverObjTrace.
-}
-unfold ThreadsSt.
-unfold ThreadsStep in *.
-cut (
-  exists st, forall i,
-    (fun i sti =>
-      Steps (ThreadStep (impl |> impl')) (allIdle i) (projPoint i eqb x2) sti)
-    i (st i)
-).
-{
-  intros.
-  destruct_all.
-  exists x3.
-  rewrite (decompPointSteps eqb (ThreadStep (impl |> impl'))).
-  easy.
-  exact threadDecEq.
-}
-rewrite (decompPointSteps eqb (ThreadStep impl)) in H3.
-2: exact threadDecEq.
-rewrite (decompPointSteps eqb (ThreadStep impl')) in H1.
-2: exact threadDecEq.
-apply choice.
-intros.
-specialize (H3 x3).
-specialize (H1 x3).
-move H4 before H2.
-rename x1 into tL.
-rename x0 into tH.
-rename x2 into tF.
-clear H4 H2 H0.
-revert H1 H3.
-cut (
-  forall p q r,
-  Steps (ThreadStep impl') (allIdle x3) q (fst x x3) ->
-  Steps (ThreadStep impl) (allIdle x3) p (fst (snd x) x3) ->
-  exists y,
-    Steps (ThreadStep (impl |> impl')) (allIdle x3) r y
-).
-{
-  intros.
-  eassert _ by (eapply (H0 _ _ (projPoint x3 eqb tF) H1 H3)).
-  easy.
-}
-intros.
-destruct x, p0.
+destruct x, s.
 simpl in *.
-clear H H' H5 tH tL tF s.
-exists (compTS impl impl' (t x3) (t0 x3)).
+eexists (fun i => substTS impl (t i), s).
+simpl.
 cut (
-  Steps (ThreadStep (impl |> impl')) (allIdle x3) r (compTS impl impl' (t x3) (t0 x3))
+  forall i, exists q,
+    projOverSeq (projPoint i eqb x0) = projOverSeq q /\
+    projUnderThrSeq (projPoint i eqb x1) = projUnderThrSeq q /\
+    Steps (ThreadStep (impl |> impl')) (allIdle i) q (substTS impl (t i))
 ).
 {
   intros.
+  apply choice in H5.
   destruct_all.
-  easy.
-}
-assert (
-  @allIdle E G x3 = compTS impl impl' (@allIdle F G x3) (@allIdle E F x3)
-).
-{
   admit.
 }
-rewrite H. clear H.
-generalize dependent (@allIdle E F x3).
-generalize dependent (@allIdle F G x3).
-eassert (assoc_view p q r) by admit.
-induction H; intros.
-{
-  dependent destruction H0.
-  dependent destruction H1.
-  constructor.
-}
-{
-  dependent destruction H0.
-  unfold ThreadStep in H0.
-  dependent destruction H0.
-  {
-    subst.
-    eapply StepsMore with (st'':= compTS impl impl' (Cont m (impl' _ m)) t2).
-    econstructor.
-    admit.
-    admit.
-    apply IHassoc_view; easy.
-  }
-  {
-    subst.
-    eapply StepsMore with (st'':= compTS impl impl' Idle t2).
-    econstructor.
-    admit.
-    admit.
-    apply IHassoc_view; easy.
-  }
-}
-{
-  dependent destruction H0.
-  dependent destruction H2.
-  unfold ThreadStep in H0, H2.
-  destruct e.
-  {
-    dependent destruction H0.
-    dependent destruction H2.
-    admit.
-  }
-  admit.
-}
-{
-  
-  dependent destruction H0.
-  unfold ThreadStep in H0.
-  dependent destruction H0.
-  subst.
-  apply IHassoc_view.
-  admit.
-  admit.
-}
-Admitted.
+clear H4 H2 H0.
+intros.
+rewrite (decompPointSteps eqb (ThreadStep impl)) in H3.
+rewrite (decompPointSteps eqb (ThreadStep impl')) in H1.
+specialize (H3 i).
+specialize (H1 i).
+2: exact threadDecEq.
+2: exact threadDecEq.
+apply (seq_proj_assoc i) in H.
+generalize dependent (projPoint i eqb x1). clear x1.
+generalize dependent (projPoint i eqb x0). clear x0.
+intros.
+rename l into tH.
+rename l0 into tL.
+apply get_assoc_view in H.
+move tL after tH.
+move H3 after H1.
