@@ -53,7 +53,7 @@ Qed.
 (* overObj and InterStep Properties *)
 
 Lemma decompUnderSteps {E F : ESig} {spec : Spec E} :
-  InterUSteps (F:=F) (spec:=spec) =
+  InterUSteps F spec =
   fun s p t =>
     Steps (Step spec) (snd s) (projSilent p) (snd t) /\
     Steps (PointStep UnderThreadStep) (fst s) p (fst t).

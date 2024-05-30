@@ -1,21 +1,20 @@
 From Coq Require Import
   List
   Relations
-  Init.Nat.
+  Init.Nat
+  Program.Equality
+  Logic.FunctionalExtensionality.
 
 From LHL.Util Require Import
   Util
   ListUtil
-  TransUtil.
+  TransUtil
+  Tactics.
 
 From LHL.Core Require Import
   Program
   Specs
   Eutt.
-
-Set Implicit Arguments.
-Set Contextual Implicit.
-Unset Strict Implicit.
 
 (* Traces *)
 
@@ -102,9 +101,9 @@ Variant UnderThreadStep {E F : ESig} :
   th = Cont om (Bind um k) ->
   th' = UCall om k ->
   UnderThreadStep th (Some (CallEv um)) th'
-| URetThreadStep A th th' (um : E A) om v k :
+| URetThreadStep A th th' um om k v :
   th = UCall om k ->
-  th' = Cont om (k v) ->
+  th' = Cont (A:=A) om (k v) ->
   UnderThreadStep th (Some (RetEv um v)) th'
 | USilentThreadStep A th th' om (p : Prog E A) :
   th = Cont om (NoOp p) ->
@@ -117,7 +116,7 @@ Definition ThreadStep {E F : ESig} (M : Impl E F) (s : ThreadState E F) (e : LEv
   | OEvent e => OverThreadStep M s e t
   end.
 
-Definition ThreadsStep E F (M : Impl E F)
+Definition ThreadsStep {E F} (M : Impl E F)
   : ThreadsSt E F -> ThreadLEvent E F -> ThreadsSt E F -> Prop :=
   PointStep (ThreadStep (E := E) M).
 
@@ -182,7 +181,7 @@ Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F :=
     State := InterState F lay.(USpec);
     Step thst ev thst'' :=
       exists thst' p,
-        InterUSteps thst p thst' /\
+        InterUSteps F lay.(USpec) thst p thst' /\
         InterOStep lay.(LImpl) (fst ev) (fst thst') (snd ev) (fst thst'') /\
         snd thst' = snd thst'';
     Init := (allIdle, lay.(USpec).(Init))
@@ -195,3 +194,150 @@ Definition specRefines {E : ESig} (spec : Spec E) (spec': Spec E) : Prop :=
 
 Definition layerRefines {E E' F} (lay : @Layer E F) (lay': @Layer E' F)  := 
   specRefines (overObj lay) (overObj lay').
+
+(* Interleaving *)
+
+Inductive Interleave {E F} : (nat -> Trace (LEvent E F)) -> Trace (ThreadLEvent E F) -> Prop :=
+| InterleaveNil qc :
+    (forall i, qc i = nil) ->
+    Interleave qc nil
+| InterleaveCons i e q qc p :
+    qc i = e :: q ->
+    Interleave (fun j => if i =? j then q else qc j) p ->
+    Interleave qc ((i, e) :: p).
+
+Lemma uninterleave {E F} :
+  forall qc p,
+  @Interleave E F qc p ->
+  forall i,
+    qc i = projPoint i eqb p.
+intros.
+generalize dependent qc.
+induction p; intros; dependent destruction H.
+rewrite H.
+easy.
+simpl.
+assert (i = i0 \/ i <> i0) by apply excluded_middle.
+destruct H1.
+subst.
+rewrite H.
+rewrite eqb_id.
+f_equal.
+apply IHp in H0.
+rewrite eqb_id in H0.
+easy.
+rewrite eqb_nid.
+2: easy.
+apply IHp in H0.
+rewrite eqb_nid in H0.
+2: easy.
+easy.
+Qed.
+
+Inductive set_list : list nat -> Type :=
+| SLNil : set_list nil
+| SLCons i is :
+  ~In i is ->
+  set_list is ->
+  set_list (i :: is).
+
+Axiom classicT : forall P, {P}+{~P}.
+
+Fixpoint dedup (is : list nat) : list nat :=
+  match is with
+  | nil => nil
+  | cons i is =>
+      if classicT (List.In i is) then
+        dedup is
+      else
+        cons i (dedup is)
+  end.
+
+Lemma dedup_correct :
+  forall i is, List.In i is <-> List.In i (dedup is).
+firstorder.
+induction is.
+contradiction.
+simpl.
+destruct (classicT (In a is)).
+simpl in *.
+destruct H.
+subst.
+apply IHis.
+easy.
+apply IHis.
+easy.
+simpl in *.
+destruct H.
+left.
+easy.
+right.
+apply IHis.
+easy.
+induction is.
+contradiction.
+simpl in *.
+destruct (classicT (In a is)).
+right.
+apply IHis.
+easy.
+simpl in *.
+destruct H.
+left.
+easy.
+right.
+apply IHis.
+easy.
+Qed.
+
+Lemma dedup_is_set : forall xs, set_list (dedup xs).
+intros.
+induction xs.
+constructor.
+simpl.
+destruct (classicT (In a xs)).
+easy.
+constructor.
+rewrite <- dedup_correct.
+easy.
+easy.
+Qed.
+
+Lemma interleave {E F} :
+  forall is,
+  set_list is ->
+  forall qc,
+    (forall i, ~In i is -> qc i = nil) ->
+    exists p,
+      @Interleave E F qc p.
+intros.
+generalize dependent qc.
+induction H; intros.
+exists nil.
+constructor.
+intros.
+apply H0.
+easy.
+specialize (IHset_list (fun j => if i =? j then nil else qc j)).
+eassert (exists p, Interleave _ p).
+apply IHset_list.
+intros.
+assert (i = i0 \/ i <> i0) by apply excluded_middle.
+destruct H2.
+subst.
+rewrite eqb_id.
+easy.
+rewrite eqb_nid.
+apply H0.
+unfold not.
+intros.
+destruct H3.
+subst.
+congruence.
+apply H1.
+easy.
+easy.
+destruct_all.
+exists (List.map (fun e => (i, e)) (qc i) ++ x).
+clear IHset_list H0 H n.
+Admitted.

@@ -25,29 +25,6 @@ From Coq Require Import
 From Paco Require Import
   paco.
 
-Lemma help31 : forall n : nat, n =? n = true.
-intros.
-induction n.
-easy.
-simpl.
-f_equal.
-easy.
-Qed.
-
-Lemma help32 : forall n m : nat, n <> m -> n =? m = false.
-fix rec 1.
-intros.
-destruct n.
-destruct m.
-easy.
-easy.
-destruct m.
-easy.
-simpl in *.
-apply rec.
-congruence.
-Qed.
-
 Lemma threadDecEq : @IsEqDec ThreadName eqb.
 constructor.
 intros.
@@ -67,7 +44,7 @@ f_equal.
 apply rec.
 easy.
 subst.
-rewrite help31.
+rewrite eqb_id.
 easy.
 intros.
 firstorder.
@@ -83,7 +60,7 @@ easy.
 simpl in *.
 apply rec in H. clear rec.
 congruence.
-rewrite help32.
+rewrite eqb_nid.
 easy.
 easy.
 Qed.
@@ -309,7 +286,7 @@ destruct ev.
 easy.
 destruct (get_nones j p).
 simpl.
-rewrite help32.
+rewrite eqb_nid.
 easy.
 easy.
 easy.
@@ -360,53 +337,6 @@ Qed.
 
 Axiom classicT : forall P : Prop, {P} + {~P}.
 
-Fixpoint dedup (is : list nat) : list nat :=
-  match is with
-  | nil => nil
-  | cons i is =>
-      if classicT (List.In i is) then
-        dedup is
-      else
-        cons i (dedup is)
-  end.
-
-Lemma dedup_correct :
-  forall i is, List.In i is <-> List.In i (dedup is).
-firstorder.
-induction is.
-contradiction.
-simpl.
-destruct (classicT (In a is)).
-simpl in *.
-destruct H.
-subst.
-apply IHis.
-easy.
-apply IHis.
-easy.
-simpl in *.
-destruct H.
-left.
-easy.
-right.
-apply IHis.
-easy.
-induction is.
-contradiction.
-simpl in *.
-destruct (classicT (In a is)).
-right.
-apply IHis.
-easy.
-simpl in *.
-destruct H.
-left.
-easy.
-right.
-apply IHis.
-easy.
-Qed.
-
 Lemma help41 (P Q : Prop) :
   ~(P \/ Q) <-> (~P /\ ~Q).
 firstorder.
@@ -435,30 +365,10 @@ clear IHis H0.
 induction (qc a).
 easy.
 simpl.
-rewrite help32.
+rewrite eqb_nid.
 easy.
 easy.
 apply IHis.
-easy.
-Qed.
-
-Inductive set_list : list nat -> Type :=
-| SLNil : set_list nil
-| SLCons i is :
-  ~In i is ->
-  set_list is ->
-  set_list (i :: is).
-
-Lemma dedup_is_set : forall xs, set_list (dedup xs).
-intros.
-induction xs.
-constructor.
-simpl.
-destruct (classicT (In a xs)).
-easy.
-constructor.
-rewrite <- dedup_correct.
-easy.
 easy.
 Qed.
 
@@ -499,7 +409,7 @@ clear.
 induction (qc i).
 easy.
 simpl.
-rewrite help31.
+rewrite eqb_id.
 f_equal.
 easy.
 apply tnones_notin.
@@ -515,7 +425,7 @@ clear IHset_list H0 n H.
 induction (qc i0).
 easy.
 simpl.
-rewrite help32.
+rewrite eqb_nid.
 easy.
 easy.
 apply IHset_list.
@@ -630,21 +540,21 @@ induction p; intros.
   destruct H0.
   {
     subst.
-    rewrite help31.
+    rewrite eqb_id.
     induction t0.
     simpl.
     induction (qc a).
     easy.
     simpl.
-    rewrite help32.
+    rewrite eqb_nid.
     easy.
     easy.
     simpl.
-    rewrite help32.
+    rewrite eqb_nid.
     easy.
     easy.
   }
-  rewrite help32.
+  rewrite eqb_nid.
   easy.
   easy.
 }
@@ -659,7 +569,7 @@ induction p; intros.
     destruct H0.
     {
       subst.
-      rewrite help31.
+      rewrite eqb_id.
       assert (forall m t, @get_nones E F m t = (fst (get_nones m t), snd (get_nones m t))).
       intros. destruct (get_nones m t). easy.
       rewrite H0.
@@ -674,7 +584,7 @@ induction p; intros.
       easy.
       easy.
       simpl.
-      rewrite help32.
+      rewrite eqb_nid.
       2: easy.
       specialize (IHp (snd (get_nones n0 t0))).
       specialize (IHp (fun j => if n0 =? j then snd (get_nones n0 (qc n0)) else qc j)).
@@ -693,7 +603,7 @@ induction p; intros.
       rewrite H1 in IHp. clear H1.
       easy.
     }
-    rewrite help32.
+    rewrite eqb_nid.
     2: easy.
     destruct (get_nones n0 (qc n0)).
     specialize (IHp t0).
@@ -707,11 +617,11 @@ induction p; intros.
     assert (n = j \/ n <> j) by apply excluded_middle.
     destruct H1.
     subst.
-    rewrite help31.
-    rewrite help32.
+    rewrite eqb_id.
+    rewrite eqb_nid.
     easy.
     easy.
-    rewrite help32.
+    rewrite eqb_nid.
     2: easy.
     easy.
     rewrite H1 in IHp.
@@ -722,11 +632,11 @@ induction p; intros.
     destruct H2.
     subst.
     {
-      rewrite help31.
+      rewrite eqb_id.
       f_equal.
       easy.
     }
-    rewrite help32.
+    rewrite eqb_nid.
     2: easy.
     easy.
   }
@@ -736,7 +646,7 @@ induction p; intros.
     destruct H0.
     {
       subst.
-      rewrite help31.
+      rewrite eqb_id.
       assert (forall m t, @get_nones E F m t = (fst (get_nones m t), snd (get_nones m t))).
       intros. destruct (get_nones m t). easy.
       rewrite H0.
@@ -751,7 +661,7 @@ induction p; intros.
       easy.
       easy.
       simpl.
-      rewrite help32.
+      rewrite eqb_nid.
       2: easy.
       specialize (IHp (snd (get_nones n0 t0))).
       specialize (IHp (fun j => if n0 =? j then snd (get_nones n0 (qc n0)) else qc j)).
@@ -770,7 +680,7 @@ induction p; intros.
       rewrite H1 in IHp. clear H1.
       easy.
     }
-    rewrite help32.
+    rewrite eqb_nid.
     2: easy.
     destruct (get_nones n0 (qc n0)).
     specialize (IHp t0).
@@ -784,11 +694,11 @@ induction p; intros.
     assert (n = j \/ n <> j) by apply excluded_middle.
     destruct H1.
     subst.
-    rewrite help31.
-    rewrite help32.
+    rewrite eqb_id.
+    rewrite eqb_nid.
     easy.
     easy.
-    rewrite help32.
+    rewrite eqb_nid.
     2: easy.
     easy.
     rewrite H1 in IHp.
@@ -799,11 +709,11 @@ induction p; intros.
     destruct H2.
     subst.
     {
-      rewrite help31.
+      rewrite eqb_id.
       f_equal.
       easy.
     }
-    rewrite help32.
+    rewrite eqb_nid.
     2: easy.
     easy.
   }
@@ -855,7 +765,7 @@ destruct ev.
   destruct H1.
   {
     subst.
-    rewrite help31 in *.
+    rewrite eqb_id in *.
     apply euttTraceEvt in H0. 2: easy.
     destruct_all.
     rewrite H1.
@@ -870,34 +780,34 @@ destruct ev.
       induction (nones x).
       easy.
       simpl.
-      rewrite help31.
+      rewrite eqb_id.
       f_equal.
       easy.
     }
     easy.
     simpl.
-    rewrite help31.
+    rewrite eqb_id.
     f_equal.
     rewrite get_nones_beh.
     simpl.
     2: easy.
     assert (x0 = (fun j => if n =? j then x0 else qc j) n).
-    rewrite help31.
+    rewrite eqb_id.
     easy.
     rewrite H2 at 1.
     change (if n =? n then x0 else qc n)
     with ((fun j => if n =? j then x0 else qc j) n).
     apply IHp.
-    rewrite help31.
+    rewrite eqb_id.
     easy.
-    rewrite help31.
+    rewrite eqb_id.
     intros.
     apply H in H3.
     rewrite H1 in H3.
     destruct x; simpl in *; congruence.
   }
   {
-    rewrite help32. rewrite help32 in H0.
+    rewrite eqb_nid. rewrite eqb_nid in H0.
     2: easy. 2: easy.
     assert (projPoint i eqb (fst (get_nones n (qc n))) = nil).
     {
@@ -910,7 +820,7 @@ destruct ev.
       simpl.
       destruct (get_nones n l0).
       simpl.
-      rewrite help32.
+      rewrite eqb_nid.
       easy.
       easy.
       simpl.
@@ -921,7 +831,7 @@ destruct ev.
     simpl in *.
     rewrite H2.
     simpl.
-    rewrite help32.
+    rewrite eqb_nid.
     2: easy.
     rewrite help37.
     apply IHp.
@@ -936,7 +846,7 @@ destruct ev.
   destruct H1.
   {
     subst.
-    rewrite help31 in *.
+    rewrite eqb_id in *.
     apply euttTraceEvt in H0. 2: easy.
     destruct_all.
     rewrite H1.
@@ -951,34 +861,34 @@ destruct ev.
       induction (nones x).
       easy.
       simpl.
-      rewrite help31.
+      rewrite eqb_id.
       f_equal.
       easy.
     }
     easy.
     simpl.
-    rewrite help31.
+    rewrite eqb_id.
     f_equal.
     rewrite get_nones_beh.
     simpl.
     2: easy.
     assert (x0 = (fun j => if n =? j then x0 else qc j) n).
-    rewrite help31.
+    rewrite eqb_id.
     easy.
     rewrite H2 at 1.
     change (if n =? n then x0 else qc n)
     with ((fun j => if n =? j then x0 else qc j) n).
     apply IHp.
-    rewrite help31.
+    rewrite eqb_id.
     easy.
-    rewrite help31.
+    rewrite eqb_id.
     intros.
     apply H in H3.
     rewrite H1 in H3.
     destruct x; simpl in *; congruence.
   }
   {
-    rewrite help32. rewrite help32 in H0.
+    rewrite eqb_nid. rewrite eqb_nid in H0.
     2: easy. 2: easy.
     assert (projPoint i eqb (fst (get_nones n (qc n))) = nil).
     {
@@ -991,7 +901,7 @@ destruct ev.
       simpl.
       destruct (get_nones n l0).
       simpl.
-      rewrite help32.
+      rewrite eqb_nid.
       easy.
       easy.
       simpl.
@@ -1002,7 +912,7 @@ destruct ev.
     simpl in *.
     rewrite H2.
     simpl.
-    rewrite help32.
+    rewrite eqb_nid.
     2: easy.
     rewrite help37.
     apply IHp.
@@ -1042,7 +952,7 @@ destruct a.
 simpl in *.
 rewrite help41 in H.
 destruct_all.
-rewrite help32.
+rewrite eqb_nid.
 apply IHp.
 easy.
 easy.
@@ -1110,7 +1020,7 @@ split.
     simpl in *.
     assert (H' := H).
     specialize (H n).
-    rewrite help31 in H.
+    rewrite eqb_id in H.
     apply euttTraceEvt in H.
     destruct_all.
     rewrite H0.
@@ -1133,12 +1043,12 @@ split.
     assert (i = n \/ i <> n) by apply excluded_middle.
     destruct H1.
     subst.
-    repeat rewrite help31 in *.
+    repeat rewrite eqb_id in *.
     rewrite H0 in H'.
     apply help23_t in H'.
     dependent destruction H'.
     easy.
-    rewrite help32. rewrite help32 in H'.
+    rewrite eqb_nid. rewrite eqb_nid in H'.
     easy.
     easy.
     easy.
@@ -1153,7 +1063,7 @@ split.
         easy.
       }
       assert (forall i j, qc i <> qc j -> i <> j) by congruence.
-      apply help32.
+      apply eqb_nid.
       apply H2.
       rewrite H0.
       rewrite H1.
@@ -1167,7 +1077,7 @@ split.
     simpl in *.
     assert (H' := H).
     specialize (H n).
-    rewrite help31 in H.
+    rewrite eqb_id in H.
     apply euttTraceEvt in H.
     destruct_all.
     rewrite H0.
@@ -1190,12 +1100,12 @@ split.
     assert (i = n \/ i <> n) by apply excluded_middle.
     destruct H1.
     subst.
-    repeat rewrite help31 in *.
+    repeat rewrite eqb_id in *.
     rewrite H0 in H'.
     apply help23_t in H'.
     dependent destruction H'.
     easy.
-    rewrite help32. rewrite help32 in H'.
+    rewrite eqb_nid. rewrite eqb_nid in H'.
     easy.
     easy.
     easy.
@@ -1210,7 +1120,7 @@ split.
         easy.
       }
       assert (forall i j, qc i <> qc j -> i <> j) by congruence.
-      apply help32.
+      apply eqb_nid.
       apply H2.
       rewrite H0.
       rewrite H1.
@@ -1886,33 +1796,6 @@ rewrite IHp.
 all: easy.
 Qed.
 
-Lemma projUnderSteps {E F} {lay : Layer E F} :
-  forall s p t,
-  BwdSteps (Step (overObj lay)) s p t ->
-  exists q,
-  BwdSteps (Step lay.(USpec)) (snd s) q (snd t).
-intros.
-generalize dependent t.
-induction p.
-intros.
-dependent destruction H.
-exists Start.
-constructor.
-intros.
-dependent destruction H.
-apply IHp in H.
-simpl in H0.
-destruct_all.
-eexists.
-eapply BwdSteps_app.
-exact H.
-rewrite decompUnderSteps in H0.
-destruct_all.
-rewrite <- H2.
-apply Steps_iso in H0.
-exact H0.
-Qed.
-
 Theorem mkLayer_monotonic {E F} :
   forall (spec spec' : Spec E) (impl : Impl E F),
   specRefines spec' spec -> 
@@ -1936,117 +1819,6 @@ easy.
 simpl.
 split.
 easy.
-easy.
-Qed.
-
-Lemma help3 {A} {xs : list A} {x : A} :
-  to_bwd (app xs (cons x nil)) = Snoc (to_bwd xs) x.
-induction xs.
-easy.
-simpl.
-rewrite IHxs.
-clear IHxs.
-destruct xs; easy.
-Qed.
-
-Fixpoint projOver_bwd {E F} (p : bwd_list (ThreadLEvent E F)) : bwd_list (ThreadEvent F) :=
-  match p with
-  | Start => Start
-  | Snoc p (i, OEvent e) => Snoc (projOver_bwd p) (i, e)
-  | Snoc p _ => projOver_bwd p
-  end.
-
-Inductive over_under_view {E F G} : Trace (ThreadLEvent E F) -> Trace (ThreadLEvent F G) -> Prop :=
-| OUVNil :
-    over_under_view nil nil
-| OUVFEvt i e p q :
-    over_under_view p q ->
-    over_under_view ((i, OEvent e) :: p) ((i, UEvent (Some e)) :: q)
-| OVUFSilent i p q :
-    over_under_view p q ->
-    over_under_view p ((i, UEvent None) :: q)
-| OUVEEvt i e p q :
-    over_under_view p q ->
-    over_under_view ((i, UEvent e) :: p) q
-| OUVGEvt i e p q :
-    over_under_view p q ->
-    over_under_view p ((i, OEvent e) :: q).
-
-
-Lemma full_trace {E F G} :
-  forall (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)),
-  projOver p = projUnderThr q ->
-  exists (r : Trace (ThreadLEvent E G)),
-    projUnder r = projUnder p /\
-    projOver r = projOver q.
-intros.
-assert (over_under_view p q).
-{
-  generalize dependent p.
-  induction q.
-  {
-    intros.
-    induction p.
-    constructor.
-    destruct a, l; simpl in *.
-    constructor.
-    apply IHp.
-    easy.
-    congruence.
-  }
-  {
-    intros.
-    destruct a, l; simpl in *.
-    destruct ev; simpl in *.
-    2:{
-      constructor.
-      apply IHq.
-      easy.
-    }
-    2:{
-      constructor.
-      apply IHq.
-      easy.
-    }
-    {
-      generalize dependent q.
-      induction p; intros; simpl in *.
-      congruence.
-      destruct a, l; simpl in *.
-      constructor.
-      apply IHp.
-      easy.
-      easy.
-      dependent destruction H.
-      constructor.
-      apply IHq.
-      easy.
-    }
-  }
-}
-clear H.
-induction H0.
-exists nil.
-easy.
-simpl.
-easy.
-simpl.
-easy.
-simpl.
-destruct_all.
-exists ((i, UEvent e) :: x).
-simpl.
-split.
-f_equal.
-easy.
-easy.
-simpl.
-destruct_all.
-exists ((i, OEvent e) :: x).
-simpl.
-split.
-easy.
-f_equal.
 easy.
 Qed.
 
@@ -2116,6 +1888,61 @@ Inductive assoc_view {E F G} : list (LEvent E F) -> list (LEvent F G) -> Prop :=
 | AVEEvt e tL tH :
     assoc_view tL tH ->
     assoc_view (UEvent e :: tL) tH.
+
+Definition substTS {E F G} (impl : Impl E F) (s : ThreadState F G) : ThreadState E G :=
+  match s with
+  | Idle => Idle
+  | Cont m p => Cont m (substProg impl p)
+  | UCall m k => UCall m (fun x => substProg impl (k x))
+  end.
+
+Definition assoc_state E F G : Type := ThreadState E F * ThreadState F G * ThreadState E G.
+
+
+(* at each step, says what the three states are *before* the event *)
+(* Inductive assoc_step {E F G} {impl : Impl E F} {impl' : Impl F G} : assoc_state E F G -> assoc_state E F G -> Prop :=
+| ASGCall sL R (gm : G R) :
+  assoc_step
+    (sL, Idle, Idle)
+    (sL, Cont gm (impl' _ gm), Cont gm (substProg impl (impl' _ gm)))
+| ASGRet sL R (gm : G R) v :
+  assoc_step
+    (sL, Cont gm (Return v), Cont gm (Return v))
+    (sL, Idle, Idle)
+| ASFCall R (gm : G R) (fm : F R) fk fp :
+  assoc_step
+    (Idle, Cont gm (Bind fm fk), Cont gm (NoOp fp))
+    (Cont fm (impl _ fm), UCall gm fk, Cont gm fp)
+| ASFRet R (gm : G R) (fm : F R) k v sF :
+  assoc_step
+    (Cont fm (Return v), UCall gm k, sF)
+    (Idle, Cont gm (k v), sF)
+| ASFNop sL R (gm : G R) p sF :
+  assoc_step
+    (sL, Cont gm (NoOp p), sF)
+    (sL, Cont gm p, sF)
+| ASECall R (fm : F R) (em : E R) k sH sF :
+  assoc_step
+    (Cont fm (Bind em k), sH, sF)
+    (UCall fm k, sH, sF)
+| ASERet R (fm : F R) v sH sF :
+  assoc_step
+    (Cont fm (Return v), sH, sF)
+    (Idle, sH, sF)
+| ASENop R fm (p : Prog E R) sH sF :
+  assoc_step
+    (Cont fm (NoOp p), sH, sF)
+    (Cont fm p, sH, sF)
+.
+Arguments assoc_step {E F G} impl impl'. *)
+
+Ltac destruct_steps :=
+repeat match goal with
+| [ H : Steps ?step ?s (?e :: ?es) ?t |- _] => dependent destruction H
+| [ H : Steps ?step ?s nil ?t |- _] => dependent destruction H
+| [ H : ThreadStep ?impl ?s ?e ?t |- _] => unfold ThreadStep in H; dependent destruction H
+end;
+subst.
 
 Require Import Coq.Program.Wf.
 Require Import Lia.
@@ -2236,14 +2063,14 @@ easy.
     assert (i = n0 \/ i <> n0) by apply excluded_middle.
     destruct H.
     subst.
-    rewrite help31.
+    rewrite eqb_id.
     simpl.
     f_equal.
     apply seq_proj_assoc.
     simpl.
     lia.
     easy.
-    rewrite help32.
+    rewrite eqb_nid.
     2: easy.
     apply seq_proj_assoc.
     simpl.
@@ -2380,12 +2207,186 @@ simpl in *.
 congruence.
 Qed.
 
-Definition substTS {E F G} (impl : Impl E F) (s : ThreadState F G) : ThreadState E G :=
-  match s with
-  | Idle => Idle
-  | Cont m p => Cont m (substProg impl p)
-  | UCall m k => UCall m (fun x => substProg impl (k x))
-  end.
+(* the state *before* the event *)
+Inductive assoc_states {E F G} {impl : Impl E F} {impl' : Impl F G} : ThreadState E F -> ThreadState F G -> ThreadState E G -> Prop :=
+| ASGCall :
+    assoc_states Idle Idle Idle
+| ASFCall A B (gm : G A) (fm : F B) k :
+    assoc_states Idle (Cont gm (Bind fm k)) (Cont gm (NoOp (bindSubstProg impl k (impl _ fm))))
+| ASFNoOp A m p :
+  assoc_states Idle (Cont m (NoOp p)) (Cont m (NoOp (A:=A) (substProg impl p)))
+| ASECall A R gm fm em ek fk :
+    assoc_states (Cont fm (Bind em ek)) (UCall gm fk) (Cont gm (Bind (A:=A) em (fun x => bindSubstProg (R:=R) impl fk (ek x))))
+| ASENoOp R k om p um :
+    assoc_states (Cont um (NoOp p)) (UCall om k) (Cont om (NoOp (bindSubstProg (R:=R) impl k p)))
+| ASEBind A gm fm ek fk :
+    assoc_states (UCall (A:=A) fm ek) (UCall (B:=A) gm fk) (UCall gm (fun x => bindSubstProg impl fk (ek x)))
+| ASERet A gm fm v fk :
+    assoc_states (Cont fm (Return v)) (UCall gm fk) (Cont (A:=A) gm (NoOp (substProg impl (fk v))))
+| ASFRet A (gm : G A) v :
+    assoc_states Idle (Cont gm (Return v)) (Cont gm (Return v))
+.
+Arguments assoc_states {E F G} impl impl'.
+
+Ltac simpl_sp := try (rewrite frobProgId with (p:= substProg _ _)); try (rewrite frobProgId with (p:= bindSubstProg _ _ _)); simpl.
+
+Lemma help66 {E F G} (impl : Impl E F) (impl' : Impl F G) sL' sH' :
+  forall (tL : list (LEvent E F)) (tH : list (LEvent F G)),
+  assoc_view tL tH ->
+  forall sL : ThreadState E F,
+  forall sH : ThreadState F G,
+  forall sF : ThreadState E G,
+  assoc_states impl impl' sL sH sF ->
+  Steps (ThreadStep impl) sL tL sL' ->
+  Steps (ThreadStep impl') sH tH sH' ->
+  exists sF' (q : Trace (LEvent E G)),
+    projOverSeq tH = projOverSeq q /\
+    projUnderThrSeq tL = projUnderThrSeq q /\
+    Steps (ThreadStep (impl |> impl')) sF q sF'.
+intros tL tH H.
+induction H; intros; destruct_steps.
+{
+  exists sF, nil.
+  repeat constructor.
+}
+{
+  dependent destruction H0.
+  eapply IHassoc_view in H4.
+  3: exact H1.
+  destruct_all.
+  exists x, (OEvent (CallEv m) :: x0).
+  repeat split; simpl; f_equal; try easy.
+  econstructor.
+  repeat constructor.
+  exact H3.
+  unfold implVComp.
+  remember (impl' _ m).
+  destruct p.
+  simpl_sp.
+  constructor.
+  simpl_sp.
+  constructor.
+  simpl_sp.
+  constructor.
+}
+{
+  dependent destruction H0.
+  eapply IHassoc_view in H4.
+  3: exact H1.
+  destruct_all.
+  exists x, (OEvent (RetEv m v) :: x0).
+  simpl.
+  repeat split; simpl; f_equal; try easy.
+  econstructor.
+  econstructor; easy.
+  exact H3.
+  constructor.
+}
+{
+  dependent destruction H0.
+  eapply IHassoc_view in H4.
+  3: exact H2.
+  destruct_all.
+  exists x, (UEvent None :: x0).
+  repeat split; try easy.
+  econstructor.
+  econstructor; easy.
+  exact H3.
+  remember (impl _ um).
+  destruct p.
+  simpl_sp.
+  constructor.
+  simpl_sp.
+  fold (substProg (E:=E) (F:=F)).
+  constructor.
+  simpl_sp.
+  constructor.
+}
+{
+  dependent destruction H0.
+  eapply IHassoc_view in H4.
+  3: exact H2.
+  destruct_all.
+  exists x, (UEvent None :: x0).
+  repeat split; try easy.
+  econstructor.
+  econstructor; easy.
+  exact H3.
+  remember (k v).
+  destruct p.
+  simpl_sp.
+  constructor.
+  simpl_sp.
+  constructor.
+  simpl_sp.
+  constructor.
+}
+{
+  dependent destruction H0.
+  eapply IHassoc_view in H4.
+  3: exact H1.
+  destruct_all.
+  exists x, (UEvent None :: x0).
+  repeat split; try easy.
+  econstructor.
+  econstructor; easy.
+  exact H3.
+  destruct p; simpl_sp; constructor.
+}
+{
+  dependent destruction H0.
+  eapply IHassoc_view in H4.
+  3: exact H3.
+  destruct_all.
+  exists x, (UEvent (Some (CallEv um)) :: x0).
+  repeat split; simpl; f_equal; try easy.
+  econstructor.
+  econstructor.
+  easy.
+  easy.
+  exact H2.
+  constructor.
+}
+{
+  dependent destruction H0.
+  eapply IHassoc_view in H4.
+  3: exact H3.
+  destruct_all.
+  exists x, (UEvent (Some (RetEv um v)) :: x0).
+  repeat split; simpl; f_equal; try easy.
+  econstructor.
+  econstructor.
+  easy.
+  easy.
+  exact H2.
+  simpl.
+  remember (k v).
+  destruct p; simpl_sp.
+  2: fold (substProg (E:=E) (F:=F)).
+  constructor.
+  constructor.
+  constructor.
+}
+{
+  dependent destruction H0.
+  eapply IHassoc_view in H4.
+  3: exact H3.
+  destruct_all.
+  exists x, (UEvent None :: x0).
+  repeat split; try easy.
+  econstructor.
+  econstructor.
+  easy.
+  easy.
+  exact H2.
+  destruct p; simpl_sp.
+  2: fold (substProg (E:=E) (F:=F)).
+  constructor.
+  constructor.
+  constructor.
+}
+Qed.
+
 
 Theorem layerRefines_VComp_assoc {E F G} : 
   forall  (spec : Spec E) (impl : Impl E F) (impl' : Impl F G),
@@ -2402,22 +2403,50 @@ destruct_all.
 symmetry in H.
 destruct x, s.
 simpl in *.
-eexists (fun i => substTS impl (t i), s).
 simpl.
 cut (
-  forall i, exists q,
+  forall i, exists st, exists q,
+    (forall i,
+      ~ In i (dedup (map fst x1 ++ map fst x0)) -> q = nil) /\
     projOverSeq (projPoint i eqb x0) = projOverSeq q /\
     projUnderThrSeq (projPoint i eqb x1) = projUnderThrSeq q /\
-    Steps (ThreadStep (impl |> impl')) (allIdle i) q (substTS impl (t i))
+    Steps (ThreadStep (impl |> impl')) (substTS impl (allIdle i)) q st
 ).
 {
   intros.
-  apply choice in H5.
+  repeat (apply choice in H5; destruct_all).
+  exists (x, s).
+  simpl in *.
+  assert (exists q, Interleave x2 q).
+  {
+    apply Traces.interleave with (is:= dedup (map fst x1 ++ map fst x0)).
+    apply dedup_is_set.
+    intros.
+    specialize (H5 i).
+    destruct_all.
+    eapply H5.
+    exact H6.
+  }
   destruct_all.
-  admit.
+  exists x3.
+  assert (forall i, x2 i = projPoint i eqb x3) by apply (uninterleave _ _ H6).
+  
 }
 clear H4 H2 H0.
 intros.
+assert (In i (dedup (map fst x1 ++ map fst x0)) \/ ~In i (dedup (map fst x1 ++ map fst x0))) by apply excluded_middle.
+destruct H0.
+2:{
+  assert (projPoint i eqb x1 = nil).
+  admit.
+  assert (projPoint i eqb x0 = nil).
+  admit.
+  exists Idle, nil.
+  rewrite H2.
+  rewrite H4.
+  repeat split.
+  constructor.
+}
 rewrite (decompPointSteps eqb (ThreadStep impl)) in H3.
 rewrite (decompPointSteps eqb (ThreadStep impl')) in H1.
 specialize (H3 i).
@@ -2425,8 +2454,8 @@ specialize (H1 i).
 2: exact threadDecEq.
 2: exact threadDecEq.
 apply (seq_proj_assoc i) in H.
-generalize dependent (projPoint i eqb x1). clear x1.
-generalize dependent (projPoint i eqb x0). clear x0.
+generalize dependent (projPoint i eqb x1).
+generalize dependent (projPoint i eqb x0).
 intros.
 rename l into tH.
 rename l0 into tL.

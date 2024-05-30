@@ -59,3 +59,28 @@ Section UPDT_ISTATE.
   Qed.
 
 End UPDT_ISTATE.
+
+Require Import Coq.Arith.PeanoNat.
+
+Lemma eqb_id : forall n : nat, n =? n = true.
+intros.
+induction n.
+easy.
+simpl.
+f_equal.
+easy.
+Qed.
+
+Lemma eqb_nid : forall n m : nat, n <> m -> n =? m = false.
+fix rec 1.
+intros.
+destruct n.
+destruct m.
+easy.
+easy.
+destruct m.
+easy.
+simpl in *.
+apply rec.
+congruence.
+Qed.
