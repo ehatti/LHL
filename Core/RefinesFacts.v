@@ -1377,6 +1377,58 @@ induction n; intros.
 }
 Qed.
 
+Lemma euttThreadTrace_app_inv {E F} :
+  forall p i e q r,
+  @euttThreadTrace E F (p ++ (i, OEvent e) :: q) r ->
+  exists p' q',
+    r = p' ++ (i, OEvent e) :: q' /\
+    euttThreadTrace p p' /\
+    euttThreadTrace q q'.
+intros.
+generalize dependent r.
+induction p; intros.
+simpl in *.
+{
+  induction r.
+  dependent destruction H.
+  destruct a, l.
+  destruct ev.
+  dependent destruction H.
+  dependent destruction H.
+  apply IHr in H. clear IHr.
+  destruct_all.
+  subst.
+  eexists ((n, UEvent None) :: x), x0.
+  split.
+  easy.
+  split.
+  constructor.
+  easy.
+  easy.
+  dependent destruction H.
+  exists nil, r.
+  repeat constructor.
+  easy.
+}
+{
+  simpl in *.
+  destruct a, l.
+  destruct ev.
+}
+Admitted.
+
+Lemma euttOverObj {E F} :
+  forall p q,
+  (exists impl impl' : Impl E F, exists s t r,
+    Steps (ThreadsStep impl) s p t /\
+    Steps (ThreadsStep impl') s q r) ->
+  @IsOverObjTrace E F p ->
+  euttThreadTrace p q ->
+  IsOverObjTrace q.
+intros.
+destruct_all.
+Admitted.
+
 Theorem eutt_layerRefines {E F} : 
   forall (spec : Spec E) (impl impl' : Impl E F), 
   euttImpl impl impl' -> 
@@ -1404,7 +1456,7 @@ cut (
 ).
 intros.
 {
-  apply choice in H2.
+  apply choice in H3.
   destruct_all.
   assert (
     forall i,
@@ -1412,7 +1464,7 @@ intros.
       euttTrace (projPoint i eqb x) (x0 i)
   ).
   intros i.
-  specialize (H2 i).
+  specialize (H3 i).
   rewrite <- dedup_correct.
   easy.
   assert (
@@ -1420,18 +1472,18 @@ intros.
       Steps (ThreadStep impl') (allIdle i) (x0 i) stf
   ).
   intros.
-  specialize (H2 i).
+  specialize (H3 i).
   easy.
-  assert (H2' := H2).
-  clear H2.
-  apply choice in H4.
+  assert (H3' := H3).
+  rename H2 into HObj.
+  apply choice in H5.
   destruct_all.
-  apply help13 in H3.
+  apply help13 in H4.
   2:{
     intros.
-    specialize (H2' i).
+    specialize (H3' i).
     destruct_all.
-    apply H6.
+    apply H7.
     rewrite dedup_correct.
     easy.
   }
@@ -1441,54 +1493,48 @@ intros.
       Steps (ThreadStep impl') (allIdle i) (projPoint i eqb x2) (x1 i)
   ).
   intros.
-  specialize (H4 i).
+  specialize (H5 i).
   specialize (H2 i).
-  rewrite <- H4 in H2.
+  rewrite <- H5 in H2.
   easy.
-  clear H2.
-  rewrite <- (decompPointSteps eqb (ThreadStep impl')) in H5.
+  (* clear H2. *)
+  rewrite <- (decompPointSteps eqb (ThreadStep impl')) in H6.
   2: exact threadDecEq.
   eexists (x1, s), x2.
   repeat split.
   apply euttOver.
   easy.
   easy.
-  {
-    simpl in *.
-    clear H2' H5 x1 H4 x0 H0.
-    generalize dependent (Init spec).
-    induction H3.
-    easy.
-    intros.
-    dependent destruction H1.
-    unfold StateStep in H0.
-    simpl in *.
-    subst.
-    apply IHeuttThreadTrace.
-    easy.
-    intros.
-    econstructor.
-    unfold StateStep.
-    easy.
-    apply IHeuttThreadTrace.
-    easy.
-    intros.
-    dependent destruction H1.
-    econstructor.
-    exact H0.
-    apply IHeuttThreadTrace.
-    easy.
-    intros.
-    dependent destruction H1.
-    unfold StateStep in H0.
-    simpl in *.
-    subst.
-    econstructor.
-    unfold StateStep.
-    easy.
-    apply IHeuttThreadTrace.
-    easy.
-  }
+  simpl in *.
+  clear H3 H2 H3' H6 H5 x1 H0.
+  generalize dependent (Init spec).
+  clear HObj.
+  induction H4; intros.
+  easy.
+  dependent destruction H1.
+  apply IHeuttThreadTrace.
+  unfold StateStep in H0; simpl in *; subst.
+  easy.
+  econstructor.
+  easy.
+  apply IHeuttThreadTrace.
+  easy.
+  dependent destruction H1.
+  econstructor.
+  exact H0.
+  apply IHeuttThreadTrace.
+  easy.
+  dependent destruction H1.
+  econstructor.
+  exact H0.
+  apply IHeuttThreadTrace.
+  easy.
+  eapply euttOverObj.
+  repeat eexists.
+  exact H0.
+  exact H6.
+  exact HObj.
+  easy.
 }
 clear H1.
 rewrite (decompPointSteps eqb (ThreadStep impl)) in H0.
@@ -1540,9 +1586,9 @@ induction H0.
   constructor.
 }
 intros.
-rewrite <- Steps_app in H3.
+rewrite <- Steps_app in H4.
 destruct_all.
-dependent destruction H4.
+dependent destruction H5.
 move H3 after st''.
 assert (
   exists n' x0',
@@ -1560,17 +1606,17 @@ assert (
     Steps (ThreadStep impl') s' (nones n') x0'
 ).
 {
-  clear IHhelp_view H5.
-  destruct H2.
+  clear IHhelp_view H6.
+  destruct H3.
   {
-    destruct n; simpl in *; dependent destruction H3.
+    destruct n; simpl in *; dependent destruction H4.
     exists 0, Idle.
     repeat constructor.
-    unfold ThreadStep in H2.
-    dependent destruction H2.
+    unfold ThreadStep in H3.
+    dependent destruction H3.
   }
   2:{
-    destruct n; simpl in *; dependent destruction H3.
+    destruct n; simpl in *; dependent destruction H4.
     exists 0, (UCall m k').
     split.
     exists k'.
@@ -1580,15 +1626,15 @@ assert (
     dependent destruction H3.
   }
   {
-    punfold H2.
+    punfold H3.
     assert (eutt_finite m p0 p' x0).
     eapply derive_eutt_finite.
     exact H1.
     easy.
-    exact H3.
     exact H4.
-    clear H4 H3 st'' H2 H1.
-    induction H5.
+    exact H5.
+    clear H5 H4 H3.
+    induction H6.
     {
       exists 0, (Cont m (Return x0)).
       repeat constructor.
@@ -1609,7 +1655,7 @@ assert (
         subst.
         exfalso.
         eapply contra_eutt_finite.
-        2: exact H5.
+        2: exact H6.
         left.
         easy.
       }
@@ -1618,7 +1664,7 @@ assert (
         subst.
         exfalso.
         eapply contra_eutt_finite.
-        2: exact H5.
+        2: exact H6.
         right.
         repeat econstructor.
       }
@@ -1667,7 +1713,7 @@ assert (
     ThreadStep impl' x2 e st'''
 ).
 {
-  clear H7 H5 x1 H3.
+  (* clear H7 H5 x1 H3. *)
   unfold ThreadStep in H4.
   destruct x0.
   subst.
@@ -2429,7 +2475,11 @@ cut (
   }
   destruct_all.
   exists x3.
-  assert (forall i, x2 i = projPoint i eqb x3) by apply (uninterleave _ _ H6).
+  assert (forall i, x2 i = projPoint i eqb x3).
+  {
+    apply uninterleave.
+    easy.
+  }
   
 }
 clear H4 H2 H0.
