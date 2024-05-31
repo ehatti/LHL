@@ -36,5 +36,7 @@ Theorem simulates_refines {E} :
 unfold specRefines, Incl, IsTraceOfSpec.
 intros.
 destruct_all.
-dependent destruction H.
-Admitted.
+eapply simulate_isPathOf.
+exact H.
+exact H0.
+Qed.

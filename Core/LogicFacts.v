@@ -1,12 +1,14 @@
-From LHL Require Import
+From LHL.Core Require Import
   Logic
   Specs
   Traces
   Linearizability
-  Program.
+  Program
+  TracesFacts.
 
 From LHL.Util Require Import
-  TransUtil.
+  TransUtil
+  Tactics.
 
 From Coq Require Import
   Program.Equality
@@ -275,7 +277,33 @@ repeat lazymatch goal with
   clear H H0 t σ
 end.
 
+Lemma idImplTrace {F} :
+  forall p, exists st,
+  Steps (ThreadsStep (F:=F) idImpl) allIdle (map (fun e => (fst e, OEvent (snd e))) p) st.
+intros.
+generalize dependent (@allIdle F F).
+induction p; intros.
+exists t.
+constructor.
+Admitted.
+
 Theorem soundness {E F} (lay : Layer E F) VF :
   (exists R G P Q, VerifyImpl lay.(USpec) VF R G P lay.(LImpl) Q) ->
   Lin (overObj lay) VF.
+intros.
+destruct_all.
+unfold Lin, KConc.
+destruct lay.
+simpl in *.
+unfold VerifyImpl in H.
+destruct_all.
+rename x into R.
+rename x0 into G.
+rename x1 into Ps.
+rename x2 into Qs.
+eset (LHLTrans := {|
+  State := _;
+  Step := _;
+  Init := _
+|} : Spec F).
 Admitted.
