@@ -2443,22 +2443,379 @@ Arguments assoc_states {E F G} impl impl'.
 
 Ltac simpl_sp := try (rewrite frobProgId with (p:= substProg _ _)); try (rewrite frobProgId with (p:= bindSubstProg _ _ _)); simpl.
 
+Ltac dec_eq_nats i j :=
+  let H := fresh in
+  assert (H : i = j \/ i <> j) by apply excluded_middle;
+  destruct H; subst.
+
+Inductive same_threads {I A B} : Trace (I * A) -> Trace (I * B) -> Prop :=
+| STNil :
+    same_threads nil nil
+| STCons i e1 e2 p q :
+    same_threads p q ->
+    same_threads ((i, e1) :: p) ((i, e2) :: q).
+
+Lemma projOver_nil {E F} :
+  forall p : Trace (ThreadLEvent E F),
+  (forall i,
+    projOverSeq (projPoint i eqb p) = nil) -> 
+  projOver p = nil.
+intros.
+induction p.
+{
+  easy.
+}
+{
+  destruct a, l.
+  {
+    simpl in *.
+    apply IHp.
+    intros.
+    specialize (H i).
+    destruct (i =? n).
+    easy.
+    easy.
+  }
+  {
+    simpl in *.
+    specialize (H n).
+    rewrite eqb_id in H.
+    simpl in *.
+    congruence.
+  }
+}
+Qed.
+
+Lemma projUnderThr_nil {E F} :
+  forall p : Trace (ThreadLEvent E F),
+  (forall i,
+    projUnderThrSeq (projPoint i eqb p) = nil) -> 
+  projUnderThr p = nil.
+intros.
+induction p.
+{
+  easy.
+}
+{
+  destruct a, l.
+  destruct ev.
+  2:{
+    simpl in *.
+    apply IHp.
+    intros.
+    specialize (H i).
+    destruct (i =? n).
+    easy.
+    easy.
+  }
+  {
+    simpl in *.
+    specialize (H n).
+    rewrite eqb_id in H.
+    simpl in *.
+    congruence.
+  }
+  {
+    simpl in *.
+    apply IHp.
+    intros.
+    specialize (H i).
+    destruct (i =? n).
+    easy.
+    easy.
+  }
+}
+Qed.
+
+Program Fixpoint full_projOver_help {E F G} (p : Trace (ThreadLEvent E G)) (q : Trace (ThreadLEvent F G)) {measure (length p + length q)} :
+  same_threads (projOver p) (projOver q) ->
+  (forall i,
+    projOverSeq (projPoint i eqb p) = projOverSeq (projPoint i eqb q)) ->
+  projOver p = projOver q
+  := _.
+Next Obligation.
+destruct p.
+{
+  clear full_projOver_help H.
+  simpl.
+  rewrite projOver_nil.
+  easy.
+  intros.
+  specialize (H0 i).
+  easy.
+}
+destruct q.
+{
+  simpl (projOver nil).
+  rewrite projOver_nil.
+  easy.
+  easy.
+}
+{
+  destruct t, t0.
+  destruct l, l0; simpl in *.
+  {
+    apply full_projOver_help.
+    simpl. lia.
+    easy.
+    intros.
+    specialize (H0 i).
+    destruct (i =? n), (i =? n0); easy.
+  }
+  {
+    eapply full_projOver_help with (q:=(n0, OEvent ev0) :: q).
+    simpl. lia.
+    simpl.
+    easy.
+    intros.
+    specialize (H0 i).
+    assert (
+      projOverSeq (projPoint i eqb p) = projOverSeq (if i =? n0 then OEvent ev0 :: projPoint i eqb q else projPoint i eqb q)
+    ) by (destruct (i =? n); easy). clear H0.
+    dec_eq_nats i n0.
+    rewrite eqb_id in H1.
+    simpl.
+    rewrite eqb_id.
+    easy.
+    simpl.
+    rewrite eqb_nid in *.
+    easy.
+    easy.
+    easy.
+  }
+  {
+    eapply full_projOver_help with (p:=(n, OEvent ev) :: p).
+    simpl. lia.
+    simpl.
+    easy.
+    intros.
+    specialize (H0 i).
+    assert (
+      projOverSeq (if i =? n0 then UEvent ev0 :: projPoint i eqb q else projPoint i eqb q) = projOverSeq (projPoint i eqb q)
+    ) by (destruct (i =? n0); easy).
+    rewrite H1 in H0 at 1. clear H1.
+    simpl.
+    dec_eq_nats i n.
+    rewrite eqb_id in *.
+    easy.
+    rewrite eqb_nid in *.
+    easy.
+    easy.
+    easy.
+  }
+  {
+    dependent destruction H.
+    assert (H0' := H0).
+    specialize (H0 n0).
+    rewrite eqb_id in H0.
+    simpl in *.
+    dependent destruction H0.
+    f_equal.
+    apply full_projOver_help.
+    simpl. lia.
+    easy.
+    intros.
+    specialize (H0' i).
+    destruct (i =? n0).
+    simpl in *.
+    congruence.
+    easy.
+  }
+}
+Qed.
+
+Lemma projUnderThrSeq_same {E F} {b : bool} :
+  forall (p : Trace (LEvent E F)) (e : LEvent E F),
+  ~(exists e', e = UEvent (Some e')) ->
+  projUnderThrSeq (if b then e :: p else p) =
+  projUnderThrSeq p.
+intros.
+destruct e.
+destruct ev.
+destruct b.
+exfalso.
+apply H.
+exists e.
+easy.
+easy.
+destruct b; easy.
+destruct b; easy.
+Qed.
+
 Lemma full_projOver {E F G} :
   forall (p : Trace (ThreadLEvent F G)) q,
   forall (qc : nat -> Trace (LEvent E G)),
   (forall i, projOverSeq (projPoint i eqb p) = projOverSeq (qc i)) ->
   Interleave qc q ->
+  same_threads (projOver p) (projOver q) ->
   projOver p = projOver q.
-Admitted.
+intros.
+eassert (H2 : forall i, _).
+{
+  eapply uninterleave.
+  exact H0.
+}
+assert (forall i, projOverSeq (projPoint i eqb p) = projOverSeq (projPoint i eqb q)).
+{
+  intros.
+  rewrite H.
+  rewrite H2.
+  easy.
+}
+apply full_projOver_help; easy.
+Qed.
+
+Program Fixpoint full_projUnderThr_help {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent E G)) {measure (length p + length q)} :
+  same_threads (projUnderThr p) (projUnderThr q) ->
+  (forall i,
+    projUnderThrSeq (projPoint i eqb p) = projUnderThrSeq (projPoint i eqb q)) ->
+  projUnderThr p = projUnderThr q
+  := _.
+Next Obligation.
+destruct p.
+{
+  simpl in *.
+  rewrite projUnderThr_nil.
+  easy.
+  intros.
+  specialize (H0 i).
+  easy.
+}
+destruct q.
+{
+  simpl (projUnderThr nil).
+  rewrite projUnderThr_nil.
+  easy.
+  intros.
+  specialize (H0 i).
+  easy.
+}
+{
+  destruct t, t0.
+  destruct l, l0.
+  {
+    destruct ev, ev0.
+    simpl in *.
+    dependent destruction H.
+    assert (H0' := H0).
+    specialize (H0 n0).
+    rewrite eqb_id in H0.
+    simpl in *.
+    dependent destruction H0.
+    f_equal.
+    apply full_projUnderThr_help.
+    simpl. lia.
+    easy.
+    intros.
+    specialize (H0' i).
+    destruct (i =? n0).
+    simpl in *.
+    congruence.
+    easy.
+    simpl (projUnderThr ((n0, _) :: _)).
+    apply full_projUnderThr_help.
+    simpl. lia.
+    easy.
+    intros.
+    specialize (H0 i).
+    simpl in *.
+    rewrite projUnderThrSeq_same with (e:= UEvent None) in H0 at 1.
+    easy.
+    unfold not.
+    intros.
+    destruct_all.
+    congruence.
+    simpl (projUnderThr ((n, _) :: _)).
+    apply full_projUnderThr_help.
+    simpl. lia.
+    easy.
+    intros.
+    specialize (H0 i).
+    simpl in *.
+    destruct (i =? n); easy.
+    simpl in *.
+    apply full_projUnderThr_help.
+    simpl. lia.
+    easy.
+    intros.
+    specialize (H0 i).
+    rewrite projUnderThrSeq_same in H0 at 1.
+    rewrite projUnderThrSeq_same in H0 at 1.
+    easy.
+    unfold not.
+    intros.
+    destruct_all.
+    congruence.
+    unfold not.
+    intros.
+    destruct_all.
+    congruence.
+  }
+  {
+    simpl (projUnderThr ((n0, _) :: _)).
+    apply full_projUnderThr_help.
+    simpl. lia.
+    easy.
+    intros.
+    specialize (H0 i).
+    simpl in H0.
+    destruct (i =? n0); easy.
+  }
+  {
+    simpl (projUnderThr ((n, _) :: _)).
+    apply full_projUnderThr_help.
+    simpl. lia.
+    easy.
+    intros.
+    specialize (H0 i).
+    simpl in H0.
+    destruct (i =? n); easy.
+  }
+  {
+    simpl in *.
+    apply full_projUnderThr_help.
+    simpl. lia.
+    easy.
+    intros.
+    specialize (H0 i).
+    rewrite projUnderThrSeq_same in H0 at 1.
+    rewrite projUnderThrSeq_same in H0 at 1.
+    easy.
+    unfold not.
+    intros.
+    destruct_all.
+    congruence.
+    unfold not.
+    intros.
+    destruct_all.
+    congruence.
+  }
+}
+Qed.
 
 Lemma full_projUnderThr {E F G} :
   forall (p : Trace (ThreadLEvent E F)) q,
   forall (qc : nat -> Trace (LEvent E G)),
   (forall i, projUnderThrSeq (projPoint i eqb p) = projUnderThrSeq (qc i)) ->
   Interleave qc q ->
+  same_threads (projUnderThr p) (projUnderThr q) ->
   projUnderThr p = projUnderThr q.
 intros.
-Admitted.
+intros.
+eassert (H2 : forall i, _).
+{
+  eapply uninterleave.
+  exact H0.
+}
+assert (forall i, projUnderThrSeq (projPoint i eqb p) = projUnderThrSeq (projPoint i eqb q)).
+{
+  intros.
+  rewrite H.
+  rewrite H2.
+  easy.
+}
+apply full_projUnderThr_help; easy.
+Qed.
 
 Lemma help66 {E F G} (impl : Impl E F) (impl' : Impl F G) sL' sH' :
   forall (tL : list (LEvent E F)) (tH : list (LEvent F G)),
@@ -2669,11 +3026,6 @@ Qed.
 
 Axiom dne : forall P, ~~P -> P.
 
-Ltac dec_eq_nats i j :=
-  let H := fresh in
-  assert (H : i = j \/ i <> j) by apply excluded_middle;
-  destruct H; subst.
-
 Lemma if_prune {A B} {x y : B} {z : A -> B} :
   forall (b : A -> bool),
   (fun i : A => if b i then x else if b i then y else z i) =
@@ -2782,134 +3134,20 @@ induction p; intros.
 }
 Qed.
 
-Lemma help57 {E F} is :
-  forall qc,
-  (forall i, ~In i is -> qc i = nil) ->
-  (exists i, ends_in_oev_seq (qc i)) ->
-  exists r, Interleave qc r /\ IsOverObjTrace (E:=E) (F:=F) r.
-unfold ends_in_oev_seq.
+Lemma help57 {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)) :
+  forall oev_i oev oev_q,
+  q = oev_q ++ (oev_i, OEvent oev) :: nil ->
+  forall qc : nat -> Trace (LEvent E G),
+  (forall i, ~In i (map fst p ++ map fst q) -> qc i = nil) ->
+  (exists i qc_q, qc i = qc_q ++ OEvent oev :: nil) ->
+  exists r,
+    Interleave qc r /\
+    IsOverObjTrace (E:=E) (F:=G) r /\
+    same_threads (projUnderThr p) (projUnderThr r) /\
+    same_threads (projOver q) (projOver r).
 intros.
 destruct_all.
-cut (
-  exists r,
-    Interleave (fun j => if x =? j then x0 else qc j) r
-).
-{
-  intros.
-  destruct_all.
-  assert (qc = fun j => if x =? j then x0 ++ OEvent x1 :: nil else qc j).
-  {
-    extensionality j.
-    dec_eq_nats x j.
-    subst.
-    rewrite eqb_id.
-    easy.
-    rewrite eqb_nid.
-    easy.
-    easy.
-  }
-  rewrite H2. clear H2.
-  exists (x2 ++ (x, OEvent x1) :: nil).
-  clear H.
-  split.
-  2:{
-    clear.
-    rewrite <- ends_oev_overObj.
-    left.
-    induction x2.
-    repeat econstructor.
-    simpl.
-    apply ends_oev_cons.
-    easy.
-  }
-  eapply interleave_cons.
-  3: exact H1.
-  intros.
-  simpl.
-  rewrite eqb_nid.
-  easy.
-  easy.
-  repeat rewrite eqb_id.
-  easy.
-}
-cut (
-  forall qc,
-  (forall i, ~In i is -> qc i = nil) ->
-  exists r,
-    @Interleave E F qc r
-).
-{
-  intros.
-  apply H1.
-  intros.
-  dec_eq_nats x i.
-  rewrite H in H0.
-  destruct x0; simpl in H0; congruence.
-  easy.
-  rewrite eqb_nid.
-  apply H.
-  easy.
-  easy.
-}
-clear H0 x1 x0 x H qc.
-induction is.
-{
-  intros.
-  exists nil.
-  constructor.
-  intros.
-  apply H.
-  easy.
-}
-{
-  intros.
-  assert (exists r, Interleave (fun j => if a =? j then nil else qc j) r).
-  {
-    apply IHis.
-    intros.
-    dec_eq_nats a i.
-    rewrite eqb_id.
-    easy.
-    rewrite eqb_nid.
-    apply H.
-    simpl.
-    rewrite help41.
-    easy.
-    easy.
-  }
-  destruct_all.
-  exists (map (fun e => (a, e)) (qc a) ++ x).
-  clear IHis H is.
-  remember (qc a).
-  generalize dependent qc.
-  induction l; intros.
-  {
-    assert (qc = (fun j => if a =? j then nil else qc j)).
-    {
-      extensionality j.
-      dec_eq_nats a j.
-      rewrite eqb_id.
-      easy.
-      rewrite eqb_nid.
-      easy.
-      easy.
-    }
-    simpl.
-    rewrite H.
-    easy.
-  }
-  {
-    simpl.
-    econstructor.
-    symmetry.
-    exact Heql.
-    apply IHl.
-    2: { rewrite eqb_id. easy. }
-    rewrite if_prune.
-    easy.
-  }
-}
-Qed.
+Admitted.
 
 Theorem layerRefines_VComp_assoc {E F G} : 
   forall  (spec : Spec E) (impl : Impl E F) (impl' : Impl F G),
@@ -2939,48 +3177,14 @@ cut (
   repeat (apply choice in H5; destruct_all).
   exists (x, s).
   simpl in *.
-  assert (exists q, Interleave x2 q /\ IsOverObjTrace q).
+  eassert (
+    exists q,
+      Interleave x2 q /\
+      IsOverObjTrace q /\
+      same_threads (projUnderThr x1) (projUnderThr q) /\
+      same_threads (projOver x0) (projOver q)).
   {
-    rewrite <- ends_oev_overObj in H2.
-    rewrite <- ends_oev_overObj in H4.
-    destruct H4, H2.
-    {
-      eapply help57.
-      intros.
-      specialize (H5 i).
-      destruct H5.
-      apply H5.
-      exact H6.
-    }
-    {
-      subst.
-      simpl in *.
-      (* contradiction because cant make steps without overlay events*)
-    }
-    {
-      subst.
-      simpl in *.
-      eapply help57.
-      intros.
-      specialize (H5 i).
-      destruct H5.
-      apply H5.
-      exact H4.
-      admit.
-    }
-    {
-      subst.
-      simpl in *.
-      exists nil.
-      split.
-      constructor.
-      intros.
-      specialize (H5 i).
-      destruct H5.
-      apply H2.
-      easy.
-      constructor.
-    }
+    admit.
   }
   destruct_all.
   exists x3.
@@ -2991,6 +3195,7 @@ cut (
     intros.
     specialize (H5 i).
     easy.
+    easy.
   }
   {
     assert (projUnderThr x1 = projUnderThr x3).
@@ -2999,7 +3204,8 @@ cut (
     intros.
     specialize (H5 i).
     easy.
-    rewrite <- H8.
+    easy.
+    rewrite <- H10.
     easy.
   }
   {
