@@ -184,12 +184,8 @@ intros.
 induction H; easy.
 Qed.
 
-Inductive IsOverObjTrace {E F} : Trace (ThreadLEvent E F) -> Prop :=
-| NilOverObj : IsOverObjTrace nil
-| ConsOverObj i e p q :
-    IsUnderTrace p ->
-    IsOverObjTrace q ->
-    IsOverObjTrace (p ++ cons (i, OEvent e) q)%list.
+Definition IsOverObjTrace {E F} (p : Trace (ThreadLEvent E F)) :=
+  p = nil \/ exists i ev p', p = (i, OEvent ev) :: p'.
 
 Lemma projPoint_app {I A} (xs ys : list (I * A)) (eqb : I -> I -> bool) :
   forall i,
@@ -206,6 +202,33 @@ easy.
 easy.
 Qed.
 
+Inductive overObj_view {E F} : Trace (ThreadLEvent E F) -> Prop :=
+| OverObjNil : overObj_view nil
+| OverObjCons i e p q :
+    IsUnderTrace p ->
+    overObj_view q ->
+    overObj_view ((i, OEvent e) :: p ++ q).
+
+Lemma get_overObj_view {E F} :
+  forall p,
+  @IsOverObjTrace E F p ->
+  overObj_view p.
+intros.
+destruct H.
+subst.
+constructor.
+destruct_all.
+subst.
+induction x1.
+apply OverObjCons with (p:=nil); constructor.
+dependent destruction IHx1.
+destruct a, l.
+change ((x, OEvent x0) :: (n, UEvent ev) :: p ++ q)
+with ((x, OEvent x0) :: ((n, UEvent ev) :: p) ++ q).
+repeat constructor; easy.
+apply OverObjCons with (p:=nil); repeat constructor; easy.
+Qed.
+
 Lemma decompOverObj {E F} {lay : Layer E F} :
   Steps (Step (overObj lay)) =
   fun s p t =>
@@ -218,163 +241,201 @@ extensionality s.
 extensionality p.
 extensionality t.
 apply propositional_extensionality.
-firstorder.
+split; intros.
 {
-  generalize dependent s.
-  induction p.
-  exists nil.
-  split.
-  easy.
-  dependent destruction H.
-  constructor.
-  intros.
-  constructor.
-  split.
-  constructor.
-  constructor.
-  intros.
-  dependent destruction H.
-  apply IHp in H0. clear IHp.
-  simpl in H.
-  destruct_all.
-  rewrite decompUnderSteps in H.
-  subst. simpl in *.
-  destruct_all.
-  eexists (decompOverObjLift x1 ++ cons (fst a, OEvent (snd a)) x)%list.
-  split.
-  clear.
-  induction x1.
-  destruct a.
-  easy.
-  rewrite IHx1.
-  destruct a0.
-  simpl.
-  easy.
-  split.
-  rewrite projUnderThr_app.
-  rewrite <- Steps_app.
-  eexists.
-  split.
-  2: exact H1.
-  rewrite H5 in *.
-  rewrite projSilent_help.
-  easy.
-  split.
-  rewrite <- Steps_app.
-  exists (fst x0).
-  split.
-  clear H3 H5 H2 H1 x H4 H3 H st'' t a.
-  induction H0.
-  constructor.
-  destruct ev.
-  simpl.
-  econstructor.
-  destruct H.
-  simpl in *.
-  econstructor.
-  simpl.
-  exact u.
-  easy.
-  easy.
-  simpl.
-  econstructor.
-  destruct H4.
-  econstructor.
-  simpl.
-  exact o.
-  intros.
-  apply e.
-  easy.
-  easy.
-  clear H2 H1 H5 H4 H0 H x0 st'' s t.
-  assert (IsUnderTrace (F:=F) (decompOverObjLift x1)).
-  clear.
-  induction x1.
-  constructor.
-  destruct a.
-  simpl.
-  econstructor.
-  easy.
-  econstructor.
-  easy.
-  easy.
+  induction H.
+  {
+    exists nil.
+    repeat constructor.
+  }
+  {
+    simpl in H.
+    destruct_all.
+    subst.
+    exists ((fst ev, OEvent (snd ev)) :: map (fun e => (fst e, UEvent (snd e))) x1 ++ x).
+    repeat split.
+    {
+      destruct ev.
+      simpl.
+      f_equal.
+      clear H5.
+      induction x1; easy.
+    }
+    {
+      simpl.
+      rewrite @projUnderThr_app.
+      rewrite <- Steps_app.
+      exists (snd st'').
+      split.
+      {
+        clear H4 H3 H2 H0 x H.
+        generalize dependent (snd st).
+        generalize dependent x0.
+        induction x1; intros.
+        {
+          dependent destruction H5.
+          simpl.
+          constructor.
+        }
+        {
+          dependent destruction H5.
+          unfold InterUStep in H.
+          destruct_all.
+          destruct a, o; simpl in *.
+          econstructor.
+          exact H0.
+          destruct st''0.
+          simpl.
+          eapply IHx1.
+          exact H5.
+          subst. simpl.
+          destruct st''0.
+          simpl.
+          eapply IHx1.
+          exact H5.
+        }
+      }
+      {
+        easy.
+      }
+    }
+    {
+      apply StepsMore with (st'':=x0).
+      destruct H.
+      econstructor; easy.
+      rewrite <- Steps_app.
+      exists (fst st'').
+      split.
+      2: easy.
+      clear H4 H3 H2 H0 x H.
+      generalize dependent x0.
+      generalize dependent (snd st).
+      induction x1; intros.
+      {
+        dependent destruction H5.
+        constructor.
+      }
+      {
+        simpl in *.
+        dependent destruction H5.
+        unfold InterUStep in H.
+        destruct_all. simpl in *.
+        dependent destruction H.
+        destruct a, o; simpl in *.
+        econstructor.
+        econstructor.
+        exact H.
+        easy.
+        destruct st''0.
+        simpl.
+        eapply IHx1.
+        exact H5.
+        subst.
+        econstructor.
+        econstructor.
+        simpl.
+        exact H.
+        easy.
+        destruct st''0.
+        simpl.
+        eapply IHx1.
+        exact H5.
+      }
+    }
+    right.
+    repeat econstructor.
+  }
 }
 {
-  subst.
-  generalize dependent s.
-  induction H2.
-  destruct s, t.
-  simpl in *.
-  intros.
-  dependent destruction H0.
-  dependent destruction H1.
-  constructor.
-  intros.
-  rewrite <- Steps_app in H1.
-  rewrite projUnderThr_app in H0.
-  rewrite <- Steps_app in H0.
   destruct_all.
-  rewrite projOver_app.
-  rewrite projOverUnder.
-  simpl.
-  dependent destruction H3.
-  eapply StepsMore with (st'':=(st'', x0)).
-  exists (x, x0).
-  exists (projUnder p).
-  split.
+  subst.
+  apply get_overObj_view in H2.
+  generalize dependent s.
+  induction H2; intros.
   {
-    rewrite decompUnderSteps.
-    split.
-    simpl.
-    assert (projSilent (projUnder p) = projUnderThr p).
-    clear.
-    induction p.
-    constructor.
-    destruct a, l.
-    destruct ev.
-    simpl.
-    f_equal.
-    easy.
-    easy.
-    easy.
-    rewrite H6.
-    easy.
-    clear IHIsOverObjTrace H3 H2 H0 H4.
+    destruct s, t.
     simpl in *.
-    generalize dependent s.
-    induction H.
-    simpl in *.
-    intros.
-    dependent destruction H1.
-    constructor.
-    simpl.
-    intros.
-    dependent destruction H1.
-    econstructor.
     dependent destruction H0.
-    simpl in *.
-    split.
-    simpl.
-    exact t0.
-    easy.
-    specialize (IHIsUnderTrace (st''0, x0)).
-    apply IHIsUnderTrace.
-    easy.
+    dependent destruction H1.
+    constructor.
   }
-  split.
-  unfold InterOStep.
-  simpl.
-  unfold ThreadsStep in *.
-  dependent destruction H3.
-  simpl in *.
-  econstructor.
-  easy.
-  easy.
-  easy.
-  apply IHIsOverObjTrace.
-  easy.
-  easy.
-  easy.
+  {
+    simpl in *.
+    dependent destruction H1.
+    rewrite <- Steps_app in H3.
+    rewrite projUnderThr_app in H0.
+    rewrite <- Steps_app in H0.
+    destruct_all.
+    eapply StepsMore with (st'':=(_, _)).
+    2:{
+      rewrite projOver_app.
+      rewrite projOverUnder.
+      simpl.
+      apply IHoverObj_view.
+      simpl.
+      exact H5.
+      simpl.
+      exact H4.
+      easy.
+    }
+    {
+      exists st''.
+      split.
+      dependent destruction H1.
+      simpl in *.
+      easy.
+      exists (projUnder p).
+      clear H4 H1 H5 IHoverObj_view.
+      generalize dependent s.
+      generalize dependent st''.
+      induction H; intros.
+      {
+        simpl in *.
+        dependent destruction H3.
+        dependent destruction H0.
+        constructor.
+      }
+      {
+        destruct e0.
+        {
+          simpl in *.
+          dependent destruction H3.
+          dependent destruction H1.
+          dependent destruction H0.
+          simpl in *.
+          eapply StepsMore with (st'':=(_, _)).
+          econstructor.
+          econstructor.
+          simpl.
+          exact H0.
+          exact H1.
+          simpl.
+          exact H4.
+          change st''1 with (snd (fst s, st''1)).
+          apply IHIsUnderTrace.
+          easy.
+          easy.
+        }
+        {
+          simpl in *.
+          dependent destruction H3.
+          dependent destruction H0.
+          simpl in *.
+          eapply StepsMore with (st'':=(_, _)).
+          split.
+          econstructor.
+          exact H0.
+          easy.
+          easy.
+          destruct s.
+          change s with (snd (t0, s)).
+          apply IHIsUnderTrace.
+          easy.
+          easy.
+        }
+      }
+    }
+  }
 }
 Qed.
 
@@ -405,146 +466,138 @@ extensionality s.
 extensionality p.
 extensionality t.
 apply propositional_extensionality.
-firstorder.
+split; intros.
 {
   induction H.
-  exists nil.
-  repeat constructor.
-  simpl in H.
-  destruct_all.
-  subst.
-  exists (map (fun e => (fst e, UEvent (snd e))) x1 ++ (fst ev, OEvent (snd ev)) :: x).
-  simpl.
-  rewrite @projOver_app.
-  simpl.
-  repeat split.
-  erewrite (@projOverUnder _ _ (map (fun e => (fst e, UEvent (snd e))) x1)).
-  simpl.
-  destruct ev.
-  easy.
-  clear H2 H.
-  induction x1.
-  constructor.
-  simpl.
-  constructor.
-  easy.
-  unfold InterSteps.
-  rewrite <- Steps_app.
-  exists x0.
-  split.
   {
-    clear H3 H2 H0 H5 H4.
-    generalize dependent st.
-    induction x1; intros.
-    dependent destruction H.
-    constructor.
-    unfold InterUSteps in H.
-    dependent destruction H.
-    simpl.
-    destruct a, o.
-    all: simpl; unfold InterUStep in H; simpl in H; destruct_all; dependent destruction H; simpl in H.
-    econstructor.
-    unfold InterStep.
-    split.
-    econstructor.
-    simpl.
-    exact H.
-    easy.
-    unfold StateStep.
-    simpl.
-    easy.
-    apply IHx1.
-    easy.
-    econstructor.
-    unfold InterStep.
-    split.
-    econstructor.
-    exact H.
-    easy.
-    unfold StateStep.
-    simpl.
-    easy.
-    apply IHx1.
-    easy.
+    exists nil.
+    repeat constructor.
   }
-  destruct H4.
-  simpl in H1, H4.
-  econstructor.
-  unfold InterStep.
-  split.
-  econstructor.
-  simpl.
-  exact H1.
-  easy.
-  easy.
-  easy.
-  econstructor.
-  2: easy.
-  clear H.
-  induction x1.
-  constructor.
-  econstructor.
-  easy.
+  {
+    simpl in H.
+    destruct_all.
+    subst.
+    eexists ((fst ev, OEvent (snd ev)) :: map (fun e => (fst e, UEvent (snd e))) x1 ++ x).
+    repeat split.
+    {
+      clear.
+      destruct ev.
+      simpl.
+      induction x1; easy.
+    }
+    {
+      eapply StepsMore with (st'':=(_, _)).
+      unfold InterStep.
+      destruct H.
+      simpl in *.
+      simpl.
+      split.
+      2: easy.
+      unfold ThreadsStep.
+      econstructor.
+      simpl.
+      exact o.
+      easy.
+      rewrite <- Steps_app.
+      exists st''.
+      split.
+      {
+        clear H3 H2 H0 x.
+        induction H4.
+        constructor.
+        simpl in *.
+        econstructor.
+        unfold InterUStep in H0.
+        unfold InterStep.
+        unfold ThreadsStep.
+        destruct_all.
+        split.
+        dependent destruction p.
+        econstructor.
+        unfold ThreadStep.
+        simpl in *.
+        exact u.
+        easy.
+        destruct ev0, o; simpl in *; easy.
+        easy.
+      }
+      {
+        easy.
+      }
+    }
+    unfold IsOverObjTrace.
+    right.
+    repeat econstructor.
+  }
 }
 {
-  generalize dependent p.
+  destruct_all.
+  subst.
+  apply get_overObj_view in H1.
   generalize dependent s.
   induction H1; intros.
-  subst.
-  dependent destruction H0.
-  constructor.
-  subst.
-  unfold InterSteps in H0.
-  rewrite <- Steps_app in H0.
-  destruct_all.
-  dependent destruction H2.
-  rewrite projOver_app.
-  rewrite projOverUnder.
-  simpl.
-  eapply StepsMore with (st'':=st'').
-  eexists x.
-  exists (projUnder p).
-  split.
   {
-    clear H3 H2.
-    generalize dependent s.
-    induction H; intros.
     dependent destruction H0.
     constructor.
-    simpl in *.
+  }
+  {
     dependent destruction H0.
+    rewrite <- Steps_app in H2.
+    destruct_all.
+    simpl.
+    apply StepsMore with (st'':=x).
+    exists (fst st'').
+    split.
+    simpl.
     unfold InterStep in H0.
     destruct_all.
     unfold ThreadsStep in H0.
     dependent destruction H0.
-    unfold ThreadStep in H0.
     simpl in *.
-    econstructor.
-    simpl.
-    econstructor.
     econstructor.
     exact H0.
     easy.
-    unfold StateStep in H3.
-    simpl in *; easy.
-    apply IHIsUnderTrace.
+    exists (projUnder p).
+    {
+      clear IHoverObj_view H3.
+      destruct H0.
+      unfold StateStep in H3.
+      simpl in *.
+      rewrite H3. clear H3 H0 s.
+      assert ((fst st'', snd st'') = st'') by (destruct st''; easy).
+      rewrite H0. clear H0 H1.
+      generalize dependent st''.
+      induction p; intros.
+      {
+        dependent destruction H2.
+        constructor.
+      }
+      {
+        dependent destruction H.
+        simpl.
+        dependent destruction H2.
+        destruct H0.
+        dependent destruction H0.
+        simpl in *.
+        econstructor.
+        unfold InterUStep.
+        split.
+        econstructor.
+        exact H0.
+        easy.
+        destruct e0; easy.
+        apply IHp.
+        easy.
+        easy.
+      }
+    }
+    rewrite projOver_app.
+    rewrite projOverUnder.
+    simpl.
+    apply IHoverObj_view.
+    easy.
     easy.
   }
-  simpl.
-  destruct H2.
-  unfold StateStep in H4; simpl in H4.
-  unfold ThreadsStep in H2.
-  split.
-  dependent destruction H2.
-  econstructor.
-  simpl in H2.
-  easy.
-  easy.
-  easy.
-  apply IHIsOverObjTrace.
-  easy.
-  easy.
-  easy.
 }
 Qed.
 

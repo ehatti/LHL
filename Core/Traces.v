@@ -180,10 +180,10 @@ Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F :=
   {|
     State := InterState F lay.(USpec);
     Step thst ev thst'' :=
-      exists thst' p,
-        InterUSteps F lay.(USpec) thst p thst' /\
-        InterOStep lay.(LImpl) (fst ev) (fst thst') (snd ev) (fst thst'') /\
-        snd thst' = snd thst'';
+      exists ths',
+        InterOStep lay.(LImpl) (fst ev) (fst thst) (snd ev) ths' /\
+        exists p,
+          InterUSteps F lay.(USpec) (ths', snd thst) p thst'';
     Init := (allIdle, lay.(USpec).(Init))
   |}.
 
