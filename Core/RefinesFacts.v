@@ -1027,35 +1027,18 @@ easy.
 easy.
 Qed.
 
-Lemma interleaveOverObj {E F} :
-  forall p qc,
-  (forall i, ~In i (dedup (map fst p)) ->
-    qc i = nil) ->
-  (forall i,
-    euttTrace (projPoint i eqb p) (qc i)) ->
-  IsOverObjTrace p ->
-  IsOverObjTrace (@interleave E F (dedup (map fst p)) p qc).
-Admitted.
-
 Lemma help12 {E F} :
   forall (p : Trace (ThreadLEvent E F)),
-  forall (HObj : IsOverObjTrace p),
   forall (qc : nat -> Trace (LEvent E F)),
   (forall i, ~In i (dedup (map fst p)) ->
     qc i = nil) ->
   (forall i,
     euttTrace (projPoint i eqb p) (qc i)) ->
   exists q,
-    IsOverObjTrace q /\
     euttThreadTrace p q /\
     forall i, projPoint i eqb q = qc i.
-intros p HObj qc qc_nil. intros.
+intros p qc qc_nil. intros.
 exists (interleave (dedup (List.map fst p)) p qc).
-split.
-{
-  apply interleaveOverObj; easy.
-}
-clear HObj.
 split.
 {
   generalize dependent (dedup (List.map fst p)).
@@ -1295,14 +1278,12 @@ Qed.
 
 Lemma help13 {E F} :
   forall (p : Trace (ThreadLEvent E F)),
-  forall (HObj : IsOverObjTrace p),
   forall (qc : nat -> Trace (LEvent E F)),
   (forall i, ~In i (dedup (map fst p)) ->
     qc i = nil) ->
   (forall i, In i (dedup (map fst p)) ->
     euttTrace (projPoint i eqb p) (qc i)) ->
   exists q,
-    IsOverObjTrace q /\
     euttThreadTrace p q /\
     forall i, projPoint i eqb q = qc i.
 intros.
@@ -1310,7 +1291,6 @@ cut (forall i, euttTrace (projPoint i eqb p) (qc i)).
 {
   intros.
   apply help12.
-  easy.
   easy.
   easy.
 }
@@ -1488,76 +1468,6 @@ exists (e :: x), x0, x1.
 easy.
 Qed.
 
-Lemma ends_oev_overObj {E F} :
-  forall p,
-    (@ends_in_oev E F p \/ p = nil) = IsOverObjTrace p.
-intros.
-apply propositional_extensionality.
-split; intro.
-{
-  destruct H.
-  2: { subst. constructor. }
-  unfold ends_in_oev in H.
-  destruct_all.
-  subst.
-  induction x.
-  {
-    repeat constructor.
-  }
-  {
-    dependent destruction IHx.
-    destruct x2; simpl in x; discriminate.
-    simpl.
-    rewrite <- x. clear x.
-    change (a :: p ++ (i, OEvent e) :: q)
-    with ((a :: p) ++ (i, OEvent e) :: q).
-    destruct a, l.
-    constructor.
-    constructor.
-    easy.
-    easy.
-    simpl.
-    apply ConsOverObj with (p:=nil).
-    constructor.
-    constructor.
-    easy.
-    easy.
-  }
-}
-{
-  induction H.
-  {
-    right.
-    easy.
-  }
-  {
-    destruct IHIsOverObjTrace.
-    left.
-    clear H0 H.
-    {
-      induction p.
-      simpl.
-      apply ends_oev_cons.
-      easy.
-      simpl.
-      apply ends_oev_cons.
-      easy.
-    }
-    subst.
-    left.
-    {
-      clear H.
-      induction p.
-      unfold ends_in_oev.
-      repeat econstructor.
-      simpl.
-      apply ends_oev_cons.
-      easy.
-    }
-  }
-}
-Qed.
-
 Theorem eutt_layerRefines {E F} : 
   forall (spec : Spec E) (impl impl' : Impl E F), 
   euttImpl impl impl' -> 
@@ -1608,7 +1518,6 @@ intros.
   apply choice in H5.
   destruct_all.
   apply help13 in H4.
-  2: easy.
   2:{
     intros.
     specialize (H3' i).
@@ -1623,12 +1532,12 @@ intros.
       Steps (ThreadStep impl') (allIdle i) (projPoint i eqb x2) (x1 i)
   ).
   intros.
-  specialize (H6 i).
+  specialize (H5 i).
   specialize (H2 i).
-  rewrite <- H6 in H2.
+  rewrite <- H5 in H2.
   easy.
   (* clear H2. *)
-  rewrite <- (decompPointSteps eqb (ThreadStep impl')) in H7.
+  rewrite <- (decompPointSteps eqb (ThreadStep impl')) in H6.
   2: exact threadDecEq.
   eexists (x1, s), x2.
   repeat split.
@@ -1636,34 +1545,60 @@ intros.
   easy.
   easy.
   simpl in *.
-  clear H7 H2 H3' x1 H6 H4 H3 H0.
+  (* clear H7 H2 H3' x1 H6 H4 H3 H0. *)
+  clear H6 H3' H2 x1 H5 H3 H0.
   generalize dependent (Init spec).
   clear HObj.
+  induction H4.
   {
-    induction H5; intros.
     easy.
+  }
+  {
+    intros.
     dependent destruction H1.
-    unfold StateStep in H0; simpl in H0; subst.
+    unfold StateStep in H0.
+    simpl in *.
+    subst.
     apply IHeuttThreadTrace.
     easy.
-    econstructor.
-    unfold StateStep. easy.
-    apply IHeuttThreadTrace.
-    easy.
-    dependent destruction H1.
-    unfold StateStep in H0; simpl in H0; subst.
-    econstructor.
-    exact H0.
-    apply IHeuttThreadTrace.
-    easy.
-    dependent destruction H1.
-    unfold StateStep in H0; simpl in H0; subst.
+  }
+  {
+    intros.
     econstructor.
     easy.
     apply IHeuttThreadTrace.
     easy.
   }
-  easy.
+  {
+    intros.
+    dependent destruction H1.
+    econstructor.
+    exact H0.
+    apply IHeuttThreadTrace.
+    easy.
+  }
+  {
+    intros.
+    dependent destruction H1.
+    econstructor.
+    exact H0.
+    apply IHeuttThreadTrace.
+    easy.
+  }
+  {
+    destruct x2.
+    left.
+    easy.
+    right.
+    dependent destruction H6.
+    dependent destruction H6.
+    simpl in *.
+    unfold ThreadStep in H6.
+    destruct t0, l; simpl in *.
+    dependent destruction H6.
+    dependent destruction H6.
+    repeat econstructor.
+  }
 }
 clear H1.
 rewrite (decompPointSteps eqb (ThreadStep impl)) in H0.
@@ -2455,6 +2390,19 @@ Inductive same_threads {I A B} : Trace (I * A) -> Trace (I * B) -> Prop :=
     same_threads p q ->
     same_threads ((i, e1) :: p) ((i, e2) :: q).
 
+Lemma same_threads_app {I A B} :
+  forall p1 p2 q1 q2,
+  same_threads p1 q1 ->
+  same_threads p2 q2 ->
+  @same_threads I A B (p1 ++ p2) (q1 ++ q2).
+intros.
+induction H.
+easy.
+simpl.
+constructor.
+easy.
+Qed.
+
 Lemma projOver_nil {E F} :
   forall p : Trace (ThreadLEvent E F),
   (forall i,
@@ -3139,7 +3087,7 @@ Lemma help57 {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G
   q = oev_q ++ (oev_i, OEvent oev) :: nil ->
   forall qc : nat -> Trace (LEvent E G),
   (forall i, ~In i (map fst p ++ map fst q) -> qc i = nil) ->
-  (exists i qc_q, qc i = qc_q ++ OEvent oev :: nil) ->
+  (exists qc_q, qc oev_i = qc_q ++ OEvent oev :: nil) ->
   exists r,
     Interleave qc r /\
     IsOverObjTrace (E:=E) (F:=G) r /\
@@ -3147,7 +3095,104 @@ Lemma help57 {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G
     same_threads (projOver q) (projOver r).
 intros.
 destruct_all.
+cut (
+  exists r,
+    Interleave (fun j => if oev_i =? j then x else qc j) r /\
+    same_threads (projUnderThr p) (projUnderThr r) /\
+    same_threads (projOver oev_q) (projOver r)
+).
+{
+  intros.
+  destruct_all.
+  assert (qc = fun j => if oev_i =? j then x ++ OEvent oev :: nil else qc j).
+  {
+    extensionality j.
+    dec_eq_nats oev_i j.
+    subst.
+    rewrite eqb_id.
+    easy.
+    rewrite eqb_nid.
+    easy.
+    easy.
+  }
+  rewrite H5. clear H5.
+  exists (x0 ++ (oev_i, OEvent oev) :: nil).
+  repeat split.
+  2:{
+    clear.
+    rewrite <- ends_oev_overObj.
+    left.
+    induction x0.
+    repeat econstructor.
+    simpl.
+    apply ends_oev_cons.
+    easy.
+  }
+  2:{
+    rewrite projUnderThr_app.
+    simpl.
+    rewrite app_nil_r.
+    easy.
+  }
+  2:{
+    subst.
+    repeat rewrite @projOver_app.
+    simpl.
+    apply same_threads_app.
+    easy.
+    repeat constructor.
+  }
+  eapply interleave_cons.
+  3: exact H2.
+  intros.
+  simpl.
+  rewrite eqb_nid.
+  easy.
+  easy.
+  repeat rewrite eqb_id.
+  easy.
+}
 Admitted.
+
+Lemma steps_no_over {E F} impl :
+  forall p : Trace (ThreadLEvent E F),
+  projOver p = nil ->
+  forall t,
+  Steps (ThreadsStep impl) allIdle p t ->
+  p = nil.
+intros.
+destruct p.
+easy.
+exfalso.
+induction p.
+destruct t0, l; simpl in *.
+dependent destruction H0.
+unfold ThreadsStep in H0.
+dependent destruction H0.
+simpl in *.
+dependent destruction H0.
+congruence.
+destruct t0, l.
+simpl in *.
+dependent destruction H0.
+unfold ThreadsStep in H0.
+dependent destruction H0.
+simpl in *.
+dependent destruction H0.
+simpl in *.
+destruct a, l; simpl in *.
+congruence.
+congruence.
+Qed.
+
+Lemma map_split {A B} {f : A -> B} {xs ys} :
+  map f (xs ++ ys) = map f xs ++ map f ys.
+induction xs.
+easy.
+simpl.
+f_equal.
+easy.
+Qed.
 
 Theorem layerRefines_VComp_assoc {E F G} : 
   forall  (spec : Spec E) (impl : Impl E F) (impl' : Impl F G),
@@ -3165,71 +3210,97 @@ symmetry in H.
 destruct x, s.
 simpl in *.
 simpl.
+assert (H2' := H2).
+rewrite <- ends_oev_overObj in H2'.
+destruct H2'.
+2:{
+  subst.
+  exists (allIdle, Init spec), nil.
+  repeat constructor.
+}
+unfold ends_in_oev in H5.
+destruct_all.
 cut (
   forall i, exists st, exists q,
     (~ In i (dedup (map fst x1 ++ map fst x0)) -> q = nil) /\
     projOverSeq (projPoint i eqb x0) = projOverSeq q /\
     projUnderThrSeq (projPoint i eqb x1) = projUnderThrSeq q /\
-    Steps (ThreadStep (impl |> impl')) (substTS impl (allIdle i)) q st
+    Steps (ThreadStep (impl |> impl')) (substTS impl (allIdle i)) q st /\
+    (i = x2 ->
+      exists qc_q, q = qc_q ++ OEvent x3 :: nil)
 ).
 {
   intros.
-  repeat (apply choice in H5; destruct_all).
-  exists (x, s).
+  repeat (apply choice in H6; destruct_all).
+  exists (x4, s).
   simpl in *.
   eassert (
     exists q,
-      Interleave x2 q /\
+      Interleave x5 q /\
       IsOverObjTrace q /\
       same_threads (projUnderThr x1) (projUnderThr q) /\
       same_threads (projOver x0) (projOver q)).
   {
-    admit.
+    {
+      destruct_all.
+      subst.
+      eapply help57.
+      easy.
+      intros.
+      specialize (H6 i).
+      destruct H6.
+      apply H6.
+      rewrite <- dedup_correct.
+      easy.
+      specialize (H6 x2).
+      destruct_all.
+      apply H9.
+      easy.
+    }
   }
   destruct_all.
-  exists x3.
+  exists x6.
   repeat split.
   {
     eapply full_projOver.
-    2: exact H6.
+    2: exact H7.
     intros.
-    specialize (H5 i).
+    specialize (H6 i).
     easy.
     easy.
   }
   {
-    assert (projUnderThr x1 = projUnderThr x3).
+    assert (projUnderThr x1 = projUnderThr x6).
     eapply full_projUnderThr.
-    2: exact H6.
+    2: exact H7.
     intros.
-    specialize (H5 i).
+    specialize (H6 i).
     easy.
     easy.
-    rewrite <- H10.
+    rewrite <- H11.
     easy.
   }
   {
     unfold ThreadsStep.
     rewrite (decompPointSteps eqb (ThreadStep (impl |> impl'))).
     intros.
-    specialize (H5 i).
+    specialize (H6 i).
     erewrite <- uninterleave.
-    2: exact H6.
+    2: exact H7.
     2: exact threadDecEq.
     easy.
   }
   easy.
 }
-clear H4 H2 H0.
 intros.
 assert (In i (dedup (map fst x1 ++ map fst x0)) \/ ~In i (dedup (map fst x1 ++ map fst x0))) by apply excluded_middle.
-destruct H0.
+destruct H6.
 2:{
   assert (projPoint i eqb x1 = nil).
   {
-    rewrite <- dedup_correct in H0.
-    rewrite In_split in H0.
-    rewrite help41 in H0.
+    rewrite <- dedup_correct in H6.
+    rewrite In_split in H6.
+    rewrite help41 in H6.
     destruct_all.
     rewrite proj_notin.
     easy.
@@ -3237,19 +3308,31 @@ destruct H0.
   }
   assert (projPoint i eqb x0 = nil).
   {
-    rewrite <- dedup_correct in H0.
-    rewrite In_split in H0.
-    rewrite help41 in H0.
+    rewrite <- dedup_correct in H6.
+    rewrite In_split in H6.
+    rewrite help41 in H6.
     destruct_all.
     rewrite proj_notin.
     easy.
     easy.
   }
   exists Idle, nil.
-  rewrite H2.
-  rewrite H4.
+  rewrite H7.
+  rewrite H8.
   repeat split.
   constructor.
+  intros.
+  subst.
+  exfalso.
+  rewrite <- dedup_correct in H6.
+  rewrite map_split in H6.
+  repeat rewrite In_split in H6.
+  repeat rewrite help41 in H6.
+  destruct_all.
+  simpl in H9.
+  rewrite help41 in H9.
+  destruct_all.
+  congruence.
 }
 rewrite (decompPointSteps eqb (ThreadStep impl)) in H3.
 rewrite (decompPointSteps eqb (ThreadStep impl')) in H1.
@@ -3258,29 +3341,37 @@ specialize (H1 i).
 2: exact threadDecEq.
 2: exact threadDecEq.
 apply (seq_proj_assoc i) in H.
-generalize dependent (projPoint i eqb x1).
-generalize dependent (projPoint i eqb x0).
+(* generalize dependent (projPoint i eqb x1).
+generalize dependent (projPoint i eqb x0). *)
 intros.
-rename l into tH.
-rename l0 into tL.
+(* rename l into tH.
+rename l0 into tL. *)
 apply get_assoc_view in H.
-move tL after tH.
-move H3 after H1.
+(* move tL after tH.
+move H3 after H1. *)
 cut (
 exists (st : ThreadState E G) (q : list (LEvent E G)),
-  projOverSeq tH = projOverSeq q /\
-  projUnderThrSeq tL = projUnderThrSeq q /\
-  Steps (ThreadStep (impl |> impl')) (substTS impl (allIdle i)) q st
+  projOverSeq (projPoint i eqb x0) = projOverSeq q /\
+  projUnderThrSeq (projPoint i eqb x1) = projUnderThrSeq q /\
+  Steps (ThreadStep (impl |> impl')) (substTS impl (allIdle i)) q st /\
+  (i = x2 ->
+    exists qc_q, q = qc_q ++ OEvent x3 :: nil)
 ).
 {
   intros.
   destruct_all.
-  exists x, x2.
+  exists x4, x5.
   easy.
 }
-eapply help66.
-easy.
-constructor.
-exact H3.
-exact H1.
-Qed.
+subst.
+eapply help66 in H.
+3: exact H3.
+3: exact H1.
+2: constructor.
+subst.
+simpl.
+destruct_all.
+exists x0, x4.
+repeat split; try easy.
+intros.
+subst.
