@@ -19,6 +19,7 @@
 ./Core/ProgramFacts.v
 # ./Core/TracesFacts.v
 ./Core/SimulatesFacts.v
+./Core/EuttRefinesSetup.v
 ./Core/RefinesFacts.v
 ./Core/VCompFacts.v
 
