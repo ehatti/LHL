@@ -1461,14 +1461,13 @@ induction H; intros; destruct_steps.
 {
   dependent destruction H0.
   eapply IHassoc_view in H4.
-  3: exact H3.
+  3: exact H2.
   destruct_all.
-  exists x0, (UEvent None :: x1).
+  exists x, (UEvent None :: x0).
   repeat split; try easy.
   econstructor.
   econstructor; easy.
-  exact H2.
-  dependent destruction x.
+  exact H3.
   remember (k v).
   destruct p.
   simpl_sp.
@@ -1648,33 +1647,19 @@ Inductive silents {E G} : (nat -> Trace (LEvent E G)) -> Trace (ThreadLEvent E G
     silents (fun j => if i =? j then s else qc j) r ->
     silents qc ((i, UEvent None) :: r).
 
-Fixpoint atnones {E F} (qc : nat -> Trace (LEvent E F)) is :=
+Fixpoint atnones {E F} (qc : nat -> Trace (LEvent E F)) (is : list nat) :=
   match is with
   | nil => nil
   | i :: is =>
-      map (fun e => (i, e)) (qc i) ++
+      @thread_nones E F i (length (qc i)) ++
       atnones (fun j => if i =? j then nil else qc j) is
   end.
 
-Inductive iview {E F G} is : Trace (ThreadLEvent E F) -> Trace (ThreadLEvent F G) -> (nat -> Trace (LEvent E G)) -> Trace (ThreadLEvent E G) -> Prop :=
-| HEnd qc :
-    iview is nil nil qc (atnones qc is)
-| HPUnder i e p q s n r qc :
-    qc i = nones n ++ UEvent (Some e) :: s ->
-    iview is p q (fun j => if i =? j then s else qc j) r ->
-    iview is ((i, UEvent (Some e)) :: p) q qc (thread_nones i n ++ (i, UEvent (Some e)) :: r)
-| HQOver i e p q s n r qc :
-    qc i = nones n ++ OEvent e :: s ->
-    iview is p q (fun j => if i =? j then s else qc j) r ->
-    iview is p ((i, OEvent e) :: q) qc (thread_nones i n ++ (i, OEvent e) :: r)
-| HPOther i e p q r qc :
-    ~(exists e', e = UEvent (Some e')) ->
-    iview is p q qc r ->
-    iview is ((i, e) :: p) q qc r
-| HQOther i e p q r qc :
-    ~(exists e', e = OEvent e') ->
-    iview is p q qc r ->
-    iview is p ((i, e) :: q) qc r.
+Definition tail {A} (xs : list A) : list A :=
+  match xs with
+  | _ :: xs => xs
+  | nil => nil
+  end.
 
 Lemma prune_if_projOver {E F G} :
   forall n q ev qc,
@@ -1845,7 +1830,7 @@ dec_eq_nats a i.
 simpl in H.
 rewrite help41 in H. destruct H.
 congruence.
-rewrite projPoint_app.
+rewrite @projPoint_app.
 rewrite IHl.
 rewrite app_nil_r.
 induction (qc a).
@@ -1858,24 +1843,6 @@ simpl in *.
 rewrite help41 in H.
 easy.
 Qed.
-
-Program Fixpoint help57_help {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)) (qc : nat -> Trace (LEvent E G)) {measure (length p + length q)} :
-  (forall i,
-    projUnderThrSeq (projPoint i eqb p) = projUnderThrSeq (qc i)) ->
-  (forall i,
-    projOverSeq (projPoint i eqb q) = projOverSeq (qc i)) ->
-  forall is,
-  exists r,
-    iview is p q qc r := _.
-Next Obligation.
-destruct p.
-{
-  admit.
-}
-{
-  destruct t, l; simpl in *.
-}
-Admitted.
 
 Lemma proj_nones {E F} :
   forall n i,
@@ -1920,6 +1887,169 @@ f_equal.
 easy.
 Qed.
 
+Inductive choose_trace {E F G} : (nat -> Trace (LEvent E G)) -> Trace (ThreadLEvent E F) -> Trace (ThreadLEvent F G) -> Trace (ThreadLEvent E G) -> Prop :=
+| ChooseNil qc :
+    (forall i, qc i = nil) ->
+    choose_trace qc nil nil nil
+| ChooseUnder qc i e s p q r :
+    choose_trace (fun j => if i =? j then s else qc j) p q r ->
+    qc i = UEvent (Some e) :: s ->
+    choose_trace qc ((i, UEvent (Some e)) :: p) q ((i, UEvent (Some e)) :: r)
+| ChooseOver qc i e s p q r :
+    choose_trace (fun j => if i =? j then s else qc j) p q r ->
+    qc i = OEvent e :: s ->
+    choose_trace qc p ((i, OEvent e) :: q) ((i, OEvent e) :: r)
+| ChooseSilent qc i s p q r :
+    choose_trace (fun j => if i =? j then s else qc j) p q r ->
+    qc i = UEvent None :: s ->
+    choose_trace qc p q ((i, UEvent None) :: r)
+| ChooseUnderSkipSilent qc i p q r :
+    choose_trace qc p q r ->
+    choose_trace qc ((i, UEvent None) :: p) q r
+| ChooseUnderSkipOver qc i e p q r :
+    choose_trace qc p q r ->
+    choose_trace qc ((i, OEvent e) :: p) q r
+| ChooseOverSkipUnder qc i e p q r :
+    choose_trace qc p q r ->
+    choose_trace qc p ((i, UEvent (Some e)) :: q) r.
+
+Inductive finite_map {A} :=
+| Emp
+| Map (n : nat) (xs : list A) (m : finite_map).
+Arguments finite_map : clear implicits.
+
+Fixpoint map_size {A} (m : finite_map A) : nat :=
+  match m with
+  | Emp => 0
+  | Map _ xs m => length xs + map_size m
+  end.
+
+Fixpoint index {A} (m : finite_map A) i : list A :=
+  match m with
+  | Emp => nil
+  | Map n xs m' =>
+      if i =? n then
+        xs
+      else
+        index m' i
+  end.
+
+Fixpoint indices {A} (m : finite_map A) : list nat :=
+  match m with
+  | Emp => nil
+  | Map n _ m => n :: indices m
+  end.
+
+Fixpoint mk_fmap {A} (qc : nat -> list A) is : finite_map A :=
+  match is with
+  | nil => Emp
+  | cons i is => Map i (qc i) (mk_fmap qc is)
+  end.
+
+Lemma fmap_correct {A} :
+  forall qc is,
+  (forall i, ~In i is -> qc i = nil) ->
+  qc = @index A (mk_fmap qc is).
+intros.
+extensionality i.
+specialize (H i).
+induction is.
+rewrite H.
+easy.
+easy.
+simpl in *.
+dec_eq_nats i a.
+rewrite eqb_id.
+easy.
+rewrite eqb_nid.
+apply IHis.
+intros.
+apply H.
+rewrite help41.
+easy.
+easy.
+Qed.
+
+Lemma choose_nat : exists n : nat, True.
+exists 0.
+easy.
+Qed.
+
+Program Fixpoint get_choose_trace {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)) (qc : finite_map (LEvent E G)) {measure (map_size qc + length p + length q)} :
+  (forall i,
+    projUnderThrSeq (projPoint i eqb p) = projUnderThrSeq (index qc i)) ->
+  (forall i,
+    projOverSeq (projPoint i eqb q) = projOverSeq (index qc i)) ->
+  exists r,
+    choose_trace (index qc) p q r := _.
+Next Obligation.
+destruct p, q.
+{
+  clear get_choose_trace.
+  assert (forall i, exists n, index qc i = nones n).
+  intros.
+  apply derive_is_nones.
+  symmetry.
+  apply H.
+  symmetry.
+  apply H0.
+  clear H H0.
+  apply choice in H1.
+  destruct_all.
+  exists (concat (map (fun i => thread_nones i (x i)) (dedup (indices qc)))).
+  assert (
+    index qc =
+    (fun i =>
+      if classicT (In i (indices qc)) then
+        nones (x i)
+      else
+        nil)
+  ).
+  extensionality i.
+  destruct (classicT (In i (indices qc))).
+  apply H.
+  clear H.
+  induction qc.
+  easy.
+  simpl in *.
+  rewrite help41 in n.
+  destruct_all.
+  rewrite eqb_nid.
+  apply IHqc.
+  easy.
+  easy.
+  rewrite H0. clear H0 H.
+  induction (indices qc).
+  {
+    constructor.
+    intros.
+    simpl.
+    destruct (classicT False).
+    contradiction.
+    easy.
+  }
+  {
+    simpl in *.
+    induction (x a).
+    simpl.
+    admit.
+    admit.
+  }
+}
+{
+
+}
+{
+
+}
+{
+  destruct t, t0.
+  simpl in *.
+
+}
+
+Admitted.
+
 Lemma help57 {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)) :
   forall qc : nat -> Trace (LEvent E G),
   (forall i,
@@ -1951,165 +2081,238 @@ cut (
 }
 assert (
   exists r,
-    iview (dedup (map fst p ++ map fst q)) p q qc r
-) by (apply help57_help; easy).
+    choose_trace qc p q r
+).
+{
+  rewrite fmap_correct with (qc:=qc) (is:= map fst p ++ map fst q).
+  apply get_choose_trace.
+  rewrite <- fmap_correct.
+  easy.
+  easy.
+  rewrite <- fmap_correct.
+  easy.
+  easy.
+  easy.
+}
 destruct_all.
 exists x.
 repeat split.
 {
-  clear H0 H.
-  generalize dependent (map fst p ++ map fst q).
-  intros.
+  clear H0 H1 H.
   induction H2.
   {
-    generalize dependent qc.
-    induction l; intros.
-    {
-      simpl.
-      symmetry.
-      apply H1.
-      easy.
-    }
-    {
-      simpl.
-      destruct (classicT (In a l)).
-      {
-        apply IHl.
-        intros.
-        apply H1.
-        simpl.
-        rewrite help41.
-        dec_eq_nats a i1.
-        contradiction.
-        easy.
-      }
-      {
-        simpl.
-        rewrite projPoint_app.
-        dec_eq_nats i a.
-        rewrite tnones_notin.
-        rewrite app_nil_r.
-        induction (qc a).
-        easy.
-        simpl.
-        rewrite eqb_id.
-        congruence.
-        rewrite <- dedup_correct.
-        easy.
-        induction (qc a).
-        simpl.
-        assert (qc i = (fun j : nat => if a =? j then nil else qc j) i).
-        rewrite eqb_nid.
-        easy.
-        easy.
-        rewrite H0. clear H0.
-        apply IHl.
-        intros.
-        dec_eq_nats a i0.
-        rewrite eqb_id.
-        easy.
-        rewrite eqb_nid.
-        apply H1.
-        simpl.
-        rewrite help41.
-        easy.
-        easy.
-        simpl.
-        rewrite eqb_nid.
-        easy.
-        easy.
-      }
-    }
+    symmetry.
+    apply H.
   }
   {
+    simpl.
+    intros.
     dec_eq_nats i i0.
-    {
-      rewrite eqb_id in *.
-      rewrite @projPoint_app.
-      rewrite proj_nones.
-      rewrite H.
-      simpl.
-      rewrite eqb_id.
-      repeat f_equal.
-      apply IHiview.
-      intros.
-      dec_eq_nats i i0.
-      rewrite H1 in H.
-      destruct n; simpl in *; discriminate.
-      easy.
-      rewrite eqb_nid.
-      apply H1.
-      easy.
-      easy.
-    }
-    {
-      rewrite @projPoint_app.
-      rewrite proj_nones_not.
-      simpl.
-      rewrite eqb_nid in *.
-      apply IHiview.
-      intros.
-      dec_eq_nats i0 i1.
-      rewrite eqb_id.
-      rewrite H1 in H.
-      destruct n; simpl in *; discriminate.
-      easy.
-      rewrite eqb_nid.
-      apply H1.
-      easy.
-      easy.
-      easy.
-      easy.
-      easy.
-    }
-  }
-  {
-    dec_eq_nats i i0.
-    rewrite @projPoint_app.
-    rewrite proj_nones.
+    rewrite eqb_id.
     rewrite H.
+    f_equal.
+    specialize (IHchoose_trace i0).
+    rewrite eqb_id in IHchoose_trace.
+    easy.
+    specialize (IHchoose_trace i0).
+    rewrite eqb_nid in *.
+    easy.
+    easy.
+    easy.
+  }
+  {
+    simpl.
+    intros.
+    specialize (IHchoose_trace i0).
+    dec_eq_nats i i0.
+    rewrite eqb_id in *.
+    rewrite H.
+    congruence.
+    rewrite eqb_nid in *.
+    easy.
+    easy.
+    easy.
+  }
+  {
+    intros.
+    specialize (IHchoose_trace i0).
+    dec_eq_nats i i0.
     simpl.
     rewrite eqb_id in *.
-    repeat f_equal.
-    apply IHiview.
-    intros.
-    dec_eq_nats i0 i.
-    rewrite H1 in H.
-    destruct n; simpl in H; discriminate.
-    easy.
-    rewrite eqb_nid.
-    apply H1.
-    easy.
-    easy.
-    rewrite @projPoint_app.
-    rewrite proj_nones_not.
+    rewrite H.
+    congruence.
     simpl.
     rewrite eqb_nid in *.
-    apply IHiview.
-    intros.
-    dec_eq_nats i0 i1.
-    rewrite H1 in H.
-    destruct n; simpl in H; discriminate.
-    easy.
-    rewrite eqb_nid.
-    apply H1.
-    easy.
-    easy.
     easy.
     easy.
     easy.
   }
   {
-    apply IHiview.
     easy.
   }
   {
-    apply IHiview.
+    easy.
+  }
+  {
     easy.
   }
 }
 {
-  
+  clear H1 H0.
+  induction H2.
+  {
+    constructor.
+  }
+  {
+    simpl in *.
+    constructor.
+    apply IHchoose_trace.
+    intros.
+    assert (H' := H).
+    specialize (H i).
+    rewrite eqb_id, H0 in H.
+    simpl in *.
+    dec_eq_nats i i0.
+    rewrite eqb_id.
+    congruence.
+    rewrite eqb_nid.
+    specialize (H' i0).
+    rewrite eqb_nid in H'.
+    easy.
+    easy.
+    easy.
+  }
+  {
+    simpl in *.
+    apply IHchoose_trace.
+    intros.
+    assert (H' := H).
+    specialize (H i).
+    rewrite H0 in H.
+    simpl in *.
+    dec_eq_nats i i0.
+    rewrite eqb_id.
+    easy.
+    rewrite eqb_nid.
+    apply H'.
+    easy.
+  }
+  {
+    simpl in *.
+    apply IHchoose_trace.
+    intros.
+    assert (H' := H).
+    specialize (H i).
+    rewrite H0 in H.
+    simpl in *.
+    dec_eq_nats i i0.
+    rewrite eqb_id.
+    easy.
+    rewrite eqb_nid.
+    apply H'.
+    easy.
+  }
+  {
+    simpl in *.
+    apply IHchoose_trace.
+    intros.
+    assert (H' := H).
+    specialize (H i0).
+    dec_eq_nats i0 i.
+    rewrite eqb_id in *.
+    easy.
+    rewrite eqb_nid in *.
+    easy.
+    easy.
+  }
+  {
+    simpl in *.
+    apply IHchoose_trace.
+    intros.
+    assert (H' := H).
+    specialize (H i0).
+    dec_eq_nats i0 i.
+    rewrite eqb_id in *.
+    easy.
+    rewrite eqb_nid in *.
+    easy.
+    easy.
+  }
+  {
+    apply IHchoose_trace.
+    easy.
+  }
+}
+{
+  clear H H1.
+  induction H2.
+  {
+    constructor.
+  }
+  {
+    simpl in *.
+    apply IHchoose_trace.
+    intros.
+    assert (H0' := H0).
+    specialize (H0 i).
+    rewrite H in H0.
+    simpl in *.
+    dec_eq_nats i i0.
+    rewrite eqb_id in *.
+    easy.
+    rewrite eqb_nid.
+    apply H0'.
+    easy.
+  }
+  {
+    simpl in *.
+    constructor.
+    apply IHchoose_trace.
+    intros.
+    dec_eq_nats i i0.
+    specialize (H0 i0).
+    rewrite eqb_id, H in *.
+    simpl in *.
+    congruence.
+    specialize (H0 i0).
+    rewrite eqb_nid in *.
+    easy.
+    easy.
+    easy.
+  }
+  {
+    simpl in *.
+    apply IHchoose_trace.
+    intros.
+    dec_eq_nats i i0.
+    specialize (H0 i0).
+    rewrite eqb_id, H in *.
+    easy.
+    rewrite eqb_nid.
+    apply H0.
+    easy.
+  }
+  {
+    apply IHchoose_trace.
+    easy.
+  }
+  {
+    apply IHchoose_trace.
+    easy.
+  }
+  {
+    simpl in *.
+    apply IHchoose_trace.
+    intros.
+    dec_eq_nats i i0.
+    specialize (H0 i0).
+    rewrite eqb_id in *.
+    easy.
+    specialize (H0 i0).
+    rewrite eqb_nid in *.
+    easy.
+    easy.
+  }
 }
 Qed.
 
@@ -2242,8 +2445,9 @@ cut (
     intros.
     specialize (H5 i).
     destruct_all.
-    erewrite <- uninterleave.
-    exact H11.
+    erewrite constr_interleave in H6.
+    specialize (H6 i).
+    rewrite <- H6.
     easy.
     exact threadDecEq.
   }
