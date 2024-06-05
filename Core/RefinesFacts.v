@@ -1911,12 +1911,22 @@ Inductive choose_trace {E F G} : (nat -> Trace (LEvent E G)) -> Trace (ThreadLEv
     choose_trace qc ((i, OEvent e) :: p) q r
 | ChooseOverSkipUnder qc i e p q r :
     choose_trace qc p q r ->
-    choose_trace qc p ((i, UEvent (Some e)) :: q) r.
+    choose_trace qc p ((i, UEvent e) :: q) r.
 
 Inductive finite_map {A} :=
 | Emp
-| Map (n : nat) (xs : list A) (m : finite_map).
+| Map (i : nat) (xs : list A) (m : finite_map).
 Arguments finite_map : clear implicits.
+
+Fixpoint update {A} (m : finite_map A) i (xs : list A) : finite_map A :=
+  match m with
+  | Emp => Map i xs Emp
+  | Map j ys m' =>
+      if i =? j then
+        Map i xs m'
+      else
+        Map j ys (update m' i xs)
+  end.
 
 Fixpoint map_size {A} (m : finite_map A) : nat :=
   match m with
@@ -1928,11 +1938,25 @@ Fixpoint index {A} (m : finite_map A) i : list A :=
   match m with
   | Emp => nil
   | Map n xs m' =>
-      if i =? n then
+      if n =? i then
         xs
       else
         index m' i
   end.
+
+Fixpoint dedup_map {A} (m : finite_map A) is : finite_map A :=
+  match m with
+  | Emp => Emp
+  | Map i xs m' =>
+      if classicT (In i is) then
+        dedup_map m' is
+      else
+        Map i xs (dedup_map m' (i :: is))
+  end.
+
+(* Lemma map_functional {A} :
+  forall m : finite_map A,
+  index *)
 
 Fixpoint indices {A} (m : finite_map A) : list nat :=
   match m with
@@ -1970,84 +1994,323 @@ easy.
 easy.
 Qed.
 
-Lemma choose_nat : exists n : nat, True.
+(* Lemma choose_nat : exists n : nat, True.
 exists 0.
 easy.
-Qed.
+Qed. *)
 
-Program Fixpoint get_choose_trace {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)) (qc : finite_map (LEvent E G)) {measure (map_size qc + length p + length q)} :
+(* Inductive nones_map_view {E F} : finite_map (LEvent E F) -> Prop :=
+| NVEmp :
+    nones_map_view Emp
+| NVMap i n m :
+    nones_map_view m ->
+    nones_map_view (Map i (nones n) m). *)
+
+(* Lemma get_nmv {E F} :
+  forall qc,
+  (forall i, exists n, index qc i = @nones E F n) ->
+  nones_map_view qc.
+intros.
+induction qc.
+constructor.
+simpl in *. *)
+
+Program Fixpoint get_choose_trace {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)) (qc : nat -> Trace (LEvent E G)) is {measure (length p + length q)} :
   (forall i,
-    projUnderThrSeq (projPoint i eqb p) = projUnderThrSeq (index qc i)) ->
+    projUnderThrSeq (projPoint i eqb p) = projUnderThrSeq (qc i)) ->
   (forall i,
-    projOverSeq (projPoint i eqb q) = projOverSeq (index qc i)) ->
+    projOverSeq (projPoint i eqb q) = projOverSeq (qc i)) ->
+  (forall i,
+    ~In i is -> qc i = nil) ->
   exists r,
-    choose_trace (index qc) p q r := _.
+    choose_trace qc p q r := _.
 Next Obligation.
 destruct p, q.
 {
-  clear get_choose_trace.
-  assert (forall i, exists n, index qc i = nones n).
-  intros.
-  apply derive_is_nones.
-  symmetry.
-  apply H.
-  symmetry.
-  apply H0.
-  clear H H0.
-  apply choice in H1.
-  destruct_all.
-  exists (concat (map (fun i => thread_nones i (x i)) (dedup (indices qc)))).
-  assert (
-    index qc =
-    (fun i =>
-      if classicT (In i (indices qc)) then
-        nones (x i)
-      else
-        nil)
-  ).
-  extensionality i.
-  destruct (classicT (In i (indices qc))).
-  apply H.
-  clear H.
-  induction qc.
-  easy.
-  simpl in *.
-  rewrite help41 in n.
-  destruct_all.
-  rewrite eqb_nid.
-  apply IHqc.
-  easy.
-  easy.
-  rewrite H0. clear H0 H.
-  induction (indices qc).
+  clear get_choose_trace. simpl in *.
+  assert (forall i, exists n, qc i = nones n).
   {
+    intros.
+    apply derive_is_nones.
+    symmetry. apply H.
+    symmetry. apply H0.
+  }
+  apply choice in H2.
+  destruct_all.
+  clear H H0.
+  generalize dependent x.
+  generalize dependent qc.
+  induction is; intros.
+  {
+    exists nil.
     constructor.
     intros.
-    simpl.
-    destruct (classicT False).
-    contradiction.
+    apply H1.
     easy.
   }
   {
-    simpl in *.
-    induction (x a).
-    simpl.
-    admit.
-    admit.
+    assert (
+      exists r,
+        choose_trace (F:=F) (fun i => if a =? i then nil else qc i) nil nil r
+    ).
+    {
+      apply IHis with (x:=fun i => if a =? i then 0 else x i).
+      intros.
+      dec_eq_nats a i.
+      rewrite eqb_id.
+      easy.
+      rewrite eqb_nid.
+      rewrite H1.
+      easy.
+      simpl.
+      rewrite help41.
+      easy.
+      easy.
+      intros.
+      dec_eq_nats a x0.
+      rewrite eqb_id.
+      easy.
+      rewrite eqb_nid.
+      apply H2.
+      easy.
+    }
+    destruct_all.
+    exists (thread_nones a (x a) ++ x0).
+    clear IHis.
+    remember (x a).
+    generalize dependent qc.
+    generalize dependent x.
+    induction n; intros.
+    {
+      simpl.
+      assert (
+        qc =
+        (fun i : nat => if a =? i then nil else qc i)
+      ).
+      {
+        extensionality i.
+        dec_eq_nats a i.
+        rewrite eqb_id.
+        rewrite H2.
+        rewrite <- Heqn.
+        easy.
+        rewrite eqb_nid.
+        easy.
+        easy.
+      }
+      rewrite H0.
+      easy.
+    }
+    {
+      simpl in *.
+      econstructor.
+      apply IHn with (x:=fun i => if i =? a then n else x i).
+      rewrite eqb_id.
+      easy.
+      intros.
+      rewrite help41 in H0.
+      destruct_all.
+      rewrite eqb_nid.
+      apply H1.
+      rewrite help41.
+      easy.
+      easy.
+      intros.
+      dec_eq_nats a x1.
+      rewrite eqb_id.
+      easy.
+      repeat rewrite eqb_nid.
+      apply H2.
+      easy.
+      easy.
+      rewrite if_prune.
+      easy.
+      rewrite H2.
+      rewrite <- Heqn.
+      easy.
+    }
   }
 }
 {
-
+  destruct t, l; simpl in *.
+  {
+    eapply get_choose_trace with (p:=nil) in H.
+    destruct_all.
+    exists x.
+    constructor.
+    exact H.
+    simpl. lia.
+    eapply prune_if_projOver.
+    exact H0.
+    exact H1.
+  }
+  {
+    assert (H0' := H0).
+    specialize (H0 n).
+    rewrite eqb_id in H0.
+    simpl in H0.
+    apply get_projOver_nones in H0.
+    destruct_all.
+    eassert (
+      exists r,
+        choose_trace (fun i => if n =? i then x0 else qc i) nil q r
+    ).
+    {
+      eapply get_choose_trace.
+      simpl. lia.
+      intros.
+      dec_eq_nats i n.
+      rewrite eqb_id.
+      specialize (H n).
+      rewrite H0 in H.
+      rewrite projUnderThrSeq_app, projUnderThrSeq_nones in H.
+      easy.
+      rewrite eqb_nid.
+      apply H.
+      easy.
+      intros.
+      specialize (H0' i).
+      dec_eq_nats i n.
+      rewrite eqb_id, H0 in *.
+      rewrite projOverSeq_app, projOverSeq_nones in H0'.
+      simpl in H0'.
+      congruence.
+      rewrite eqb_nid in *.
+      easy.
+      easy.
+      easy.
+      intros.
+      apply H1 in H2.
+      dec_eq_nats i n.
+      rewrite H0 in H2.
+      destruct x; simpl in H2; discriminate.
+      rewrite eqb_nid.
+      easy.
+      easy.
+    }
+    destruct_all.
+    exists (thread_nones n x ++ (n, OEvent ev) :: x1).
+    clear get_choose_trace H H1 H0'.
+    generalize dependent qc.
+    induction x; intros.
+    {
+      simpl.
+      econstructor.
+      exact H2.
+      easy.
+    }
+    {
+      simpl.
+      econstructor.
+      apply IHx.
+      rewrite eqb_id.
+      easy.
+      rewrite if_prune.
+      easy.
+      easy.
+    }
+    apply H.
+  }
 }
 {
-
+  destruct t, l; simpl in *.
+  destruct ev.
+  {
+    assert (H' := H).
+    specialize (H n).
+    rewrite eqb_id in H.
+    simpl in H.
+    apply get_projUnderThr_nones in H.
+    destruct_all.
+    eassert (
+      exists r,
+        choose_trace (fun i => if n =? i then x0 else qc i) p nil r
+    ).
+    {
+      eapply get_choose_trace.
+      simpl. lia.
+      intros.
+      dec_eq_nats i n.
+      rewrite eqb_id.
+      specialize (H' n).
+      rewrite eqb_id, H, projUnderThrSeq_app, projUnderThrSeq_nones in H'.
+      simpl in *.
+      congruence.
+      specialize (H' i).
+      rewrite eqb_nid in *.
+      easy.
+      easy.
+      easy.
+      intros.
+      specialize (H0 i).
+      dec_eq_nats n i.
+      rewrite eqb_id.
+      rewrite H, projOverSeq_app, projOverSeq_nones in H0.
+      easy.
+      rewrite eqb_nid.
+      easy.
+      easy.
+      intros.
+      apply H1 in H2.
+      dec_eq_nats i n.
+      rewrite H in H2.
+      destruct x; simpl in H2; discriminate.
+      rewrite eqb_nid.
+      easy.
+      easy.
+    }
+    destruct_all.
+    exists (thread_nones n x ++ (n, UEvent (Some e)) :: x1).
+    clear H' H0 H1 get_choose_trace.
+    generalize dependent qc.
+    induction x.
+    {
+      simpl.
+      econstructor.
+      exact H2.
+      easy.
+    }
+    {
+      simpl.
+      intros.
+      eapply ChooseSilent with (s:= nones x ++ UEvent (Some e) :: x0).
+      apply IHx.
+      rewrite eqb_id.
+      easy.
+      rewrite if_prune.
+      easy.
+      easy.
+    }
+    apply H0.
+  }
+  {
+    eapply get_choose_trace in H1.
+    destruct_all.
+    exists x.
+    econstructor.
+    exact H1.
+    simpl. lia.
+    eapply prune_if_projUnderThr with (ev:= UEvent None).
+    unfold not. intros. destruct_all. congruence.
+    exact H.
+    apply H0.
+  }
+  {
+    eapply get_choose_trace in H1.
+    destruct_all.
+    exists x.
+    econstructor.
+    exact H1.
+    simpl. lia.
+    eapply prune_if_projUnderThr with (ev:= OEvent ev).
+    unfold not. intros. destruct_all. congruence.
+    exact H.
+    apply H0.
+  }
 }
 {
   destruct t, t0.
-  simpl in *.
-
 }
-
 Admitted.
 
 Lemma help57 {E F G} (p : Trace (ThreadLEvent E F)) (q : Trace (ThreadLEvent F G)) :
