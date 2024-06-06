@@ -16,7 +16,7 @@ Definition irespectful {M1 M2 N1 N2 : Type -> Type}
 
 Declare Scope isig_scope.
 Delimit Scope isig_scope with isig.
-Infix "==>" := irespectful (right associativity, at level 55) : isig_scope.
+(* Infix "==>" := irespectful (right associativity, at level 55) : isig_scope. *)
 
 
 Section UPDT_ISTATE.

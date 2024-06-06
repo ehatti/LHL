@@ -13,7 +13,7 @@ From Coq Require Import
 Record Poss {F} {VF : Spec F} := MkPoss {
   PState : VF.(State);
   PCalls : ThreadName -> option {A : Type & F A};
-  PRets : ThreadName -> option {A : Type & A}
+  PRets : ThreadName -> option {A : Type & {m : F A & A}}
 }.
 Arguments Poss {F} VF.
 
@@ -114,17 +114,19 @@ Variant PossStep {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
   VF.(Step) ρ.(PState) (i, CallEv m) σ.(PState) ->
   ρ.(PCalls) i = Some (existT _ A m) /\
   σ.(PCalls) i = None ->
-  σ.(PRets) = ρ.(PRets) ->
+  ρ.(PRets) i = None ->
+  σ.(PRets) i = None ->
   PossStep ρ σ
 | PCommitRet i A (m : F A) v :
   VF.(Step) ρ.(PState) (i, RetEv m v) σ.(PState) ->
-  σ.(PCalls) = ρ.(PCalls) ->
+  ρ.(PCalls) i = None ->
+  σ.(PCalls) i = None ->
   ρ.(PRets) i = None ->
-  σ.(PRets) i = Some (existT _ A v) ->
+  σ.(PRets) i = Some (existT _ A (existT _ m v)) ->
   PossStep ρ σ.
 
 Definition PossSteps {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
-  clos_refl_trans _ PossStep ρ σ.
+  clos_refl_trans_1n _ PossStep ρ σ.
 
 Definition Commit {E F} {VE : Spec E} {VF : Spec F} i
   (G : Relt VE VF)
@@ -209,7 +211,7 @@ Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F V
     forall ρ (v : Ret),
       fst s i = Cont m (Return v) /\
       ρs ρ /\
-      ρ.(PRets) i = Some (existT _ _ v).
+      ρ.(PRets) i = Some (existT _ _ (existT _ m v)).
 
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
@@ -226,7 +228,7 @@ Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F R
       (* TODO: should be σ? *)
       (exists ρ,
         ρs ρ /\
-        ρ.(PRets) i = Some (existT _ _ v)) /\
+        ρ.(PRets) i = Some (existT _ _ (existT _ m v))) /\
       (forall σ,
         σs σ ->
         σ.(PRets) i = None).

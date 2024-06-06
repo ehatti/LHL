@@ -74,7 +74,7 @@ Notation liftO := (map liftOEv).
 Inductive ThreadState {E F : ESig} : Type :=
 | Idle
 | Cont {A} (m : F A) (p : Prog E A) 
-| UCall {A B} (m : F A) (k : A -> Prog E B).
+| UCall {A B} (m : F B) (k : A -> Prog E B).
 Arguments ThreadState : clear implicits.
 
 Definition ThreadsSt (E F : ESig) : Type := ThreadName -> ThreadState E F.
@@ -97,13 +97,13 @@ Variant OverThreadStep {E F : ESig} (M : Impl E F) :
 
 Variant UnderThreadStep {E F : ESig} :
   ThreadState E F -> option (Event E) -> ThreadState E F -> Prop :=
-| UCallThreadStep A th th' (um : E A) om k :
+| UCallThreadStep A B th th' (um : E A) (om : F B) k :
   th = Cont om (Bind um k) ->
   th' = UCall om k ->
   UnderThreadStep th (Some (CallEv um)) th'
-| URetThreadStep A th th' um om k v :
+| URetThreadStep A B th th' (um : E A) (om : F B) k v :
   th = UCall om k ->
-  th' = Cont (A:=A) om (k v) ->
+  th' = Cont om (k v) ->
   UnderThreadStep th (Some (RetEv um v)) th'
 | USilentThreadStep A th th' om (p : Prog E A) :
   th = Cont om (NoOp p) ->

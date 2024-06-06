@@ -919,8 +919,6 @@ Qed.
 
 Open Scope list.
 
-Axiom excluded_middle : forall P, P \/ ~P.
-
 Lemma beq_comm : forall n m, n =? m = (m =? n).
 fix rec 1.
 intros.

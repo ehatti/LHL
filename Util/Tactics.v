@@ -16,3 +16,10 @@ repeat lazymatch goal with
 | [ H : ?P /\ ?Q |- _] => destruct H
 | [ H : exists x, ?P |- _] => destruct H
 end.
+
+Axiom excluded_middle : forall P, P \/ ~P.
+
+Ltac dec_eq_nats i j :=
+  let H := fresh in
+  assert (H : i = j \/ i <> j) by apply excluded_middle;
+  destruct H; subst.
