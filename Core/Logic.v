@@ -10,10 +10,21 @@ From Coq Require Import
   Logic.PropExtensionality
   Relations.Relation_Operators.
 
+Variant PCall {F : ESig} :=
+| CallIdle
+| CallPoss {A} (m : F A)
+| CallDone {A} (m : F A) (* committed *).
+Arguments PCall : clear implicits.
+
+Variant PRet {F : ESig} :=
+| RetIdle
+| RetPoss {A} (m : F A) (v : A).
+Arguments PRet : clear implicits.
+
 Record Poss {F} {VF : Spec F} := MkPoss {
   PState : VF.(State);
-  PCalls : ThreadName -> option {A : Type & F A};
-  PRets : ThreadName -> option {A : Type & {m : F A & A}}
+  PCalls : ThreadName -> PCall F;
+  PRets : ThreadName -> PRet F
 }.
 Arguments Poss {F} VF.
 
@@ -109,24 +120,31 @@ Definition ptop {E F VE VF} : @Prec E F VE VF :=
 Definition rtop {E F VE VF} : @Relt E F VE VF :=
   fun _ _ _ _ => True.
 
-Variant PossStep {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
-| PCommitCall i A (m : F A) :
+Variant PossStep {F} {VF : Spec F} i (ρ σ : Poss VF) : Prop :=
+| PCommitCall A (m : F A) :
   VF.(Step) ρ.(PState) (i, CallEv m) σ.(PState) ->
-  ρ.(PCalls) i = Some (existT _ A m) /\
-  σ.(PCalls) i = None ->
-  ρ.(PRets) i = None ->
-  σ.(PRets) i = None ->
-  PossStep ρ σ
-| PCommitRet i A (m : F A) v :
+  ρ.(PCalls) i = CallPoss m /\
+  σ.(PCalls) i = CallDone m ->
+  ρ.(PRets) i = RetIdle ->
+  σ.(PRets) i = RetIdle ->
+  PossStep i ρ σ
+| PCommitRet A (m : F A) v :
   VF.(Step) ρ.(PState) (i, RetEv m v) σ.(PState) ->
-  ρ.(PCalls) i = None ->
-  σ.(PCalls) i = None ->
-  ρ.(PRets) i = None ->
-  σ.(PRets) i = Some (existT _ A (existT _ m v)) ->
-  PossStep ρ σ.
+  ρ.(PCalls) i = CallDone m ->
+  σ.(PCalls) i = CallDone m ->
+  ρ.(PRets) i = RetIdle ->
+  σ.(PRets) i = RetPoss m v ->
+  PossStep i ρ σ.
 
-Definition PossSteps {F} {VF : Spec F} (ρ σ : Poss VF) : Prop :=
-  clos_refl_trans_1n _ PossStep ρ σ.
+Inductive PossSteps {F} {VF : Spec F} : Poss VF -> Poss VF -> Prop :=
+| PossStepsRefl ρ :
+    PossSteps ρ ρ
+| PossStepsStep i ρ σ τ :
+    PossStep i ρ σ ->
+    (forall j, i <> j -> PCalls ρ j = PCalls σ j) ->
+    (forall j, i <> j -> PRets ρ j = PRets σ j) ->
+    PossSteps σ τ ->
+    PossSteps ρ τ.
 
 Definition Commit {E F} {VE : Spec E} {VF : Spec F} i
   (G : Relt VE VF)
@@ -139,6 +157,7 @@ Definition Commit {E F} {VE : Spec E} {VF : Spec F} i
   UnderThreadStep (fst s i) (Some ev) (fst t i) ->
   VE.(Step) (snd s) (i, ev) (snd t) ->
     exists σs,
+      (exists σ, σs σ) /\
       (forall σ,
         σs σ ->
         exists ρ,
@@ -179,8 +198,8 @@ Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
     fst s i = Idle /\
     forall ρ,
       ρs ρ ->
-      ρ.(PCalls) i = None /\
-      ρ.(PRets) i = None.
+      ρ.(PCalls) i = CallIdle /\
+      ρ.(PRets) i = RetIdle.
 
 Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
@@ -192,10 +211,10 @@ Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F
       σ.(PState) = ρ.(PState)) /\
     (forall ρ,
       ρs ρ ->
-      ρ.(PCalls) i = None) /\
+      ρ.(PCalls) i = CallIdle) /\
     (forall σ,
       σs σ ->
-      σ.(PCalls) i = Some (existT _ _ m)) /\
+      σ.(PCalls) i = CallPoss m) /\
     (forall ρ σ,
       ρs ρ ->
       σs σ ->
@@ -211,7 +230,8 @@ Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F V
     forall ρ (v : Ret),
       fst s i = Cont m (Return v) /\
       ρs ρ /\
-      ρ.(PRets) i = Some (existT _ _ (existT _ m v)).
+      ρ.(PRets) i = RetPoss m v /\
+      ρ.(PCalls) i = CallDone m.
 
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
@@ -221,17 +241,19 @@ Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F R
         ρs ρ ->
         σs σ ->
         σ.(PState) = ρ.(PState)) /\
-      (forall ρ σ,
+      (forall ρ,
         ρs ρ ->
+        ρ.(PCalls) i = CallDone m) /\
+      (forall σ,
         σs σ ->
-        σ.(PCalls) = ρ.(PCalls)) /\
+        σ.(PCalls) i = CallIdle) /\
       (* TODO: should be σ? *)
       (exists ρ,
         ρs ρ /\
-        ρ.(PRets) i = Some (existT _ _ (existT _ m v))) /\
+        ρ.(PRets) i = RetPoss m v) /\
       (forall σ,
         σs σ ->
-        σ.(PRets) i = None).
+        σ.(PRets) i = RetIdle).
 
 Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
@@ -239,8 +261,8 @@ Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
 
 Definition initPoss {F VF} : @Poss F VF := {|
   PState := VF.(Init);
-  PCalls _ := None;
-  PRets _ := None;
+  PCalls _ := CallIdle;
+  PRets _ := RetIdle;
 |}.
 
 Definition VerifyImpl

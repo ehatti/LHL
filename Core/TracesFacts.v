@@ -660,9 +660,9 @@ Inductive euttTS_ {E F : ESig} :
 | euttTS_Cont A m (p p' : Prog E A) : 
     eutt p p' -> 
     euttTS_ (Cont m p) (Cont m p')
-| euttTS_UCall A B m (k k' : A -> Prog E B) : 
+| euttTS_UCall A B om um (k k' : A -> Prog E B) : 
     (forall (x : A), eutt (k x) (k' x)) ->
-    euttTS_ (UCall m k) (UCall m k').
+    euttTS_ (UCall om um k) (UCall om um k').
 
 Definition euttTS {E F : ESig} :
     ThreadsSt E F -> ThreadsSt E F -> Prop :=
