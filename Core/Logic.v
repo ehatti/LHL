@@ -226,7 +226,6 @@ Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
 
 Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F VE VF :=
   fun s ρs =>
-    (* TODO: check nonempty *)
     forall ρ (v : Ret),
       fst s i = Cont m (Return v) /\
       ρs ρ /\
@@ -275,10 +274,11 @@ Definition VerifyImpl
   (Q : ThreadName -> forall Ret, F Ret -> Post VE VF Ret) : Prop :=
   (* Side conditions *)
   (forall i j, i <> j -> G i ==> R j) /\
-  (forall i Ret (m : F Ret) v,
+  (forall i Ret (m : F Ret),
     P i Ret m (allIdle, VE.(Init)) (eq initPoss) /\
     Stable (R i) (P i Ret m) /\
-    Stable (R i) (Q i Ret m v)) /\
+    forall v,
+      Stable (R i) (Q i Ret m v)) /\
   (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2) v,
     P i Ret1 m1 <<- TInvoke impl i Ret1 m1 <<- Q i Ret1 m1 v <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i Ret2 m2) /\
   (* Verification task *)
