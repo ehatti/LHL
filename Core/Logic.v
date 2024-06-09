@@ -205,9 +205,8 @@ Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F
   fun s ρs t σs =>
     TIdle i s ρs /\
     InterOStep impl i (fst s) (CallEv m) (fst t) /\
-    (forall ρ σ,
-      ρs ρ ->
-      σs σ ->
+    (forall σ, σs σ ->
+      exists ρ, ρs ρ /\
       σ.(PState) = ρ.(PState)) /\
     (forall ρ,
       ρs ρ ->
@@ -215,10 +214,9 @@ Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F
     (forall σ,
       σs σ ->
       σ.(PCalls) i = CallPoss m) /\
-    (forall ρ σ,
-      ρs ρ ->
+    (forall σ,
       σs σ ->
-      σ.(PRets) = ρ.(PRets)).
+      σ.(PRets) i = RetIdle).
 
 Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
@@ -264,26 +262,29 @@ Definition initPoss {F VF} : @Poss F VF := {|
   PRets _ := RetIdle;
 |}.
 
-Definition VerifyImpl
+Record VerifyImpl
   {E F}
-  (VE : Spec E)
-  (VF : Spec F)
-  (R G : ThreadName -> Relt VE VF)
-  (P : ThreadName -> forall Ret, F Ret -> Prec VE VF)
-  (impl : Impl E F)
-  (Q : ThreadName -> forall Ret, F Ret -> Post VE VF Ret) : Prop :=
-  (* Side conditions *)
-  (forall i j, i <> j -> G i ==> R j) /\
-  (forall i Ret (m : F Ret),
-    P i Ret m (allIdle, VE.(Init)) (eq initPoss) /\
-    Stable (R i) (P i Ret m) /\
-    forall v,
-      Stable (R i) (Q i Ret m v)) /\
-  (forall i Ret1 (m1 : F Ret1) Ret2 (m2 : F Ret2) v,
-    P i Ret1 m1 <<- TInvoke impl i Ret1 m1 <<- Q i Ret1 m1 v <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i Ret2 m2) /\
-  (* Verification task *)
-  (forall i Ret (m : F Ret),
+  {VE : Spec E}
+  {VF : Spec F}
+  {R G : ThreadName -> Relt VE VF}
+  {P : ThreadName -> forall Ret, F Ret -> Prec VE VF}
+  {impl : Impl E F}
+  {Q : ThreadName -> forall Ret, F Ret -> Post VE VF Ret} : Prop
+:= {
+  G_in_R : forall i j,
+    i <> j -> G i ==> R j;
+  init_in_P : forall i A m,
+    P i A m (allIdle, VE.(Init)) (eq initPoss);
+  P_stable : forall i A m,
+    Stable (R i) (P i A m);
+  Q_stable : forall i Ret (m : F Ret) v,
+    Stable (R i) (Q i Ret m v);
+  switch_code : forall i A m1 B m2 v,
+    P i A m1 <<- TInvoke impl i A m1 <<- Q i A m1 v <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i B m2;
+  all_verified : forall i A m,
     VerifyProg i (R i) (G i)
-      (P i Ret m <<- TInvoke impl i Ret m)
-      (impl Ret m)
-      (fun v => Q i Ret m v ->> PrecToRelt (Returned i m))).
+      (P i A m <<- TInvoke impl i A m)
+      (impl A m)
+      (fun v => Q i A m v ->> PrecToRelt (Returned i m))
+}.
+Arguments VerifyImpl {E F} VE VF R G P impl Q.
