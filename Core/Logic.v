@@ -166,6 +166,24 @@ Definition Commit {E F} {VE : Spec E} {VF : Spec F} i
       Q s ρs t σs /\
       G s ρs t σs.
 
+Definition SilentStep {E F} {VE : Spec E} {VF : Spec F} i
+  (G : Relt VE VF)
+  (P : Prec VE VF)
+  (Q : Relt VE VF) :=
+  forall s ρs t,
+  P s ρs ->
+  Util.differ_pointwise (fst s) (fst t) i ->
+  UnderThreadStep (fst s i) None (fst t i) ->
+    exists σs,
+      (exists σ, σs σ) /\
+      (forall σ,
+        σs σ ->
+        exists ρ,
+          ρs ρ /\
+          PossSteps ρ σ) /\
+      Q s ρs t σs /\
+      G s ρs t σs.
+
 CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
 | SafeReturn A v R G P Q :
     P ==> Q v ->
@@ -178,8 +196,9 @@ CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i : Relt VE VF -> Relt VE
       Commit i G (P ->> QI) (RetEv m v) (QR v) /\
       SafeProg i R G B (P ->> QI ->> QR v) (k v) Q) ->
     SafeProg i R G B P (Bind m k) Q
-| SafeNoOp R G A P C Q :
-    SafeProg i R G A P C Q ->
+| SafeNoOp R G A (P : Relt VE VF) C QS Q :
+    SilentStep i G P QS ->
+    SafeProg i R G A QS C Q ->
     SafeProg i R G A P (NoOp C) Q
 .
 
@@ -205,52 +224,37 @@ Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F
   fun s ρs t σs =>
     TIdle i s ρs /\
     InterOStep impl i (fst s) (CallEv m) (fst t) /\
-    (forall σ, σs σ ->
+    forall σ, σs σ ->
+      σ.(PCalls) i = CallPoss m /\
+      σ.(PRets) i = RetIdle /\
       exists ρ, ρs ρ /\
-      σ.(PState) = ρ.(PState)) /\
-    (forall ρ,
-      ρs ρ ->
-      ρ.(PCalls) i = CallIdle) /\
-    (forall σ,
-      σs σ ->
-      σ.(PCalls) i = CallPoss m) /\
-    (forall σ,
-      σs σ ->
-      σ.(PRets) i = RetIdle).
+        ρ.(PCalls) i = CallIdle /\
+        ρ.(PRets) i = RetIdle /\
+        σ.(PState) = ρ.(PState).
 
 Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
     exists Ret (m : F Ret), TInvoke impl i Ret m s ρ t σ.
 
-Definition Returned {E F VE VF} (i : ThreadName) {Ret} (m : F Ret) : @Prec E F VE VF :=
+Definition Returned {E F VE VF} (i : ThreadName) {A} (m : F A) : @Prec E F VE VF :=
   fun s ρs =>
-    forall ρ (v : Ret),
+    exists (v : A),
       fst s i = Cont m (Return v) /\
-      ρs ρ /\
-      ρ.(PRets) i = RetPoss m v /\
-      ρ.(PCalls) i = CallDone m.
+      forall ρ, ρs ρ ->
+        ρ.(PRets) i = RetPoss m v /\
+        ρ.(PCalls) i = CallDone m.
 
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     exists (v : Ret),
       InterOStep impl i (fst s) (RetEv m v) (fst t) /\
-      (forall ρ σ,
-        ρs ρ ->
-        σs σ ->
-        σ.(PState) = ρ.(PState)) /\
-      (forall ρ,
-        ρs ρ ->
-        ρ.(PCalls) i = CallDone m) /\
-      (forall σ,
-        σs σ ->
-        σ.(PCalls) i = CallIdle) /\
-      (* TODO: should be σ? *)
-      (exists ρ,
-        ρs ρ /\
-        ρ.(PRets) i = RetPoss m v) /\
-      (forall σ,
-        σs σ ->
-        σ.(PRets) i = RetIdle).
+      forall σ, σs σ ->
+        σ.(PCalls) i = CallIdle /\
+        σ.(PRets) i = RetIdle /\
+        exists ρ, ρs ρ /\
+          ρ.(PCalls) i = CallDone m /\
+          ρ.(PRets) i = RetPoss m v /\
+          σ.(PState) = ρ.(PState).
 
 Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
@@ -271,12 +275,23 @@ Record VerifyImpl
   {impl : Impl E F}
   {Q : ThreadName -> forall Ret, F Ret -> Post VE VF Ret} : Prop
 := {
+  R_refl : forall i s ρ,
+    R i s ρ s ρ;
+  R_trans : forall i,
+    R i ->> R i ==> R i;
   G_in_R : forall i j,
     i <> j -> G i ==> R j;
+  Inv_in_R : forall i j,
+    i <> j -> InvokeAny impl i ==> R j;
+  Ret_in_R : forall i j,
+    i <> j -> ReturnAny impl i ==> R j;
   init_in_P : forall i A m,
     P i A m (allIdle, VE.(Init)) (eq initPoss);
   P_stable : forall i A m,
     Stable (R i) (P i A m);
+  P_Inv_stable : forall i A (m : F A),
+    prComp (P i A m <<- TInvoke impl i A m) id ->> R i ==>
+    prComp (P i A m <<- TInvoke impl i A m) id;
   Q_stable : forall i Ret (m : F Ret) v,
     Stable (R i) (Q i Ret m v);
   switch_code : forall i A m1 B m2 v,

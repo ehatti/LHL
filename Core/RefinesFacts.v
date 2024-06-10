@@ -10,8 +10,6 @@ From LHL.Core Require Import
   Traces
   TracesFacts
   Eutt
-  Simulates
-  SimulatesFacts
   EuttRefinesSetup.
 
 From Coq Require Import

@@ -1,4 +1,4 @@
-From LHL.Core Require Import
+(* From LHL.Core Require Import
   Program
   Specs
   Traces
@@ -127,4 +127,4 @@ easy.
 Qed.
 
 End rules.
-Set Guard Checking.
+Set Guard Checking. *)

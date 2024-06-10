@@ -1295,7 +1295,7 @@ Inductive eutt_finite {E F A} (om : F A) : Prog E A -> Prog E A -> ThreadState E
 
 Lemma contra_eutt_finite {E F A} :
   forall om p p' (s : ThreadState E F),
-  (s = Idle \/ exists A B m' k, s = UCall (A:=A) (B:=B) m' k) ->
+  (s = Idle \/ exists A m' k, s = UCall (A:=A) om m' k) ->
   @eutt_finite E F A om p p' s ->
   False.
 intros.
