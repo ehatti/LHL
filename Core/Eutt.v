@@ -22,6 +22,7 @@ From LHL.Util Require Import
   Util
   Tactics.
 
+Require Import Coq.Program.Equality.
 
 From LHL.Core Require Import
   Program.
@@ -240,12 +241,22 @@ Proof.
   - inversion EQp1. subst. auto.
 Qed.
 
-Lemma Transitive_eutt {E R}
+(* Lemma Transitive_eutt {E R}
  : forall (p1 p2 p3 : Prog E R),
    eutt p1 p2 ->
    eutt p2 p3 ->
    eutt p1 p3.
-Admitted.
+pcofix rec.
+intros.
+punfold H0.
+dependent destruction H0.
+punfold H1.
+dependent destruction H1.
+pfold.
+constructor.
+pfold.
+constructor. *)
+
 
 End Trans.
 

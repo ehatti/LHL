@@ -218,12 +218,20 @@ Qed.
 End lemmas.
 
 Lemma rtp_prId {E F} {VE : Spec E} {VF : Spec F} :
-  forall P : Prec VE VF,
-  ReltToPrec (prComp P id) = P.
+  forall (P : Prec VE VF) Q,
+  ReltToPrec (prComp P id ->> Q) = P <<- Q.
 intros.
 extensionality s. extensionality ρs.
 apply propositional_extensionality.
-unfold prComp. firstorder.
+unfold ReltToPrec, prComp. firstorder.
+subst.
+psplit.
+exact H.
+easy.
+repeat econstructor.
+exact H.
+easy.
+Qed.
 
 Lemma precReltCompAssoc {E F VE VF} {P : @Prec E F VE VF} Q S :
   P <<- (Q ->> S) = P <<- Q <<- S.
@@ -323,6 +331,23 @@ exact H0.
 constructor.
 Qed.
 
+Lemma weakenCommitPre {E F} {VE : Spec E} {VF : Spec F} {i G Q P' e} :
+  forall P : Relt VE VF,
+  P' ==> P ->
+  Commit i G P e Q ->
+  Commit i G P' e Q.
+unfold Commit. intros.
+apply H0.
+unfold ReltToPrec in *.
+destruct_all.
+exists x, x0.
+apply H.
+easy.
+easy.
+easy.
+easy.
+Qed.
+
 Lemma weakenCommit {E F} {VE : Spec E} {VF : Spec F} {i G P Q' e} :
   forall Q : Relt VE VF,
   Q ==> Q' ->
@@ -395,11 +420,17 @@ destruct H0.
 }
 {
   econstructor.
-  unfold SilentStep. intros. apply H0.
+  exact H0.
+  unfold SilentStep. intros. apply H1.
   unfold ReltToPrec in *. destruct_all.
   exists x, x0.
-  apply H. easy.
-  easy.
+  apply H. easy. easy. easy.
+  eapply weakenSafe with (P:= P ->> QS).
+  unfold sub, subRelt. intros.
+  pdestruct H3.
+  apply H in H3.
+  psplit.
+  exact H3.
   easy.
   easy.
 }
@@ -457,13 +488,16 @@ Record LHLState {E F}
     forall A (m : F A), Ps i A m s ρs
   | Cont m p =>
     exists Is,
-      SafeProg i (R i) (G i)
-      ((prComp (Ps i _ m <<- TInvoke M i _ m) id) ->> Is)
-      p
-      (fun v => Qs i _ m v ->> PrecToRelt (Returned i m)) /\
+      SafeProg i (R i) (G i) ((prComp (Ps i _ m <<- TInvoke M i _ m) id) ->> Is) p (fun v => Qs i _ m v ->> PrecToRelt (Returned i m)) /\
       (Ps i _ m <<- TInvoke M i _ m <<- Is) s ρs /\
       (Is ->> R i) ==> Is
-  | UCall om um k => True
+  | UCall om um k =>
+    exists Is QR, forall v,
+      Commit i (G i) ((prComp (Ps i _ om <<- TInvoke M i _ om) id) ->> Is) (RetEv um v) (QR v) /\
+      SafeProg i (R i) (G i) ((prComp (Ps i _ om <<- TInvoke M i _ om) id) ->> Is ->> QR v) (k v) (fun v => Qs i _ om v ->> PrecToRelt (Returned i om)) /\
+      (Ps i _ om <<- TInvoke M i _ om <<- Is) s ρs /\
+      (QR v ->> R i) ==> QR v /\
+      (Is ->> R i) ==> Is
   end
 }.
 Arguments LHLState {E F VE VF} M R G Ps Qs s ρs.
@@ -651,7 +685,125 @@ destruct e.
   }
   split.
   {
-    constructor.
+    constructor. constructor.
+    intros.
+    dec_eq_nats i n.
+    {
+      rewrite <- x.
+      exists (x1 ->> QI), QR.
+      intros.
+      specialize (H8 v).
+      destruct_all.
+      split. rewrite reltCompAssoc in H8. easy.
+      split. rewrite reltCompAssoc in H13. rewrite reltCompAssoc. easy.
+      split.
+      rewrite <- precCompAssoc.
+      psplit. exact H9. easy.
+      split.
+      apply H6.
+      rewrite reltCompAssoc.
+      unfold sub, subRelt. intros.
+      pdestruct H14. apply H5 in H15.
+      exists x4, x5. easy.
+    }
+    {
+      clear H8. move H1 at bottom. destruct H1.
+      specialize (all_safe0 i).
+      rewrite <- H3. 2: easy.
+      destruct (fst s i).
+      {
+        unfold TIdle in *. destruct_all.
+        split. split.
+        rewrite <- H3; easy.
+        intros. apply H7 in H15. destruct_all.
+        apply H14 in H15. clear H14.
+        induction H16.
+        { easy. }
+        {
+          apply IHPossSteps. clear IHPossSteps.
+          specialize (H16 i). specialize (H17 i).
+          dependent destruction H14.
+          dec_eq_nats i i0.
+          { destruct_all. congruence. }
+          { rewrite <- H19, <- H20; easy. }
+          dec_eq_nats i i0.
+          { destruct_all. congruence. }
+          { rewrite <- H20, <- H21; easy. }
+        }
+        {
+          intros.
+          apply H.(P_stable).
+          psplit. apply H8.
+          apply H.(G_in_R) with (i:=n); easy.
+        }
+      }
+      {
+        destruct_all.
+        exists (x4 ->> R i).
+        split.
+        {
+          apply (weakenSafe (P:= prComp (Ps i A0 m0 <<- TInvoke M i A0 m0) id ->> x4)).
+          unfold sub, subRelt. intros.
+          pdestruct H15.
+          apply H14 in H16.
+          exists x5, x6. easy.
+          easy.
+        }
+        split.
+        {
+          rewrite <- precCompAssoc.
+          psplit. exact H8.
+          apply H.(G_in_R) with (i:=n); easy.
+        }
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H15. apply H14 in H15.
+          exists x5, x6. easy.
+        }
+      }
+      {
+        destruct_all.
+        exists (x4 ->> R i), (fun v => x5 v ->> R i).
+        intros. specialize (H1 v). destruct_all.
+        split.
+        {
+          eapply weakenCommit with (Q:= x5 v).
+          unfold sub, subRelt. intros.
+          psplit. exact H17. apply H.(R_refl).
+          eapply weakenCommitPre with (P:= prComp (Ps i B0 om0 <<- TInvoke M i B0 om0) id ->> x4).
+          unfold sub, subRelt. intros.
+          pdestruct H17. apply H16 in H18.
+          psplit. exact H17. easy.
+          easy.
+        }
+        split.
+        {
+          eapply (weakenSafe (P:= prComp (Ps i B0 om0 <<- TInvoke M i B0 om0) id ->> x4 ->> x5 v)).
+          unfold sub, subRelt. intros.
+          pdestruct H17. pdestruct H18.
+          apply H15 in H19. apply H16 in H18.
+          psplit. exact H17. exists x8, x9. easy.
+          easy.
+        }
+        split.
+        {
+          rewrite <- precCompAssoc.
+          psplit. exact H14.
+          apply H.(G_in_R) with (i:=n); easy.
+        }
+        split.
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H17. apply H15 in H17.
+          exists x6, x7. easy.
+        }
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H17. apply H16 in H17.
+          exists x6, x7. easy.
+        }
+      }
+    }
   }
   {
     intros.
@@ -699,7 +851,181 @@ destruct e.
   dependent destruction H2.
   assert (H1' := H1). destruct H1'.
   specialize (all_safe0 n). rewrite H2 in all_safe0.
-  
+  destruct_all. specialize (H5 n0). destruct_all.
+  rewrite <- rtp_prId in H7.
+  assert (H7' := H7).
+  unfold Commit in H5. apply H5 with (t:=t) in H7. clear H5.
+  2:{ unfold differ_pointwise. symmetry. apply H3. easy. }
+  2:{ econstructor. exact H2. easy. }
+  2: easy.
+  destruct_all.
+  exists x3.
+  split.
+  {
+    exists x4. easy.
+  }
+  split.
+  {
+    constructor.
+    constructor.
+    intros.
+    dec_eq_nats i n.
+    {
+      rewrite <- x.
+      exists (x1 ->> x2 n0).
+      split. easy.
+      split.
+      {
+        rewrite <- precCompAssoc.
+        psplit.
+        rewrite rtp_prId in H7'. exact H7'.
+        easy.
+      }
+      {
+        unfold sub, subRelt. intros.
+        rewrite reltCompAssoc in H12.
+        pdestruct H12. apply H8 in H13.
+        exists x5, x6. easy.
+      }
+    }
+    {
+      rewrite <- H3. 2: easy.
+      move H1 at bottom. destruct H1.
+      specialize (all_safe0 i).
+      destruct (fst s i).
+      {
+        unfold TIdle in *. destruct_all.
+        split. split.
+        rewrite <- H3; easy.
+        intros.
+        apply H7 in H15. clear H7. destruct_all.
+        apply H14 in H7. clear H14.
+        induction H15.
+        {
+          easy.
+        }
+        {
+          specialize (H15 i). specialize (H16 i).
+          dec_eq_nats i0 i.
+          {
+            apply IHPossSteps.
+            dependent destruction H14; destruct_all; congruence.
+          }
+          {
+            rewrite H15, H16 in H7.
+            apply IHPossSteps. easy.
+            easy. easy.
+          }
+        }
+        intros.
+        apply H.(P_stable).
+        psplit.
+        apply H13.
+        apply H.(G_in_R) with (i:=n); easy.
+      }
+      {
+        destruct_all.
+        exists (x5 ->> R i).
+        split.
+        {
+          apply (weakenSafe (P:= prComp (Ps i A0 m0 <<- TInvoke M i A0 m0) id ->> x5)).
+          unfold sub, subRelt. intros.
+          pdestruct H15. apply H14 in H16.
+          psplit. exact H15. easy.
+          easy.
+        }
+        split.
+        {
+          rewrite <- precCompAssoc.
+          psplit. exact H13.
+          apply H.(G_in_R) with (i:=n); easy.
+        }
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H15. apply H14 in H15.
+          exists x6, x7. easy.
+        }
+      }
+      {
+        destruct_all.
+        exists (x5 ->> R i), (fun v => x6 v ->> R i).
+        intros. specialize (H1 v). destruct_all.
+        split.
+        {
+          eapply weakenCommit with (Q:= x6 v).
+          unfold sub, subRelt. intros.
+          psplit. exact H17. apply H.(R_refl).
+          eapply weakenCommitPre with (P:= prComp (Ps i B0 om0 <<- TInvoke M i B0 om0) id ->> x5).
+          unfold sub, subRelt. intros.
+          pdestruct H17. apply H16 in H18.
+          psplit. exact H17. easy.
+          easy.
+        }
+        split.
+        {
+          eapply (weakenSafe (P:= prComp (Ps i B0 om0 <<- TInvoke M i B0 om0) id ->> x5 ->> x6 v)).
+          unfold sub, subRelt. intros.
+          pdestruct H17. pdestruct H18.
+          apply H15 in H19. apply H16 in H18.
+          psplit. exact H17. exists x9, x10. easy.
+          easy.
+        }
+        split.
+        {
+          rewrite <- precCompAssoc.
+          psplit. exact H14.
+          apply H.(G_in_R) with (i:=n); easy.
+        }
+        split.
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H17. apply H15 in H17.
+          exists x7, x8. easy.
+        }
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H17. apply H16 in H17.
+          exists x7, x8. easy.
+        }
+      }
+    }
+  }
+  {
+    intros. apply H7 in H12. clear H7. destruct_all.
+    exists x5. split. easy. clear H7.
+    induction H12.
+    {
+      exists []. repeat constructor.
+    }
+    {
+      destruct_all.
+      dependent destruction H7; destruct_all.
+      {
+        exists ((i, UEvent (Some (CallEv m0))) :: x5).
+        split. easy.
+        econstructor. 2: exact H19.
+        econstructor. econstructor.
+        econstructor; simpl.
+        rewrite H12. easy.
+        rewrite H20, H14. easy.
+        simpl. intros.
+        rewrite H15, H16; easy.
+        easy.
+      }
+      {
+        exists ((i, UEvent (Some (RetEv m0 v))) :: x5).
+        split. easy.
+        econstructor. 2: exact H20.
+        econstructor. econstructor.
+        econstructor; simpl.
+        rewrite H12, H14. easy.
+        rewrite H13, H15. easy.
+        simpl. intros.
+        rewrite H16, H17; easy.
+        easy.
+      }
+    }
+  }
 }
 {
   unfold StateStep in H3. simpl in H3.
@@ -708,10 +1034,130 @@ destruct e.
   assert (H1' := H1). move H1 at bottom. destruct H1.
   specialize (all_safe0 n). rewrite H2 in all_safe0.
   destruct_all. dependent destruction H1.
-  unfold SilentStep in H1.
-  assert (
-    ReltToPrec (prComp (Ps n A om <<- TInvoke M n A om) id ->> x1) s ρs
-  ).
+  exists ρs.
+  split.
+  {
+    exists x0. easy.
+  }
+  split.
+  {
+    constructor. constructor.
+    intros.
+    destruct s, t. simpl in *. subst.
+    rewrite <- rtp_prId in H7.
+    unfold SilentStep in H5.
+    assert (H7' := H7).
+    apply H5 with (tht:=t) in H7. destruct_all.
+    2:{ unfold differ_pointwise. symmetry. apply H3. easy. }
+    2:{ econstructor. exact H2. easy. }
+    dec_eq_nats i n.
+    {
+      rewrite <- x.
+      exists (x1 ->> QS).
+      split.
+      rewrite <- reltCompAssoc. easy.
+      split.
+      rewrite <- precCompAssoc.
+      psplit. rewrite rtp_prId in H7'. exact H7'.
+      easy.
+      unfold sub, subRelt. intros.
+      rewrite reltCompAssoc in H9. pdestruct H9.
+      apply H1 in H10.
+      exists x2, x3. easy.
+    }
+    {
+      move H1' at bottom.
+      destruct H1'. specialize (all_safe0 i). simpl in *.
+      rewrite <- H3. 2: easy.
+      destruct (t0 i).
+      {
+        unfold TIdle in *. destruct_all. simpl in *.
+        split. split.
+        rewrite <- H3; easy.
+        easy.
+        intros.
+        apply H.(P_stable).
+        psplit. apply H11.
+        eapply H.(G_in_R) with (i:=n). easy.
+        easy.
+      }
+      {
+        destruct_all.
+        exists (x2 ->> R i).
+        split.
+        {
+          apply (weakenSafe (P:= prComp (Ps i A0 m <<- TInvoke M i A0 m) id ->> x2)).
+          unfold sub, subRelt. intros.
+          pdestruct H13. apply H12 in H14.
+          psplit.
+          exact H13. easy.
+          easy.
+        }
+        split.
+        {
+          rewrite <- precCompAssoc.
+          psplit. exact H11.
+          apply H.(G_in_R) with (i:=n). easy.
+          easy.
+        }
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H13. apply H12 in H13.
+          exists x3, x4. easy.
+        }
+      }
+      {
+        destruct_all.
+        exists (x2 ->> R i), (fun v => x3 v ->> R i).
+        intros. specialize (H10 v). destruct_all.
+        split.
+        {
+          eapply weakenCommitPre with (P:= prComp (Ps i B om0 <<- TInvoke M i B om0) id ->> x2).
+          unfold sub, subRelt. intros.
+          pdestruct H15.
+          apply H14 in H16.
+          exists x4, x5. easy.
+          eapply weakenCommit with (Q:= x3 v).
+          unfold sub, subRelt. intros.
+          psplit. 2: apply H.(R_refl). easy.
+          easy.
+        }
+        split.
+        {
+          eapply (weakenSafe (P:= prComp (Ps i B om0 <<- TInvoke M i B om0) id ->> x2 ->> x3 v)).
+          unfold sub, subRelt. intros.
+          pdestruct H15. pdestruct H16.
+          apply H14 in H16. apply H13 in H17.
+          psplit. exact H15.
+          exists x6, x7. easy.
+          easy.
+        }
+        split.
+        {
+          rewrite <- precCompAssoc.
+          psplit. exact H12.
+          apply H.(G_in_R) with (i:=n); easy.
+        }
+        split.
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H15. apply H13 in H15.
+          exists x4, x5. easy.
+        }
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H15. apply H14 in H15.
+          exists x4, x5. easy.
+        }
+      }
+    }
+  }
+  {
+    intros.
+    exists σ. split. easy.
+    exists [].
+    repeat constructor.
+  }
 }
 {
   unfold StateStep in H3. simpl in H3.
@@ -819,7 +1265,56 @@ destruct e.
         }
       }
       {
-        admit.
+        move all_safe0 at bottom.
+        destruct_all.
+        exists (x1 ->> R i), (fun v => x2 v ->> R i).
+        intros. specialize (H1 v). destruct_all.
+        split.
+        {
+          eapply weakenCommitPre with (P:= prComp (Ps i B om <<- TInvoke M i B om) id ->> x1).
+          unfold sub, subRelt. intros.
+          pdestruct H13.
+          apply H12 in H14.
+          exists x3, x4. easy.
+          eapply weakenCommit with (Q:= x2 v).
+          unfold sub, subRelt. intros.
+          psplit. 2: apply H.(R_refl). easy.
+          easy.
+        }
+        split.
+        {
+          eapply (weakenSafe (P:= prComp (Ps i B om <<- TInvoke M i B om) id ->> x1 ->> x2 v)).
+          unfold sub, subRelt. intros.
+          pdestruct H13. pdestruct H14.
+          apply H11 in H15. apply H12 in H14.
+          psplit. exact H13.
+          exists x5, x6. easy.
+          easy.
+        }
+        split.
+        {
+          rewrite <- precCompAssoc.
+          psplit. exact H10.
+          apply H.(Inv_in_R) with (i:=n). easy.
+          eexists _, m.
+          split. easy.
+          split. econstructor. econstructor; easy. easy.
+          intros. destruct_all. subst. simpl.
+          rewrite eqb_id. repeat constructor.
+          exists x3. split. easy.
+          apply H7 in H13. easy.
+        }
+        split.
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H13. apply H11 in H13.
+          exists x3, x4. easy.
+        }
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H13. apply H12 in H13.
+          exists x3, x4. easy.
+        }
       }
     }
   }
@@ -961,7 +1456,56 @@ destruct e.
         }
       }
       {
-        admit.
+        destruct_all.
+        exists (x7 ->> R i), (fun v => x8 v ->> R i).
+        intros. specialize (H14 v). destruct_all.
+        split.
+        {
+          eapply weakenCommitPre with (P:= prComp (Ps i B om <<- TInvoke M i B om) id ->> x7).
+          unfold sub, subRelt. intros.
+          pdestruct H19.
+          apply H18 in H20.
+          exists x9, x10. easy.
+          eapply weakenCommit with (Q:= x8 v).
+          unfold sub, subRelt. intros.
+          psplit. 2: apply H.(R_refl). easy.
+          easy.
+        }
+        split.
+        {
+          eapply (weakenSafe (P:= prComp (Ps i B om <<- TInvoke M i B om) id ->> x7 ->> x8 v)).
+          unfold sub, subRelt. intros.
+          pdestruct H19. pdestruct H20.
+          apply H17 in H21. apply H18 in H20.
+          psplit. exact H19.
+          exists x11, x12. easy.
+          easy.
+        }
+        split.
+        {
+          rewrite <- precCompAssoc.
+          psplit. exact H16.
+          apply H.(Ret_in_R) with (i:=n). easy.
+          eexists _, m, n0.
+          split. econstructor. econstructor; easy. easy.
+          intros. destruct_all. subst. simpl.
+          rewrite eqb_id. repeat constructor.
+          exists x9. split. easy.
+          apply H13 in H19.
+          rewrite H10 in H2. dependent destruction H2.
+          easy.
+        }
+        split.
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H19. apply H17 in H19.
+          exists x9, x10. easy.
+        }
+        {
+          unfold sub, subRelt. intros.
+          pdestruct H19. apply H18 in H19.
+          exists x9, x10. easy.
+        }
       }
     }
   }
@@ -1001,3 +1545,4 @@ destruct e.
     }
   }
 }
+Qed.

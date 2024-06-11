@@ -170,19 +170,12 @@ Definition SilentStep {E F} {VE : Spec E} {VF : Spec F} i
   (G : Relt VE VF)
   (P : Prec VE VF)
   (Q : Relt VE VF) :=
-  forall s ρs t,
-  P s ρs ->
-  Util.differ_pointwise (fst s) (fst t) i ->
-  UnderThreadStep (fst s i) None (fst t i) ->
-    exists σs,
-      (exists σ, σs σ) /\
-      (forall σ,
-        σs σ ->
-        exists ρ,
-          ρs ρ /\
-          PossSteps ρ σ) /\
-      Q s ρs t σs /\
-      G s ρs t σs.
+  forall s ths ρs tht,
+  P (ths, s) ρs ->
+  Util.differ_pointwise ths tht i ->
+  UnderThreadStep (ths i) None (tht i) ->
+    Q (ths, s) ρs (tht, s) ρs /\
+    G (ths, s) ρs (tht, s) ρs.
 
 CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
 | SafeReturn A v R G P Q :
@@ -196,9 +189,10 @@ CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i : Relt VE VF -> Relt VE
       Commit i G (P ->> QI) (RetEv m v) (QR v) /\
       SafeProg i R G B (P ->> QI ->> QR v) (k v) Q) ->
     SafeProg i R G B P (Bind m k) Q
-| SafeNoOp R G A (P : Relt VE VF) C QS Q :
+| SafeNoOp R G A (P : Relt VE VF) QS C Q :
+    Stable R QS ->
     SilentStep i G P QS ->
-    SafeProg i R G A QS C Q ->
+    SafeProg i R G A (P ->> QS) C Q ->
     SafeProg i R G A P (NoOp C) Q
 .
 
