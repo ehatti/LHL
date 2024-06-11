@@ -295,9 +295,9 @@ assert (
         exists k',
           x0' = Cont m (Bind um k') /\
           forall x, eutt (k x) (k' x)
-    | UCall m k =>
+    | UCall om um k =>
         exists k',
-          x0' = UCall m k' /\
+          x0' = UCall om um k' /\
           forall x, eutt (k x) (k' x)
     | _ => x0' = x0
     end /\
@@ -315,7 +315,7 @@ assert (
   }
   2:{
     destruct n; simpl in *; dependent destruction H4.
-    exists 0, (UCall m k').
+    exists 0, (UCall om um k').
     split.
     exists k'.
     easy.
@@ -361,10 +361,18 @@ assert (
         destruct_all.
         subst.
         exfalso.
-        eapply contra_eutt_finite.
-        2: exact H6.
-        right.
-        repeat econstructor.
+        clear H6.
+        generalize dependent p'.
+        induction x0; simpl; intros.
+        {
+          dependent destruction H4.
+        }
+        {
+          dependent destruction H4.
+          unfold ThreadStep in H3. dependent destruction H3.
+          eapply IHx0.
+          exact H4.
+        }
       }
       {
         destruct p1.
@@ -428,7 +436,7 @@ assert (
   subst.
   destruct e.
   dependent destruction H5.
-  eexists (UCall _ x0).
+  eexists (UCall _ _ x0).
   split.
   constructor.
   easy.
@@ -457,7 +465,7 @@ assert (
   destruct e.
   dependent destruction H5.
   destruct_all.
-  exists (Cont om (x0 v)).
+  eexists (Cont _ (x0 v)).
   split.
   constructor.
   apply H7.
@@ -607,7 +615,7 @@ Definition substTS {E F G} (impl : Impl E F) (s : ThreadState F G) : ThreadState
   match s with
   | Idle => Idle
   | Cont m p => Cont m (substProg impl p)
-  | UCall m k => UCall m (fun x => substProg impl (k x))
+  | UCall om um k => Idle
   end.
 
 Ltac destruct_steps :=
@@ -982,14 +990,14 @@ Inductive assoc_states {E F G} {impl : Impl E F} {impl' : Impl F G} : ThreadStat
     assoc_states Idle (Cont gm (Bind fm k)) (Cont gm (NoOp (bindSubstProg impl k (impl _ fm))))
 | ASFNoOp A m p :
   assoc_states Idle (Cont m (NoOp p)) (Cont m (NoOp (A:=A) (substProg impl p)))
-| ASECall A R gm fm em ek fk :
-    assoc_states (Cont fm (Bind em ek)) (UCall gm fk) (Cont gm (Bind (A:=A) em (fun x => bindSubstProg (R:=R) impl fk (ek x))))
-| ASENoOp R k om p um :
-    assoc_states (Cont um (NoOp p)) (UCall om k) (Cont om (NoOp (bindSubstProg (R:=R) impl k p)))
-| ASEBind A gm fm ek fk :
-    assoc_states (UCall (A:=A) fm ek) (UCall (B:=A) gm fk) (UCall gm (fun x => bindSubstProg impl fk (ek x)))
-| ASERet A gm fm v fk :
-    assoc_states (Cont fm (Return v)) (UCall gm fk) (Cont (A:=A) gm (NoOp (substProg impl (fk v))))
+| ASECall A R B gm fm em ek fk :
+    assoc_states (Cont fm (Bind em ek)) (UCall gm fm fk) (Cont gm (Bind (A:=A) (B:=B) em (fun x => bindSubstProg (R:=R) impl fk (ek x))))
+| ASENoOp A R k om p um :
+    assoc_states (Cont um (NoOp p)) (UCall om um k) (Cont om (NoOp (A:=A) (bindSubstProg (R:=R) impl k p)))
+| ASEBind A B R gm fm em ek fk :
+    assoc_states (UCall (A:=A) fm em ek) (UCall (B:=B) gm fm fk) (UCall gm em (fun x => bindSubstProg (R:=R) impl fk (ek x)))
+| ASERet A B gm fm v fk :
+    assoc_states (Cont fm (Return v)) (UCall (A:=B) gm fm fk) (Cont (A:=A) gm (NoOp (substProg impl (fk v))))
 | ASFRet A (gm : G A) v :
     assoc_states Idle (Cont gm (Return v)) (Cont gm (Return v))
 .
