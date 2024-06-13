@@ -87,13 +87,12 @@ Definition call {E F A} `{SigCoercion E F} (m : E A) : Prog F A :=
 
 Definition ret {E A} := @Return E A.
 
-(* This definition is guarded, but Coq can't see that *)
-Unset Guard Checking.
+Definition skip {E} := @ret E unit tt.
+
 CoFixpoint while {E} (x : Prog E bool) (e : Prog E unit) : Prog E unit :=
-  t <- x;
-  if t then
-    _ <- e;
-    NoOp (while x e)
-  else
-    ret tt.
-Set Guard Checking.
+  match x with
+  | Return true => e
+  | Return false => skip
+  | Bind m k => Bind m (fun x => while (k x) e)
+  | NoOp x => NoOp (while x e)
+  end.

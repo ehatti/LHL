@@ -8,7 +8,8 @@ From LHL.Util Require Import
 
 Variant VarSig {S} : ESig :=
 | SetVar : S -> VarSig unit
-| GetVar : VarSig S.
+| GetVar : VarSig S
+| ClearVar : VarSig S.
 Arguments VarSig : clear implicits.
 
 Variant VarValue {S} :=
@@ -18,33 +19,32 @@ Variant VarValue {S} :=
 | VarGetCalled (s : S).
 Arguments VarValue : clear implicits.
 
-Definition VarState S :=
-  ThreadName -> VarValue S.
+Definition VarState S := ThreadName -> VarValue S.
 
 Variant VarStep {S} : VarState S -> ThreadEvent (VarSig S) -> VarState S -> Prop :=
-| VarCallSet i (m m' : VarState S) s t :
-  m i = VarIdle s ->
-  m' i = VarSetCalled t ->
-  differ_pointwise m m' i ->
-  VarStep m (i, CallEv (SetVar t)) m'
-| VarRetSet i (m m' : VarState S) s :
-  m i = VarSetCalled s ->
-  m' i = VarIdle s ->
-  differ_pointwise m m' i ->
-  VarStep m (i, RetEv (SetVar s) tt) m'
+| VarCallSet i m m' t :
+    m i = VarUnset ->
+    m' i = VarSetCalled t ->
+    differ_pointwise m m' i ->
+    VarStep m (i, CallEv (SetVar t)) m'
+| VarRetSet i m m' s :
+    m i = VarSetCalled s ->
+    m' i = VarIdle s ->
+    differ_pointwise m m' i ->
+    VarStep m (i, RetEv (SetVar s) tt) m'
 | VarCallGet i m m' s :
-  m i = VarIdle s ->
-  m' i = VarGetCalled s ->
-  differ_pointwise m m' i ->
-  VarStep m (i, CallEv GetVar) m'
+    m i = VarIdle s ->
+    m' i = VarGetCalled s ->
+    differ_pointwise m m' i ->
+    VarStep m (i, CallEv GetVar) m'
 | VarRetGet i m m' s :
-  m i = VarGetCalled s ->
-  m' i = VarIdle s ->
-  differ_pointwise m m' i ->
-  VarStep m (i, RetEv GetVar s) m'.
+    m i = VarGetCalled s ->
+    m' i = VarIdle s ->
+    differ_pointwise m m' i ->
+    VarStep m (i, RetEv GetVar s) m'.
 
 Definition varSpec S : Spec (VarSig S) := {|
   State := VarState S;
   Step := VarStep;
-  Init := fun _ => VarUnset
+  Init _ := VarUnset
 |}.

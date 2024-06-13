@@ -31,6 +31,8 @@ match goal with
     do 2 eexists; split
 | [ |- PrecCompose ?P ?Q ?s ?ρ ] =>
     do 2 eexists; split
+| [ |- prComp ?P ?Q ?s ?p ?t ?q ] =>
+  split
 | [ |- _ ] => fail "Cannot split on this goal"
 end.
 
@@ -218,18 +220,20 @@ Qed.
 End lemmas.
 
 Lemma rtp_prId {E F} {VE : Spec E} {VF : Spec F} :
-  forall (P : Prec VE VF) Q,
-  ReltToPrec (prComp P id ->> Q) = P <<- Q.
+  forall (P : Prec VE VF) Q S,
+  ReltToPrec (prComp P Q ->> S) = P <<- Q <<- S.
 intros.
 extensionality s. extensionality ρs.
 apply propositional_extensionality.
 unfold ReltToPrec, prComp. firstorder.
 subst.
-psplit.
+repeat psplit.
 exact H.
+exact H1.
 easy.
-repeat econstructor.
+repeat eexists.
 exact H.
+exact H1.
 easy.
 Qed.
 
@@ -488,13 +492,13 @@ Record LHLState {E F}
     forall A (m : F A), Ps i A m s ρs
   | Cont m p =>
     exists Is,
-      SafeProg i (R i) (G i) ((prComp (Ps i _ m <<- TInvoke M i _ m) id) ->> Is) p (fun v => Qs i _ m v ->> PrecToRelt (Returned i m)) /\
+      SafeProg i (R i) (G i) ((prComp (Ps i _ m) (TInvoke M i _ m)) ->> Is) p (fun v => Qs i _ m v ->> PrecToRelt (Returned i m)) /\
       (Ps i _ m <<- TInvoke M i _ m <<- Is) s ρs /\
       (Is ->> R i) ==> Is
   | UCall om um k =>
     exists Is QR, forall v,
-      Commit i (G i) ((prComp (Ps i _ om <<- TInvoke M i _ om) id) ->> Is) (RetEv um v) (QR v) /\
-      SafeProg i (R i) (G i) ((prComp (Ps i _ om <<- TInvoke M i _ om) id) ->> Is ->> QR v) (k v) (fun v => Qs i _ om v ->> PrecToRelt (Returned i om)) /\
+      Commit i (G i) ((prComp (Ps i _ om) (TInvoke M i _ om)) ->> Is) (RetEv um v) (QR v) /\
+      SafeProg i (R i) (G i) ((prComp (Ps i _ om) (TInvoke M i _ om)) ->> Is ->> QR v) (k v) (fun v => Qs i _ om v ->> PrecToRelt (Returned i om)) /\
       (Ps i _ om <<- TInvoke M i _ om <<- Is) s ρs /\
       (QR v ->> R i) ==> QR v /\
       (Is ->> R i) ==> Is
@@ -664,11 +668,9 @@ destruct e.
   apply (H7 s ρs t) in H4. clear H7. destruct_all.
   2:{
     do 2 pdestruct H9.
-    exists x2, x3.
-    psplit.
-    split. 2: easy.
-    psplit. exact H9. easy.
-    easy.
+    exists x4, x5.
+    psplit. psplit.
+    easy. exact H12. easy.
   }
   2:{
     unfold differ_pointwise. intros.
@@ -742,7 +744,7 @@ destruct e.
         exists (x4 ->> R i).
         split.
         {
-          apply (weakenSafe (P:= prComp (Ps i A0 m0 <<- TInvoke M i A0 m0) id ->> x4)).
+          apply (weakenSafe (P:= prComp (Ps i A0 m0) (TInvoke M i A0 m0) ->> x4)).
           unfold sub, subRelt. intros.
           pdestruct H15.
           apply H14 in H16.
@@ -770,7 +772,7 @@ destruct e.
           eapply weakenCommit with (Q:= x5 v).
           unfold sub, subRelt. intros.
           psplit. exact H17. apply H.(R_refl).
-          eapply weakenCommitPre with (P:= prComp (Ps i B0 om0 <<- TInvoke M i B0 om0) id ->> x4).
+          eapply weakenCommitPre with (P:= prComp (Ps i B0 om0)(TInvoke M i B0 om0) ->> x4).
           unfold sub, subRelt. intros.
           pdestruct H17. apply H16 in H18.
           psplit. exact H17. easy.
@@ -778,7 +780,7 @@ destruct e.
         }
         split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i B0 om0 <<- TInvoke M i B0 om0) id ->> x4 ->> x5 v)).
+          eapply (weakenSafe (P:= prComp (Ps i B0 om0)(TInvoke M i B0 om0) ->> x4 ->> x5 v)).
           unfold sub, subRelt. intros.
           pdestruct H17. pdestruct H18.
           apply H15 in H19. apply H16 in H18.
@@ -928,7 +930,7 @@ destruct e.
         exists (x5 ->> R i).
         split.
         {
-          apply (weakenSafe (P:= prComp (Ps i A0 m0 <<- TInvoke M i A0 m0) id ->> x5)).
+          apply (weakenSafe (P:= prComp (Ps i A0 m0) (TInvoke M i A0 m0) ->> x5)).
           unfold sub, subRelt. intros.
           pdestruct H15. apply H14 in H16.
           psplit. exact H15. easy.
@@ -955,7 +957,7 @@ destruct e.
           eapply weakenCommit with (Q:= x6 v).
           unfold sub, subRelt. intros.
           psplit. exact H17. apply H.(R_refl).
-          eapply weakenCommitPre with (P:= prComp (Ps i B0 om0 <<- TInvoke M i B0 om0) id ->> x5).
+          eapply weakenCommitPre with (P:= prComp (Ps i B0 om0) (TInvoke M i B0 om0) ->> x5).
           unfold sub, subRelt. intros.
           pdestruct H17. apply H16 in H18.
           psplit. exact H17. easy.
@@ -963,7 +965,7 @@ destruct e.
         }
         split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i B0 om0 <<- TInvoke M i B0 om0) id ->> x5 ->> x6 v)).
+          eapply (weakenSafe (P:= prComp (Ps i B0 om0) (TInvoke M i B0 om0) ->> x5 ->> x6 v)).
           unfold sub, subRelt. intros.
           pdestruct H17. pdestruct H18.
           apply H15 in H19. apply H16 in H18.
@@ -1086,7 +1088,7 @@ destruct e.
         exists (x2 ->> R i).
         split.
         {
-          apply (weakenSafe (P:= prComp (Ps i A0 m <<- TInvoke M i A0 m) id ->> x2)).
+          apply (weakenSafe (P:= prComp (Ps i A0 m) (TInvoke M i A0 m) ->> x2)).
           unfold sub, subRelt. intros.
           pdestruct H13. apply H12 in H14.
           psplit.
@@ -1112,7 +1114,7 @@ destruct e.
         intros. specialize (H10 v). destruct_all.
         split.
         {
-          eapply weakenCommitPre with (P:= prComp (Ps i B om0 <<- TInvoke M i B om0) id ->> x2).
+          eapply weakenCommitPre with (P:= prComp (Ps i B om0) (TInvoke M i B om0) ->> x2).
           unfold sub, subRelt. intros.
           pdestruct H15.
           apply H14 in H16.
@@ -1124,7 +1126,7 @@ destruct e.
         }
         split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i B om0 <<- TInvoke M i B om0) id ->> x2 ->> x3 v)).
+          eapply (weakenSafe (P:= prComp (Ps i B om0) (TInvoke M i B om0) ->> x2 ->> x3 v)).
           unfold sub, subRelt. intros.
           pdestruct H15. pdestruct H16.
           apply H14 in H16. apply H13 in H17.
@@ -1181,7 +1183,7 @@ destruct e.
       exists (R n).
       split.
       {
-        eapply (weakenSafe (P:= prComp (Ps n A m <<- TInvoke M n A m) id)).
+        eapply (weakenSafe (P:= prComp (Ps n A m) (TInvoke M n A m))).
         apply H.(P_Inv_stable).
         apply H.(all_verified).
       }
@@ -1234,7 +1236,7 @@ destruct e.
         exists (x1 ->> R i).
         split.
         {
-          apply (weakenSafe (P:= prComp (Ps i A0 m0 <<- TInvoke M i A0 m0) id ->> x1)).
+          apply (weakenSafe (P:= prComp (Ps i A0 m0) (TInvoke M i A0 m0) ->> x1)).
           unfold sub, subRelt. intros.
           pdestruct H11.
           apply H10 in H12.
@@ -1271,7 +1273,7 @@ destruct e.
         intros. specialize (H1 v). destruct_all.
         split.
         {
-          eapply weakenCommitPre with (P:= prComp (Ps i B om <<- TInvoke M i B om) id ->> x1).
+          eapply weakenCommitPre with (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x1).
           unfold sub, subRelt. intros.
           pdestruct H13.
           apply H12 in H14.
@@ -1283,7 +1285,7 @@ destruct e.
         }
         split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i B om <<- TInvoke M i B om) id ->> x1 ->> x2 v)).
+          eapply (weakenSafe (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x1 ->> x2 v)).
           unfold sub, subRelt. intros.
           pdestruct H13. pdestruct H14.
           apply H11 in H15. apply H12 in H14.
@@ -1350,8 +1352,8 @@ destruct e.
     specialize (all_safe0 n). rewrite H2 in all_safe0. destruct_all.
     dependent destruction H1.
     constructor. constructor. intros.
-    pdestruct H5.
-    eassert ((Qs n A m n0 ->> PrecToRelt (Returned n m)) x2 x3 s ρs).
+    do 2 pdestruct H5.
+    eassert ((Qs n A m n0 ->> PrecToRelt (Returned n m)) x4 x5 s ρs).
     {
       apply H1.
       psplit. 2: exact H7.
@@ -1370,30 +1372,25 @@ destruct e.
       {
         intros.
         eapply H.(switch_code) with (m1:=m) (v:=n0).
-        do 2 rewrite precCompAssoc.
-        psplit.
-        exact H5.
-        rewrite <- reltCompAssoc.
-        psplit.
-        exact H8.
-        pdestruct H8. unfold PrecToRelt, Returned in H9.
-        destruct_all. subst.
+        pdestruct H9.
+        psplit. psplit. unfold ReltToPrec.
+        repeat eexists. exact H9. exact H10.
         exists n0.
         split.
         econstructor. econstructor; easy. easy.
         intros. destruct_all. subst. simpl.
         rewrite eqb_id. repeat constructor.
-        rewrite H9 in H2. dependent destruction H2.
-        exists x4.
-        split. easy.
-        apply H12 in H10. clear H12. destruct_all.
-        repeat split; easy.
+        exists x8. split. easy.
+        do 3 destruct H10. destruct_all. subst.
+        apply H13 in H11. destruct_all.
+        rewrite H10 in H2. dependent destruction H2.
+        easy.
       }
     }
     {
       move H1' at bottom. destruct H1'. specialize (all_safe0 i).
       rewrite <- H3. 2: easy.
-      pdestruct H8. unfold PrecToRelt, Returned in H10. destruct_all.
+      pdestruct H9. unfold PrecToRelt, Returned in H11. destruct_all.
       remember (fst s i). destruct t0.
       {
         unfold TIdle in *. destruct_all.
@@ -1401,41 +1398,41 @@ destruct e.
         rewrite <- H3. 2: easy. easy.
         intros. destruct_all. subst. simpl.
         rewrite eqb_nid. 2: easy.
-        apply H16. easy.
+        apply H17. easy.
         intros.
         apply H.(P_stable).
         psplit.
-        apply H15.
+        apply H16.
         eapply H.(Ret_in_R) with (i:=n). easy.
         eexists _, m, n0.
         split.
         econstructor. econstructor; easy. easy.
         intros. destruct_all. subst. simpl.
         rewrite eqb_id. repeat constructor.
-        exists x7. split. easy.
-        apply H13 in H17.
-        rewrite H10 in H2. dependent destruction H2.
+        exists x9. split. easy.
+        apply H14 in H18.
+        rewrite H11 in H2. dependent destruction H2.
         easy.
       }
       {
         destruct_all.
-        exists (x7 ->> R i).
+        exists (x9 ->> R i).
         split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i A0 m0 <<- TInvoke M i A0 m0) id ->> x7)).
+          eapply (weakenSafe (P:= prComp (Ps i A0 m0) (TInvoke M i A0 m0) ->> x9)).
           2: easy.
           unfold sub, subRelt. intros.
-          pdestruct H17.
+          pdestruct H18.
           psplit.
-          exact H17.
-          apply H16.
+          exact H18.
+          apply H17 in H19.
           easy.
         }
         split.
         {
           rewrite <- precCompAssoc.
           psplit.
-          exact H15.
+          exact H16.
           apply H.(Ret_in_R) with (i:=n). easy.
           eexists _, m, n0.
           split.
@@ -1443,68 +1440,68 @@ destruct e.
           intros. destruct_all. subst. simpl.
           rewrite eqb_id.
           repeat constructor.
-          exists x8. split. easy.
-          apply H13 in H17.
+          exists x10. split. easy.
+          apply H14 in H18.
           destruct_all.
-          rewrite H10 in H2. dependent destruction H2.
+          rewrite H11 in H2. dependent destruction H2.
           easy.
         }
         {
           unfold sub, subRelt. intros.
-          pdestruct H17. apply H16 in H17.
-          exists x8, x9. easy.
+          pdestruct H18. apply H17 in H18.
+          exists x10, x11. easy.
         }
       }
       {
         destruct_all.
-        exists (x7 ->> R i), (fun v => x8 v ->> R i).
-        intros. specialize (H14 v). destruct_all.
+        exists (x9 ->> R i), (fun v => x10 v ->> R i).
+        intros. specialize (H15 v). destruct_all.
         split.
         {
-          eapply weakenCommitPre with (P:= prComp (Ps i B om <<- TInvoke M i B om) id ->> x7).
+          eapply weakenCommitPre with (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x9).
           unfold sub, subRelt. intros.
-          pdestruct H19.
-          apply H18 in H20.
-          exists x9, x10. easy.
-          eapply weakenCommit with (Q:= x8 v).
+          pdestruct H20.
+          apply H19 in H21.
+          exists x11, x12. easy.
+          eapply weakenCommit with (Q:= x10 v).
           unfold sub, subRelt. intros.
           psplit. 2: apply H.(R_refl). easy.
           easy.
         }
         split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i B om <<- TInvoke M i B om) id ->> x7 ->> x8 v)).
+          eapply (weakenSafe (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x9 ->> x10 v)).
           unfold sub, subRelt. intros.
-          pdestruct H19. pdestruct H20.
-          apply H17 in H21. apply H18 in H20.
-          psplit. exact H19.
-          exists x11, x12. easy.
+          pdestruct H20. pdestruct H21.
+          apply H18 in H22. apply H19 in H21.
+          psplit. exact H20.
+          exists x13, x14. easy.
           easy.
         }
         split.
         {
           rewrite <- precCompAssoc.
-          psplit. exact H16.
+          psplit. exact H17.
           apply H.(Ret_in_R) with (i:=n). easy.
           eexists _, m, n0.
           split. econstructor. econstructor; easy. easy.
           intros. destruct_all. subst. simpl.
           rewrite eqb_id. repeat constructor.
-          exists x9. split. easy.
-          apply H13 in H19.
-          rewrite H10 in H2. dependent destruction H2.
+          exists x11. split. easy.
+          apply H14 in H20.
+          rewrite H11 in H2. dependent destruction H2.
           easy.
         }
         split.
         {
           unfold sub, subRelt. intros.
-          pdestruct H19. apply H17 in H19.
-          exists x9, x10. easy.
+          pdestruct H20. apply H18 in H20.
+          exists x11, x12. easy.
         }
         {
           unfold sub, subRelt. intros.
-          pdestruct H19. apply H18 in H19.
-          exists x9, x10. easy.
+          pdestruct H20. apply H19 in H20.
+          exists x11, x12. easy.
         }
       }
     }
@@ -1518,24 +1515,24 @@ destruct e.
     specialize (all_safe0 n). rewrite H2 in all_safe0.
     destruct_all.
     dependent destruction H1.
-    pdestruct H6.
+    do 2 pdestruct H6.
     eassert ((Qs n A m n0 ->> PrecToRelt (Returned n m)) _ _ s ρs).
     {
       apply H1.
       psplit. 2: exact H8.
-      split. 2: easy.
+      split. exact H6.
       easy.
     }
-    pdestruct H9. unfold PrecToRelt, Returned in H10.
+    pdestruct H10. unfold PrecToRelt, Returned in H11.
     destruct_all. subst.
     econstructor. 2: constructor.
     econstructor. 2: easy.
     econstructor. simpl.
     {
       rewrite eqb_id.
-      apply H13 in H5. clear H13. destruct_all.
-      rewrite H5, H11.
-      rewrite H10 in H2. dependent destruction H2.
+      apply H14 in H5. clear H14. destruct_all.
+      rewrite H5, H12.
+      rewrite H11 in H2. dependent destruction H2.
       econstructor; easy.
     }
     {

@@ -31,3 +31,24 @@ Definition counterSpec : Spec CounterSig := {|
   Step := CounterStep;
   Init := CounterIdle 0
 |}.
+
+Variant AtomicCounterState :=
+| ACounterIdle (n : nat)
+| ACounterGetCalled (i : ThreadName) (n : nat)
+| ACounterIncCalled (i : ThreadName) (n : nat).
+
+Variant AtomicCounterStep : AtomicCounterState -> ThreadEvent CounterSig -> AtomicCounterState -> Prop :=
+| ACounterCallInc i n :
+  AtomicCounterStep (ACounterIdle n) (i, CallEv Inc) (ACounterIncCalled i n)
+| ACounterRetInc i n :
+  AtomicCounterStep (ACounterIncCalled i n) (i, RetEv Inc tt) (ACounterIdle (S n))
+| ACounterCallGet i n :
+  AtomicCounterStep (ACounterIdle n) (i, CallEv Get) (ACounterGetCalled i n)
+| ACounterRetGet i n :
+  AtomicCounterStep (ACounterGetCalled i n) (i, RetEv Get n) (ACounterIdle n).
+
+Definition atomicCounterSpec : Spec CounterSig := {|
+  State := AtomicCounterState;
+  Step := AtomicCounterStep;
+  Init := ACounterIdle 0
+|}.

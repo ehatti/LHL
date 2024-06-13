@@ -198,14 +198,6 @@ CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i : Relt VE VF -> Relt VE
 
 Arguments SafeProg {E F VE VF} i R G {A} P C Q.
 
-Definition VerifyProg {E F VE VF A} i
-  (R G : @Relt E F VE VF)
-  (P : Prec VE VF)
-  (C : Prog E A)
-  (Q : Post VE VF A)
-  : Prop :=
-  SafeProg i R G (prComp P id) C Q.
-
 Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
   fun s ρs =>
     fst s i = Idle /\
@@ -254,6 +246,15 @@ Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
     exists Ret (m : F Ret), TReturn impl i m s ρ t σ.
 
+Definition VerifyProg {E F VE VF A} i
+  (R G : @Relt E F VE VF)
+  (P : Prec VE VF)
+  (m : F A)
+  (impl : Impl E F)
+  (Q : Post VE VF A)
+  : Prop :=
+  SafeProg i R G (prComp P (TInvoke impl i _ m)) (impl _ m) Q.
+
 Definition initPoss {F VF} : @Poss F VF := {|
   PState := VF.(Init);
   PCalls _ := CallIdle;
@@ -284,16 +285,17 @@ Record VerifyImpl
   P_stable : forall i A m,
     Stable (R i) (P i A m);
   P_Inv_stable : forall i A (m : F A),
-    prComp (P i A m <<- TInvoke impl i A m) id ->> R i ==>
-    prComp (P i A m <<- TInvoke impl i A m) id;
+    prComp (P i A m) (TInvoke impl i A m) ->> R i ==>
+    prComp (P i A m) (TInvoke impl i A m);
   Q_stable : forall i Ret (m : F Ret) v,
     Stable (R i) (Q i Ret m v);
   switch_code : forall i A m1 B m2 v,
-    P i A m1 <<- TInvoke impl i A m1 <<- Q i A m1 v <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i B m2;
+    Q i A m1 v <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i B m2;
   all_verified : forall i A m,
     VerifyProg i (R i) (G i)
-      (P i A m <<- TInvoke impl i A m)
-      (impl A m)
+      (P i A m)
+      m
+      impl
       (fun v => Q i A m v ->> PrecToRelt (Returned i m))
 }.
 Arguments VerifyImpl {E F} VE VF R G P impl Q.

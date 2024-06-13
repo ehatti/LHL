@@ -18,14 +18,14 @@ From LHL.Examples Require Import
 From Coq Require Import
   Arith.PeanoNat.
 
-Definition Underlay := FAISig |+| CounterSig |+| YieldSig |+| VarSig nat.
+Definition Underlay := FAISig |+| CounterSig |+| VarSig nat.
 
 Definition acq : Prog Underlay unit :=
   my_tick <- call FAI;
   _ <- call (SetVar my_tick);
   while
     (cur_tick <- call Get; ret (negb (cur_tick =? my_tick)))
-    (call Yield).
+    skip.
 
 Definition rel : Prog Underlay unit :=
   call Inc.
@@ -38,7 +38,7 @@ Definition ticketLockImpl : Impl Underlay LockSig :=
 
 Definition E := Underlay.
 Definition F := LockSig.
-Definition VE := tensorSpec faiSpec (tensorSpec counterSpec (tensorSpec yieldSpec (varSpec nat))).
+Definition VE := tensorSpec faiSpec (tensorSpec counterSpec (varSpec nat)).
 Definition VF := lockSpec.
 
 Definition Relt := Relt VE VF.
@@ -48,7 +48,7 @@ Definition Post := Post VE VF.
 Definition countState (s : @InterState E F VE) : State counterSpec :=
   fst (snd (snd s)).
 Definition varState (s : @InterState E F VE) : State (varSpec nat) :=
-  snd (snd (snd (snd s))).
+  snd (snd (snd s)).
 
 Definition newtkt (s : @InterState E F VE) : nat :=
   match fst (snd s) with
@@ -63,7 +63,7 @@ Definition ctrval (s : @InterState E F VE) : nat :=
   | CounterUB => 0
   end.
 Definition mytkt i (s : @InterState E F VE) : option nat :=
-  match snd (snd (snd (snd s))) i with
+  match snd (snd (snd s)) i with
   | VarUnset => None
   | VarIdle n => Some n
   | VarSetCalled n => Some n
@@ -90,19 +90,15 @@ Definition Inv (i : ThreadName) : Prec :=
       owner (PState ρ) = Some i ->
       mytkt i s = Some (ctrval s)).
 
-Definition Acqed (i : ThreadName) : Prec :=
-  fun s ρs =>
-    Inv i s ρs /\
-    (forall ρ,
-      ρs ρ ->
-      owner (PState ρ) = Some i).
+Definition Acqed (i : ThreadName) : Prec := fun s ρs =>
+  exists ρ, ρs = eq ρ /\
+  (owner (PState ρ) = Some i ->
+    Inv i s ρs).
 
-Definition Reled (i : ThreadName) : Prec :=
-  fun s ρs =>
-    Inv i s ρs /\
-    (forall ρ,
-      ρs ρ ->
-      owner (PState ρ) <> Some i).
+Definition Reled (i : ThreadName) : Prec := fun s ρs =>
+  exists ρ, ρs = eq ρ /\
+  (owner (PState ρ) <> Some i ->
+    Inv i s ρs).
 
 Definition Precs (i : ThreadName) {A} (m : LockSig A) : Prec :=
   fun s ρs =>
@@ -191,16 +187,3 @@ Definition Guar (i : ThreadName) : Relt :=
 
 Theorem ticketLockCorrect :
   VerifyImpl VE VF Rely Guar Precs ticketLockImpl Posts.
-split.
-admit.
-split.
-admit.
-split.
-admit.
-intros.
-destruct m.
-simpl.
-unfold acq.
-{
-  
-}
