@@ -248,12 +248,11 @@ Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
 
 Definition VerifyProg {E F VE VF A} i
   (R G : @Relt E F VE VF)
-  (P : Prec VE VF)
-  (m : F A)
-  (impl : Impl E F)
+  (P : Relt VE VF)
+  (C : Prog E A)
   (Q : Post VE VF A)
   : Prop :=
-  SafeProg i R G (prComp P (TInvoke impl i _ m)) (impl _ m) Q.
+  SafeProg i R G P C Q.
 
 Definition initPoss {F VF} : @Poss F VF := {|
   PState := VF.(Init);
@@ -293,9 +292,8 @@ Record VerifyImpl
     Q i A m1 v <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i B m2;
   all_verified : forall i A m,
     VerifyProg i (R i) (G i)
-      (P i A m)
-      m
-      impl
+      (prComp (P i A m) (TInvoke impl i _ m))
+      (impl _ m)
       (fun v => Q i A m v ->> PrecToRelt (Returned i m))
 }.
 Arguments VerifyImpl {E F} VE VF R G P impl Q.

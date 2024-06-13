@@ -114,15 +114,21 @@ Definition Posts (i : ThreadName) {A} (m : LockSig A) : Post A :=
     | Rel => Reled i t σ
     end.
 
+Definition ManyInvokeReturn i : Relt :=
+  RTC (fun s ρs t σs =>
+    exists j, j <> i /\
+      InvokeAny ticketLockImpl j s ρs t σs \/
+      ReturnAny ticketLockImpl j s ρs t σs).
+
 Definition Rely (i : ThreadName) : Relt :=
   fun s ρs t σs =>
-    InvokeAny ticketLockImpl i s ρs t σs \/
-    ReturnAny ticketLockImpl i s ρs t σs \/
-    countState t <> CounterUB /\
+    ManyInvokeReturn i s ρs t σs \/
+    (countState s <> CounterUB ->
+      countState t <> CounterUB) /\
     (forall tkt tkt',
       mytkt i s = Some tkt ->
-      mytkt i t = Some tkt' ->
       ctrval s <= tkt ->
+      mytkt i t = Some tkt' /\
       ctrval t <= tkt') /\
     ctrval t <= newtkt t /\
     (forall ρ σ,
@@ -136,12 +142,11 @@ Definition Rely (i : ThreadName) : Relt :=
       σs σ ->
       newtkt t = ctrval t ->
       PState σ = LockIdle) /\
-    (forall ρ σ,
-      ρs ρ ->
-      σs σ ->
-      owner (PState ρ) = Some i ->
-      PState ρ = PState σ /\
-      ctrval s = ctrval t) /\
+    (forall σ, σs σ ->
+      exists ρ, ρs ρ /\
+      (owner (PState ρ) = Some i ->
+       PState ρ = PState σ /\
+       ctrval s = ctrval t)) /\
     (forall ρ σ,
       ρs ρ ->
       σs σ ->

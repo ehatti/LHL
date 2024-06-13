@@ -1543,3 +1543,8 @@ destruct e.
   }
 }
 Qed.
+
+Check nat_ind.
+
+CoFixpoint SafeProg_coind {E F A} {VE : Spec E} {VF : Spec F} {R G P : Relt VE VF} {Q : Post VE VF A} i C :
+  SafeProg i R G P C Q ->.
