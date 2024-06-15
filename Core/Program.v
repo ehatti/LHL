@@ -89,10 +89,20 @@ Definition ret {E A} := @Return E A.
 
 Definition skip {E} := @ret E unit tt.
 
-CoFixpoint while {E} (x : Prog E bool) (e : Prog E unit) : Prog E unit :=
-  match x with
-  | Return true => e
-  | Return false => skip
-  | Bind m k => Bind m (fun x => while (k x) e)
-  | NoOp x => NoOp (while x e)
+Section while.
+
+Context {E} (t : Prog E bool) (e : Prog E unit).
+
+CoFixpoint whileAux (t' : Prog E bool) (e' : Prog E unit) : Prog E unit :=
+  match t', e' with
+  | Bind m k, e' => Bind m (fun x => whileAux (k x) e')
+  | NoOp t', e' => NoOp (whileAux t' e')
+  | Return false, _ => skip
+  | Return true, Bind m k => Bind m (fun x => whileAux (Return true) (k x))
+  | Return true, NoOp e' => NoOp (whileAux (Return true) e')
+  | Return true, Return _ => NoOp (whileAux t e)
   end.
+
+Definition while := whileAux t e.
+
+End while.

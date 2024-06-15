@@ -43,6 +43,7 @@ match type of H with
 | TIdle ?i ?s ?ρ => destruct H
 | TInvoke ?impl ?i ?Ret ?m ?s ?ρ ?t ?σ => do 2 destruct H
 | InvokeAny ?impl ?i ?s ?ρ ?t ?σ => do 2 destruct H
+| ReltToPrec ?R ?s ?ρ => do 2 destruct H; pdestruct H
 | _ => fail "Cannot destruct this hypothesis"
 end.
 
@@ -1543,8 +1544,3 @@ destruct e.
   }
 }
 Qed.
-
-Check nat_ind.
-
-CoFixpoint SafeProg_coind {E F A} {VE : Spec E} {VF : Spec F} {R G P : Relt VE VF} {Q : Post VE VF A} i C :
-  SafeProg i R G P C Q ->.
