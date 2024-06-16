@@ -210,6 +210,7 @@ Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F
   fun s ρs t σs =>
     TIdle i s ρs /\
     InterOStep impl i (fst s) (CallEv m) (fst t) /\
+    snd s = snd t /\
     forall σ, σs σ ->
       σ.(PCalls) i = CallPoss m /\
       σ.(PRets) i = RetIdle /\
@@ -234,6 +235,7 @@ Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F R
   fun s ρs t σs =>
     exists (v : Ret),
       InterOStep impl i (fst s) (RetEv m v) (fst t) /\
+      snd s = snd t /\
       forall σ, σs σ ->
         σ.(PCalls) i = CallIdle /\
         σ.(PRets) i = RetIdle /\

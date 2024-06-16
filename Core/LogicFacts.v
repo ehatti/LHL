@@ -1197,6 +1197,7 @@ destruct e.
         easy.
         split.
         econstructor. econstructor; easy. easy.
+        split. easy.
         intros. destruct_all. subst. simpl.
         rewrite eqb_id. repeat constructor.
         exists x1. split. easy.
@@ -1227,6 +1228,7 @@ destruct e.
         split. easy.
         split.
         econstructor. econstructor; easy. easy.
+        split. easy.
         intros. destruct_all. subst. simpl.
         rewrite eqb_id. repeat constructor.
         exists x1. split. easy.
@@ -1256,6 +1258,7 @@ destruct e.
           split. easy.
           split.
           econstructor. econstructor; easy. easy.
+          split. easy.
           intros. destruct_all. subst. simpl.
           rewrite eqb_id. repeat constructor.
           exists x4. split. easy.
@@ -1302,6 +1305,7 @@ destruct e.
           eexists _, m.
           split. easy.
           split. econstructor. econstructor; easy. easy.
+          split. easy.
           intros. destruct_all. subst. simpl.
           rewrite eqb_id. repeat constructor.
           exists x3. split. easy.
@@ -1379,6 +1383,7 @@ destruct e.
         exists n0.
         split.
         econstructor. econstructor; easy. easy.
+        split. easy.
         intros. destruct_all. subst. simpl.
         rewrite eqb_id. repeat constructor.
         exists x8. split. easy.
@@ -1408,6 +1413,7 @@ destruct e.
         eexists _, m, n0.
         split.
         econstructor. econstructor; easy. easy.
+        split. easy.
         intros. destruct_all. subst. simpl.
         rewrite eqb_id. repeat constructor.
         exists x9. split. easy.
@@ -1438,6 +1444,7 @@ destruct e.
           eexists _, m, n0.
           split.
           econstructor; simpl. econstructor; easy. easy.
+          split. easy.
           intros. destruct_all. subst. simpl.
           rewrite eqb_id.
           repeat constructor.
@@ -1486,6 +1493,7 @@ destruct e.
           apply H.(Ret_in_R) with (i:=n). easy.
           eexists _, m, n0.
           split. econstructor. econstructor; easy. easy.
+          split. easy.
           intros. destruct_all. subst. simpl.
           rewrite eqb_id. repeat constructor.
           exists x11. split. easy.
