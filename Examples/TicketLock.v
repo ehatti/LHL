@@ -19,7 +19,10 @@ From LHL.Util Require Import
   Tactics.
 
 From Coq Require Import
-  Arith.PeanoNat.
+  Arith.PeanoNat
+  Program.Equality
+  Logic.FunctionalExtensionality
+  Logic.PropExtensionality.
 
 Definition Underlay := FAISig |+| CounterSig |+| VarSig nat.
 
@@ -66,6 +69,37 @@ Definition mytkt i (s : @InterState E F VE) : option nat :=
   | VarSet n _ => Some n
   end.
 
+Lemma newtkt_eq :
+  forall s t : @InterState E F VE,
+  snd s = snd t ->
+  newtkt s = newtkt t.
+unfold newtkt. congruence.
+Qed.
+
+Lemma ctrval_eq :
+  forall s t : @InterState E F VE,
+  snd s = snd t ->
+  ctrval s = ctrval t.
+unfold ctrval, countState. intros.
+rewrite H. easy.
+Qed.
+
+Lemma mytkt_eq i :
+  forall s t : @InterState E F VE,
+  snd s = snd t ->
+  mytkt i s = mytkt i t.
+unfold mytkt. intros.
+rewrite H. easy.
+Qed.
+
+Lemma countState_eq :
+  forall s t : @InterState E F VE,
+  snd s = snd t ->
+  countState s = countState t.
+unfold countState. intros.
+rewrite H. easy.
+Qed.
+
 Definition Inv (i : ThreadName) : Prec :=
   fun s ρs => exists ρ, ρs = eq ρ /\
     countState s <> CounterUB /\
@@ -107,12 +141,12 @@ Definition Posts (i : ThreadName) {A} (m : LockSig A) : Post A :=
 Definition ManyInvokeReturn i : Relt :=
   RTC (fun s ρs t σs =>
     exists j, j <> i /\
-      InvokeAny ticketLockImpl j s ρs t σs \/
-      ReturnAny ticketLockImpl j s ρs t σs).
+      (InvokeAny ticketLockImpl j s ρs t σs \/
+       ReturnAny ticketLockImpl j s ρs t σs)).
 
 Definition Rely (i : ThreadName) : Relt :=
-  fun s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\
-    ManyInvokeReturn i s ρs t σs /\
+  fun s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\ (
+    ManyInvokeReturn i s ρs t σs \/
     (countState s <> CounterUB ->
       countState t <> CounterUB) /\
     ((forall tkt, Some tkt = mytkt i s -> ctrval s <= tkt) ->
@@ -134,15 +168,85 @@ Definition Rely (i : ThreadName) : Relt :=
       PState ρ = PState σ /\
       ctrval s = ctrval t) /\
     (owner (PState ρ) <> Some i ->
-      owner (PState σ) <> Some i).
+      owner (PState σ) <> Some i)
+  ).
+
+Definition Guar (i : ThreadName) : Relt :=
+  fun s ρs t σs =>
+    forall j, i <> j -> Rely j s ρs t σs.
+
+(* Extra lemmas *)
+
+Lemma noStateChange :
+  forall i s ρs t σs,
+  ManyInvokeReturn i s ρs t σs ->
+  snd s = snd t /\
+  forall σ, σs σ ->
+    exists ρ, ρs ρ /\
+      PState ρ = PState σ.
+intros.
+induction H.
+{
+  split. easy.
+  intros. exists σ. easy.
+}
+{
+  clear H0.
+  destruct_all.
+  destruct H2.
+  {
+    unfold InvokeAny, TInvoke in H2. destruct_all.
+    destruct H3. simpl in *.
+    split. transitivity (snd t); easy.
+    intros.
+    apply H1 in H7. destruct_all.
+    apply H5 in H7. destruct_all.
+    exists x3. split. easy.
+    congruence.
+  }
+  {
+    unfold ReturnAny, TReturn in H2. destruct_all.
+    destruct H2. simpl in *.
+    split. transitivity (snd t); easy.
+    intros.
+    apply H1 in H6. destruct_all.
+    apply H4 in H6. destruct_all.
+    exists x4. split. easy.
+    congruence.
+  }
+}
+Qed.
+
+Lemma Inv_stable :
+  forall i, Stable (Rely i) (Inv i).
+unfold Stable, stablePrec, sub, subPrec, Rely, Inv. intros.
+psimpl.
+specialize (H0 x1 eq_refl). destruct_all. subst.
+exists x0. split. easy.
+destruct H0.
+{
+  apply noStateChange in H. destruct_all.
+  specialize (H0 x0 eq_refl). destruct_all. subst.
+  rewrite <- H7. symmetry in H.
+  repeat rewrite (countState_eq _ _ H).
+  repeat rewrite (newtkt_eq _ _ H).
+  repeat rewrite (mytkt_eq _ _ _ H).
+  repeat rewrite (ctrval_eq _ _ H).
+  easy.
+}
+{
+  destruct_all.
+  repeat split; auto.
+}
+Qed.
+
+(* Program logic obligations *)
 
 Lemma Rely_refl :
   forall i s ρ, Rely i s ρ s ρ.
 unfold Rely. intros. subst.
 exists ρ0. split. easy.
-repeat split.
-constructor.
-all: easy.
+left. constructor.
 Qed.
 
 Lemma Rely_trans :
@@ -152,61 +256,116 @@ unfold Rely in H. unfold Rely. intros. subst.
 specialize (H ρ0 eq_refl). destruct_all. subst.
 specialize (H0 x1 eq_refl). destruct_all. subst.
 exists x0. split. easy.
-repeat split.
+destruct H0, H1.
 {
-  eapply rtcTrans. repeat eexists.
-  exact H1. easy.
+  left. eapply rtcTrans. repeat eexists.
+  exact H0. easy.
 }
-all: (intros; auto).
-assert (H' := H). apply H8 in H. destruct_all. rewrite H in H'.
-apply H16 in H'. destruct_all. congruence.
-assert (H' := H). apply H8 in H. destruct_all. rewrite H in H'.
-apply H16 in H'. destruct_all. congruence.
+{
+  right.
+  apply noStateChange in H. destruct_all.
+  move H at bottom. symmetry in H.
+  specialize (H8 x0 eq_refl). destruct_all. subst.
+  symmetry in H9. move H9 at bottom.
+  repeat rewrite (countState_eq _ _ H).
+  repeat rewrite (ctrval_eq _ _ H).
+  repeat rewrite (mytkt_eq _ _ _ H).
+  repeat rewrite (newtkt_eq _ _ H).
+  repeat rewrite H9.
+  easy.
+}
+{
+  right.
+  apply noStateChange in H0. destruct_all.
+  specialize (H1 x1 eq_refl). destruct_all. subst.
+  symmetry in H9. move H9 at bottom.
+  repeat rewrite (countState_eq _ _ H0) in *.
+  repeat rewrite (ctrval_eq _ _ H0) in *.
+  repeat rewrite (mytkt_eq _ _ _ H0) in *.
+  repeat rewrite (newtkt_eq _ _ H0) in *.
+  repeat rewrite H9 in *.
+  easy.
+}
+{
+  right. destruct_all.
+  repeat split; intros; try auto.
+  assert (H15' := H15).
+  apply H6 in H15. destruct_all. rewrite H15 in H15'.
+  apply H13 in H15'. destruct_all.
+  rewrite H15. easy.
+  assert (H15' := H15).
+  apply H6 in H15. destruct_all. rewrite H15 in H15'.
+  apply H13 in H15'. destruct_all.
+  rewrite H16. easy.
+}
 Qed.
 
+Lemma Guar_in_Rely :
+  forall i j : ThreadName, i <> j -> Guar i ==> Rely j.
+unfold Guar, sub, subRelt. intros. destruct_all.
+apply H0. easy.
+Qed.
 
-Lemma Inv_stable :
-  forall i, Stable (Rely i) (Inv i).
-unfold Stable, stablePrec, sub, subPrec, Rely, Inv. intros.
-psimpl. exists x2. split. easy.
-destruct H2.
+Lemma Inv_in_Rely :
+  forall i j : ThreadName, i <> j -> InvokeAny ticketLockImpl i ==> Rely j.
+unfold InvokeAny, TInvoke, Rely, sub, subRelt, TIdle. intros.
+destruct_all. subst. destruct H2. cbn in *.
+specialize (H5 ρ0 eq_refl). destruct_all.
+assert (exists τ, σ = eq τ).
 {
-  unfold ManyInvokeRetu
+  destruct H4. specialize (H4 ρ0 eq_refl). destruct_all.
+  exists x1.
+  extensionality x2. apply propositional_extensionality.
+  split; intros.
+  {
+    apply H7 in H15. clear H7. destruct_all. subst.
+    destruct x1, x2, x3. cbn in *.
+    f_equal.
+    { congruence. }
+    {
+      extensionality k.
+      dec_eq_nats i k.
+      congruence.
+      etransitivity.
+      apply H12. easy.
+      symmetry. apply H19. easy.
+    }
+    {
+      extensionality k.
+      dec_eq_nats i k.
+      congruence.
+      etransitivity.
+      apply H13. easy.
+      symmetry. apply H20. easy.
+    }
+  }
+  {
+    subst. easy.
+  }
 }
+destruct_all. subst.
+exists x1. split. easy.
+destruct H4. clear H7.
+specialize (H4 ρ0 eq_refl). destruct_all. subst.
+symmetry in H13. repeat rewrite H13.
+repeat rewrite (mytkt_eq _ _ _ H3).
+repeat rewrite (countState_eq _ _ H3).
+repeat rewrite (newtkt_eq _ _ H3).
+repeat rewrite (ctrval_eq _ _ H3).
+right. easy.
+Qed.
 
-Definition Guar (i : ThreadName) : Relt :=
-  fun s ρs t σs =>
-    countState t <> CounterUB /\
-    (forall j tkt tkt',
-      i <> j ->
-      mytkt j s = Some tkt ->
-      mytkt j t = Some tkt' ->
-      ctrval s <= tkt ->
-      ctrval t <= tkt') /\
-    ctrval t <= newtkt t /\
-    (forall j σ, σs σ ->
-      i <> j ->
-      mytkt j s = Some (ctrval s) ->
-      owner (PState ρ) = Some j \/ owner (PState ρ) = None ->
-      mytkt j t = Some (ctrval t) ->
-      owner (PState ρ) = Some j \/ owner (PState ρ) = None) /\
-    (forall ρ,
-      ρs ρ ->
-      newtkt t = ctrval t ->
-      PState ρ = LockUnowned) /\
-    (forall ρ σ,
-      ρs ρ ->
-      σs σ ->
-      owner (PState ρ) <> Some i /\ owner (PState ρ) <> None ->
-      PState ρ = PState σ) /\
-    (forall ρ,
-      ρs ρ ->
-      ~OwnsLock i (PState ρ) ->
-      ctrval s = ctrval t) /\
-    (forall ρ σ, σs σ ->
-      exists ρ, ρs ρ /\
-      (owner (PState ρ) <> Some i ->
-       owner (PState σ) <> Some i)).
+Lemma Ret_in_Rely :
+  forall i j : ThreadName, i <> j -> ReturnAny ticketLockImpl i ==> Rely j.
+unfold ReturnAny, TReturn, Rely, sub, subRelt, TIdle. intros.
+destruct_all. subst. destruct H3. cbn in *.
+Admitted.
 
 Theorem ticketLockCorrect :
   VerifyImpl VE VF Rely Guar Precs ticketLockImpl Posts.
+constructor.
+apply Rely_refl.
+apply Rely_trans.
+apply Guar_in_Rely.
+apply Inv_in_Rely.
+apply Ret_in_Rely.

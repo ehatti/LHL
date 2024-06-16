@@ -1199,10 +1199,20 @@ destruct e.
         econstructor. econstructor; easy. easy.
         split. easy.
         intros. destruct_all. subst. simpl.
-        rewrite eqb_id. repeat constructor.
-        exists x1. split. easy.
-        apply H7 in H8. clear H7.
-        easy.
+        split; intros.
+        {
+          exists (invPoss n ρ m).
+          split. exists ρ. easy.
+          apply H7 in H8. simpl. rewrite eqb_id.
+          repeat split; (easy || apply differ_pointwise_trivial).
+        }
+        {
+          destruct_all. subst. simpl.
+          exists x1. split. easy.
+          rewrite eqb_id. apply H7 in H8.
+          destruct_all.
+          repeat split; (easy || apply differ_pointwise_trivial).
+        }
       }
       {
         apply H.(R_trans).
@@ -1229,10 +1239,19 @@ destruct e.
         split.
         econstructor. econstructor; easy. easy.
         split. easy.
-        intros. destruct_all. subst. simpl.
-        rewrite eqb_id. repeat constructor.
-        exists x1. split. easy.
-        apply H7 in H11. easy.
+        split; intros.
+        {
+          exists (invPoss n ρ m).
+          split. exists ρ. easy.
+          apply H7 in H11. simpl. rewrite eqb_id.
+          repeat split; (easy || apply differ_pointwise_trivial).
+        }
+        {
+          destruct_all. subst. simpl.
+          exists x1. split. easy.
+          rewrite eqb_id. apply H7 in H11.
+          repeat split; (easy || apply differ_pointwise_trivial).
+        }
       }
       {
         destruct_all.
@@ -1259,10 +1278,20 @@ destruct e.
           split.
           econstructor. econstructor; easy. easy.
           split. easy.
-          intros. destruct_all. subst. simpl.
-          rewrite eqb_id. repeat constructor.
-          exists x4. split. easy.
-          apply H7 in H12. easy.
+          split; intros.
+          {
+            exists (invPoss n ρ m).
+            split. exists ρ. easy.
+            apply H7 in H12. simpl. rewrite eqb_id.
+            repeat split; (easy || apply differ_pointwise_trivial).
+          }
+          {
+            destruct_all. subst. simpl.
+            exists x4. split. easy.
+            rewrite eqb_id. apply H7 in H12.
+            destruct_all.
+            repeat split; (easy || apply differ_pointwise_trivial).
+          }
         }
         {
           unfold sub, subRelt. intros.
@@ -1307,9 +1336,20 @@ destruct e.
           split. econstructor. econstructor; easy. easy.
           split. easy.
           intros. destruct_all. subst. simpl.
-          rewrite eqb_id. repeat constructor.
-          exists x3. split. easy.
-          apply H7 in H13. easy.
+          split; intros.
+          {
+            exists (invPoss n ρ m).
+            split. exists ρ. easy.
+            apply H7 in H13. simpl. rewrite eqb_id.
+            repeat split; (easy || apply differ_pointwise_trivial).
+          }
+          {
+            destruct_all. subst. simpl.
+            exists x3. split. easy.
+            rewrite eqb_id. apply H7 in H13.
+            destruct_all.
+            repeat split; (easy || apply differ_pointwise_trivial).
+          }
         }
         split.
         {
@@ -1385,12 +1425,26 @@ destruct e.
         econstructor. econstructor; easy. easy.
         split. easy.
         intros. destruct_all. subst. simpl.
-        rewrite eqb_id. repeat constructor.
-        exists x8. split. easy.
-        do 3 destruct H10. destruct_all. subst.
-        apply H13 in H11. destruct_all.
-        rewrite H10 in H2. dependent destruction H2.
-        easy.
+        unfold TInvoke in H8. destruct_all.
+        unfold PrecToRelt, Returned in H10.
+        destruct_all. subst.
+        split; intros.
+        {
+          exists (retPoss n ρ).
+          split. exists ρ. easy.
+          apply H16 in H14. destruct_all.
+          simpl. rewrite eqb_id.
+          rewrite H10 in H2. dependent destruction H2.
+          repeat split; (easy || apply differ_pointwise_trivial).
+        }
+        {
+          destruct_all. subst. simpl.
+          exists x6. split. easy.
+          rewrite eqb_id.
+          apply H16 in H14. destruct_all.
+          rewrite H10 in H2. dependent destruction H2.
+          repeat split; (easy || apply differ_pointwise_trivial).
+        }
       }
     }
     {
@@ -1414,12 +1468,24 @@ destruct e.
         split.
         econstructor. econstructor; easy. easy.
         split. easy.
-        intros. destruct_all. subst. simpl.
-        rewrite eqb_id. repeat constructor.
-        exists x9. split. easy.
-        apply H14 in H18.
-        rewrite H11 in H2. dependent destruction H2.
-        easy.
+        split; intros.
+        {
+          exists (retPoss n ρ).
+          split. exists ρ. easy. subst.
+          assert (H18' := H18).
+          apply H17 in H18. apply H14 in H18'. destruct_all.
+          simpl. rewrite eqb_id.
+          rewrite H11 in H2. dependent destruction H2.
+          repeat split; try (easy || apply differ_pointwise_trivial).
+        }
+        {
+          destruct_all. subst. simpl.
+          exists x9. split. easy.
+          rewrite eqb_id. assert (H18' := H18).
+          apply H14 in H18. apply H17 in H18'. destruct_all.
+          rewrite H11 in H2. dependent destruction H2.
+          repeat split; (easy || apply differ_pointwise_trivial).
+        }
       }
       {
         destruct_all.
@@ -1446,13 +1512,23 @@ destruct e.
           econstructor; simpl. econstructor; easy. easy.
           split. easy.
           intros. destruct_all. subst. simpl.
-          rewrite eqb_id.
-          repeat constructor.
-          exists x10. split. easy.
-          apply H14 in H18.
-          destruct_all.
-          rewrite H11 in H2. dependent destruction H2.
-          easy.
+          split; intros.
+          {
+            exists (retPoss n ρ).
+            split. exists ρ. easy.
+            apply H14 in H12. destruct_all.
+            simpl. rewrite eqb_id.
+            rewrite H11 in H2. dependent destruction H2.
+            repeat split; (easy || apply differ_pointwise_trivial).
+          }
+          {
+            destruct_all. subst. simpl.
+            exists x6. split. easy.
+            rewrite eqb_id.
+            apply H14 in H12. destruct_all.
+            rewrite H11 in H2. dependent destruction H2.
+            repeat split; (easy || apply differ_pointwise_trivial).
+          }
         }
         {
           unfold sub, subRelt. intros.
@@ -1495,11 +1571,23 @@ destruct e.
           split. econstructor. econstructor; easy. easy.
           split. easy.
           intros. destruct_all. subst. simpl.
-          rewrite eqb_id. repeat constructor.
-          exists x11. split. easy.
-          apply H14 in H20.
-          rewrite H11 in H2. dependent destruction H2.
-          easy.
+          split; intros.
+          {
+            exists (retPoss n ρ).
+            split. exists ρ. easy.
+            apply H14 in H12. destruct_all.
+            simpl. rewrite eqb_id.
+            rewrite H11 in H2. dependent destruction H2.
+            repeat split; (easy || apply differ_pointwise_trivial).
+          }
+          {
+            destruct_all. subst. simpl.
+            exists x6. split. easy.
+            rewrite eqb_id.
+            apply H14 in H12. destruct_all.
+            rewrite H11 in H2. dependent destruction H2.
+            repeat split; (easy || apply differ_pointwise_trivial).
+          }
         }
         split.
         {

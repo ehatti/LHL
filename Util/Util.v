@@ -1,6 +1,9 @@
 From Coq Require Import
   Logic.
 
+From LHL.Util Require Import
+  Tactics.
+
 Notation IRel M N := (forall X, M X -> N X -> Prop) (only parsing).
 
 Definition ieq {M : Type -> Type} R (e1 e2 : M R) : Prop := e1 = e2.
@@ -83,4 +86,13 @@ easy.
 simpl in *.
 apply rec.
 congruence.
+Qed.
+
+Lemma differ_pointwise_trivial {A} (f : nat -> A) i x :
+  differ_pointwise f (fun j => if i =? j then x else f j) i.
+unfold differ_pointwise.
+intros.
+dec_eq_nats i j.
+congruence.
+rewrite eqb_nid; easy.
 Qed.

@@ -3,6 +3,7 @@ From LHL.Core Require Import
   Specs
   Traces
   Linearizability.
+
 From Coq Require Import
   Lists.List
   Init.Nat
@@ -206,18 +207,22 @@ Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
       ρ.(PCalls) i = CallIdle /\
       ρ.(PRets) i = RetIdle.
 
+Definition mapPoss {F} {VF : Spec F} (ρs σs : PossSet VF) (P : Poss VF -> Poss VF -> Prop) :=
+  (forall ρ, ρs ρ -> exists σ, σs σ /\ P ρ σ) /\
+  (forall σ, σs σ -> exists ρ, ρs ρ /\ P ρ σ).
+
 Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     TIdle i s ρs /\
     InterOStep impl i (fst s) (CallEv m) (fst t) /\
     snd s = snd t /\
-    forall σ, σs σ ->
-      σ.(PCalls) i = CallPoss m /\
-      σ.(PRets) i = RetIdle /\
-      exists ρ, ρs ρ /\
-        ρ.(PCalls) i = CallIdle /\
-        ρ.(PRets) i = RetIdle /\
-        σ.(PState) = ρ.(PState).
+    mapPoss ρs σs (fun ρ σ =>
+      ρ.(PCalls) i = CallIdle /\ σ.(PCalls) i = CallPoss m /\
+      ρ.(PRets) i = RetIdle /\ σ.(PRets) i = RetIdle /\
+      Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
+      Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
+      ρ.(PState) = σ.(PState))
+  .
 
 Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
@@ -236,13 +241,12 @@ Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F R
     exists (v : Ret),
       InterOStep impl i (fst s) (RetEv m v) (fst t) /\
       snd s = snd t /\
-      forall σ, σs σ ->
-        σ.(PCalls) i = CallIdle /\
-        σ.(PRets) i = RetIdle /\
-        exists ρ, ρs ρ /\
-          ρ.(PCalls) i = CallDone m /\
-          ρ.(PRets) i = RetPoss m v /\
-          σ.(PState) = ρ.(PState).
+      mapPoss ρs σs (fun ρ σ =>
+        σ.(PCalls) i = CallIdle /\ ρ.(PCalls) i = CallDone m /\
+        σ.(PRets) i = RetIdle /\ ρ.(PRets) i = RetPoss m v /\
+        Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
+        Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
+        σ.(PState) = ρ.(PState)).
 
 Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
