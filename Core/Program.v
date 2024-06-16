@@ -41,6 +41,7 @@ CoFixpoint bindProg {E A B} (p : Prog E A) (f : A -> Prog E B) : Prog E B :=
     | NoOp p' => NoOp (bindProg p' f)
   end.
 Notation "x <- f ; m" := (bindProg f (fun x => m)) (at level 80, right associativity).
+Notation "f ;; m" := (bindProg f (fun _ => m)) (at level 80, right associativity).
 
 CoFixpoint mapProg
            {E E'}

@@ -2061,7 +2061,40 @@ induction f; simpl; intros.
 discriminate.
 destruct a.
 destruct ev0.
-Admitted.
+{
+  dependent destruction H.
+  right. exists 0, f. easy.
+}
+{
+  apply IHf in H. clear IHf. destruct H; destruct_all; subst.
+  left. exists (S x), x0, x1, x2. easy.
+  right. exists (S x), x0. easy.
+}
+{
+  apply IHf in H. clear IHf. destruct H; destruct_all; subst.
+  left. exists 0, ev0, (nones x ++ cons (OEvent x0) x1), x2. simpl.
+  split.
+  {
+    induction x; simpl.
+    constructor. unfold not. intros. destruct_all. congruence.
+    easy.
+    constructor. unfold not. intros. destruct_all. congruence.
+    easy.
+  }
+  rewrite <- app_assoc. simpl.
+  easy.
+  left. exists 0, ev0, (nones x), x0. simpl.
+  split.
+  {
+    clear. induction x.
+    constructor.
+    simpl.
+    constructor. unfold not. intros. destruct_all. congruence.
+    easy.
+  }
+  easy.
+}
+Qed.
 
 Lemma get_projOver_under {E E' F} :
   forall q f ev,
@@ -2465,17 +2498,116 @@ destruct p, q.
       simpl in *.
       dec_eq_nats n n0.
       {
-        admit.
+        rewrite eqb_id in *. simpl in *. dependent destruction H0.
+        generalize dependent (x1 ++ UEvent (Some e) :: x2). intros.
+        specialize (get_choose_trace E F G ((n0, UEvent (Some e)) :: p) q
+          (fun i => if n0 =? i then l else qc i)).
+        eassert _.
+        {
+          eapply get_choose_trace with (is:=is).
+          simpl. lia.
+          {
+            intros. simpl. specialize (H' i). dec_eq_nats i n0.
+            {
+              rewrite eqb_id in *.
+              rewrite H2, projUnderThrSeq_app, projUnderThrSeq_nones in H'. easy.
+            }
+            {
+              rewrite eqb_nid with (n:=n0) (m:=i) in *.
+              rewrite eqb_nid with (n:=i) (m:=n0) in *.
+              easy. easy. easy. easy.
+            }
+          }
+          {
+            intros. specialize (H0' i). dec_eq_nats i n0.
+            {
+              rewrite eqb_id in *.
+              rewrite H2, projOverSeq_app, projOverSeq_nones in H0'.
+              simpl in H0'. congruence.
+            }
+            {
+              rewrite eqb_nid in *; easy.
+            }
+          }
+          {
+            intros. apply H1 in H0. rewrite H0.
+            dec_eq_nats n0 i.
+            {
+              rewrite H0 in H2. destruct x3; simpl in H2; discriminate.
+            }
+            {
+              rewrite eqb_nid; easy.
+            }
+          }
+        }
+        destruct_all.
+        exists (thread_nones n0 x3 ++ (n0, OEvent x0) :: x4).
+        clear x H0' H' H1 H get_choose_trace.
+        generalize dependent qc.
+        induction x3; intros; simpl in *.
+        {
+          econstructor. exact H0. easy.
+        }
+        {
+          econstructor. eapply IHx3.
+          rewrite eqb_id. easy.
+          rewrite if_prune. easy.
+          easy.
+        }
       }
       {
-        rewrite eqb_nid in H0.
-        admit.
+        rewrite eqb_nid in H0. 2: easy.
         admit.
       }
     }
     (* there is no blocking overlay event*)
     {
-      admit.
+      specialize (get_choose_trace E F G p ((n0, OEvent ev0) :: q)
+        (fun i => if n =? i then x0 else qc i)).
+      eassert _.
+      {
+        apply get_choose_trace with (is:=is).
+        simpl. lia.
+        intros. specialize (H' i). dec_eq_nats i n.
+        {
+          rewrite eqb_id in *.
+          rewrite H, projUnderThrSeq_app, projUnderThrSeq_nones in H'.
+          simpl in *. congruence.
+        }
+        {
+          rewrite eqb_nid in *; easy.
+        }
+        {
+          simpl. intros. specialize (H0' i). dec_eq_nats i n.
+          rewrite eqb_id in *.
+          rewrite H, projOverSeq_app, projOverSeq_nones in H0'.
+          easy.
+          rewrite eqb_nid with (n:=n) (m:=i); easy.
+        }
+        {
+          intros. dec_eq_nats i n.
+          {
+            apply H1 in H2. rewrite H2 in H.
+            destruct x; simpl in H; discriminate.
+          }
+          {
+            rewrite eqb_nid. apply H1. easy. easy.
+          }
+        }
+      }
+      destruct_all.
+      exists (thread_nones n x ++ (n, UEvent (Some e)) :: x1).
+      clear H0' H' H1 H0 get_choose_trace.
+      generalize dependent qc.
+      induction x; simpl in *.
+      {
+        econstructor. exact H2. easy.
+      }
+      {
+        econstructor. apply IHx.
+        rewrite eqb_id. easy.
+        rewrite if_prune. easy. easy.
+      }
     }
   }
   {
@@ -2862,28 +2994,25 @@ cut (
       same_threads (projUnderThr x1) (projUnderThr q) /\
       same_threads (projOver x0) (projOver q)).
   {
+    destruct_all.
+    eapply help57.
     {
-      destruct_all.
-      subst.
-      eapply help57.
-      {
-        intros.
-        specialize (H5 i).
-        easy.
-      }
-      {
-        intros.
-        specialize (H5 i).
-        easy.
-      }
-      {
-        intros.
-        specialize (H5 i).
-        destruct H5.
-        apply H5.
-        rewrite <- dedup_correct.
-        easy.
-      }
+      intros.
+      specialize (H5 i).
+      easy.
+    }
+    {
+      intros.
+      specialize (H5 i).
+      easy.
+    }
+    {
+      intros.
+      specialize (H5 i).
+      destruct H5.
+      apply H5.
+      rewrite <- dedup_correct.
+      easy.
     }
   }
   destruct_all.

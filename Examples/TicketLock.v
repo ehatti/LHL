@@ -15,6 +15,9 @@ From LHL.Examples Require Import
   CounterSpec
   VarSpec.
 
+From LHL.Util Require Import
+  Tactics.
+
 From Coq Require Import
   Arith.PeanoNat.
 
@@ -22,10 +25,10 @@ Definition Underlay := FAISig |+| CounterSig |+| VarSig nat.
 
 Definition acq : Prog Underlay unit :=
   my_tick <- call FAI;
-  _ <- call (SetVar my_tick);
-  while
-    (cur_tick <- call Get; ret (negb (cur_tick =? my_tick)))
-    skip.
+  call (SetVar my_tick);;
+  while (cur_tick <- call Get; ret (negb (cur_tick =? my_tick)))
+    skip;;
+  call ClrVar.
 
 Definition rel : Prog Underlay unit :=
   call Inc.
@@ -51,43 +54,30 @@ Definition varState (s : @InterState E F VE) : State (varSpec nat) :=
   snd (snd (snd s)).
 
 Definition newtkt (s : @InterState E F VE) : nat :=
-  match fst (snd s) with
-  | FAICalled _ n => n
-  | FAIIdle n => n
-  end.
+  fst (fst (snd s)).
 Definition ctrval (s : @InterState E F VE) : nat :=
   match countState s with
-  | CounterIdle n => n
-  | CounterGetCalled _ n => n
-  | CounterIncCalled _ n => n
+  | CounterDef n _ => n
   | CounterUB => 0
   end.
 Definition mytkt i (s : @InterState E F VE) : option nat :=
   match snd (snd (snd s)) i with
   | VarUnset => None
-  | VarIdle n => Some n
-  | VarSetCalled n => Some n
-  | VarGetCalled n => Some n
+  | VarSet n _ => Some n
   end.
 
 Definition Inv (i : ThreadName) : Prec :=
-  fun s ρs =>
+  fun s ρs => exists ρ, ρs = eq ρ /\
     countState s <> CounterUB /\
     (forall tkt,
       Some tkt = mytkt i s ->
       ctrval s <= tkt) /\
     ctrval s <= newtkt s /\
-    (forall ρ,
-      Some (ctrval s) = mytkt i s ->
-      ρs ρ ->
+    (mytkt i s = Some (ctrval s) ->
       owner (PState ρ) = Some i \/ owner (PState ρ) = None) /\
     (newtkt s = ctrval s ->
-      forall ρ,
-        ρs ρ ->
-        PState ρ = LockIdle) /\
-    (forall ρ,
-      ρs ρ ->
-      owner (PState ρ) = Some i ->
+      PState ρ = LockUnowned) /\
+    (owner (PState ρ) = Some i ->
       mytkt i s = Some (ctrval s)).
 
 Definition Acqed (i : ThreadName) : Prec := fun s ρs =>
@@ -121,37 +111,68 @@ Definition ManyInvokeReturn i : Relt :=
       ReturnAny ticketLockImpl j s ρs t σs).
 
 Definition Rely (i : ThreadName) : Relt :=
-  fun s ρs t σs =>
-    ManyInvokeReturn i s ρs t σs \/
+  fun s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\
+    ManyInvokeReturn i s ρs t σs /\
     (countState s <> CounterUB ->
       countState t <> CounterUB) /\
-    (forall tkt tkt',
-      mytkt i s = Some tkt ->
-      ctrval s <= tkt ->
-      mytkt i t = Some tkt' /\
+    ((forall tkt, Some tkt = mytkt i s -> ctrval s <= tkt) ->
+      forall tkt',
+      Some tkt' = mytkt i t ->
       ctrval t <= tkt') /\
-    ctrval t <= newtkt t /\
-    (forall ρ σ,
-      ρs ρ ->
-      σs σ ->
-      mytkt i s = Some (ctrval s) ->
+    (ctrval s <= newtkt s ->
+      ctrval t <= newtkt t) /\
+    ((mytkt i s = Some (ctrval s) -> owner (PState ρ) = Some i \/ owner (PState ρ) = None) ->
       mytkt i t = Some (ctrval t) ->
-      owner (PState ρ) = Some i \/ owner (PState ρ) = None ->
       owner (PState σ) = Some i \/ owner (PState σ) = None) /\
-    (forall σ,
-      σs σ ->
+    ((newtkt s = ctrval s -> PState ρ = LockUnowned) ->
       newtkt t = ctrval t ->
-      PState σ = LockIdle) /\
-    (forall σ, σs σ ->
-      exists ρ, ρs ρ /\
-      (owner (PState ρ) = Some i ->
-       PState ρ = PState σ /\
-       ctrval s = ctrval t)) /\
-    (forall ρ σ,
-      ρs ρ ->
-      σs σ ->
-      owner (PState ρ) <> Some i ->
+      PState σ = LockUnowned) /\
+    ((owner (PState ρ) = Some i -> mytkt i s = Some (ctrval s)) ->
+      owner (PState σ) = Some i ->
+      mytkt i t = Some (ctrval t)) /\
+    (owner (PState ρ) = Some i ->
+      PState ρ = PState σ /\
+      ctrval s = ctrval t) /\
+    (owner (PState ρ) <> Some i ->
       owner (PState σ) <> Some i).
+
+Lemma Rely_refl :
+  forall i s ρ, Rely i s ρ s ρ.
+unfold Rely. intros. subst.
+exists ρ0. split. easy.
+repeat split.
+constructor.
+all: easy.
+Qed.
+
+Lemma Rely_trans :
+  forall i, Rely i ->> Rely i ==> Rely i.
+unfold sub, subRelt. intros. pdestruct H.
+unfold Rely in H. unfold Rely. intros. subst.
+specialize (H ρ0 eq_refl). destruct_all. subst.
+specialize (H0 x1 eq_refl). destruct_all. subst.
+exists x0. split. easy.
+repeat split.
+{
+  eapply rtcTrans. repeat eexists.
+  exact H1. easy.
+}
+all: (intros; auto).
+assert (H' := H). apply H8 in H. destruct_all. rewrite H in H'.
+apply H16 in H'. destruct_all. congruence.
+assert (H' := H). apply H8 in H. destruct_all. rewrite H in H'.
+apply H16 in H'. destruct_all. congruence.
+Qed.
+
+
+Lemma Inv_stable :
+  forall i, Stable (Rely i) (Inv i).
+unfold Stable, stablePrec, sub, subPrec, Rely, Inv. intros.
+psimpl. exists x2. split. easy.
+destruct H2.
+{
+  unfold ManyInvokeRetu
+}
 
 Definition Guar (i : ThreadName) : Relt :=
   fun s ρs t σs =>
@@ -163,9 +184,7 @@ Definition Guar (i : ThreadName) : Relt :=
       ctrval s <= tkt ->
       ctrval t <= tkt') /\
     ctrval t <= newtkt t /\
-    (forall j ρ σ,
-      ρs ρ ->
-      σs σ ->
+    (forall j σ, σs σ ->
       i <> j ->
       mytkt j s = Some (ctrval s) ->
       owner (PState ρ) = Some j \/ owner (PState ρ) = None ->
@@ -174,7 +193,7 @@ Definition Guar (i : ThreadName) : Relt :=
     (forall ρ,
       ρs ρ ->
       newtkt t = ctrval t ->
-      PState ρ = LockIdle) /\
+      PState ρ = LockUnowned) /\
     (forall ρ σ,
       ρs ρ ->
       σs σ ->
@@ -184,11 +203,10 @@ Definition Guar (i : ThreadName) : Relt :=
       ρs ρ ->
       ~OwnsLock i (PState ρ) ->
       ctrval s = ctrval t) /\
-    (forall ρ σ,
-      ρs ρ ->
-      σs σ ->
-      owner (PState ρ) <> Some i ->
-      owner (PState σ) <> Some i).
+    (forall ρ σ, σs σ ->
+      exists ρ, ρs ρ /\
+      (owner (PState ρ) <> Some i ->
+       owner (PState σ) <> Some i)).
 
 Theorem ticketLockCorrect :
   VerifyImpl VE VF Rely Guar Precs ticketLockImpl Posts.

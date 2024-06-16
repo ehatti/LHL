@@ -10,51 +10,46 @@ Variant LockSig : ESig :=
 | Rel : LockSig unit.
 
 Variant LockState :=
-| LockIdle
-| LockAcqRunning (i : ThreadName)
-| LockOwned (i : ThreadName)
-| LockRelRunning (i : ThreadName)
+| LockDef (owner : option ThreadName) (m : option (LockSig unit))
 | LockUB.
 
+Definition LockUnowned := LockDef None None.
+Definition LockAcqRan i := LockDef (Some i) (Some Acq).
+Definition LockRelRan i := LockDef (Some i) (Some Rel).
+Definition LockOwned i := LockDef (Some i) None.
+
 Variant LockStep : LockState -> ThreadEvent LockSig -> LockState -> Prop :=
-| LockCallAcq i : LockStep LockIdle (i, CallEv Acq) (LockAcqRunning i)
-| LockRetAcq i : LockStep (LockAcqRunning i) (i, RetEv Acq tt) (LockOwned i)
-| LockCallRel i : LockStep (LockOwned i) (i, CallEv Rel) (LockRelRunning i)
-| LockRetRel i : LockStep (LockRelRunning i) (i, RetEv Rel tt) LockIdle
-| LockTwoAcq i : LockStep (LockAcqRunning i) (i, CallEv Acq) LockUB
-| LockTwoRel i : LockStep (LockRelRunning i) (i, CallEv Rel) LockUB
-| LockDoUB e : LockStep LockUB e LockUB.
+| LockCallAcq i : LockStep LockUnowned (i, CallEv Acq) (LockAcqRan i)
+| LockRetAcq i : LockStep (LockAcqRan i) (i, RetEv Acq tt) (LockOwned i)
+| LockCallRel i : LockStep (LockOwned i) (i, CallEv Rel) (LockRelRan i)
+| LockRetRel i : LockStep (LockRelRan i) (i, RetEv Rel tt) LockUnowned
+| LockRaceAcq i : LockStep (LockAcqRan i) (i, CallEv Acq) LockUB
+| LockRaceRel i : LockStep (LockRelRan i) (i, CallEv Rel) LockUB
+| LockStepUB e : LockStep LockUB e LockUB.
 
 Definition lockSpec : Spec LockSig := {|
   State := LockState;
   Step := LockStep;
-  Init := LockIdle
+  Init := LockUnowned
 |}.
 
 Definition OwnsLock i s :=
-  s = LockAcqRunning i \/
-  s = LockOwned i \/
-  s = LockRelRunning i.
+  match s with
+  | LockDef (Some j) _ => i = j
+  | _ => False
+  end.
 
 Definition owner s :=
   match s with
-  | LockAcqRunning i => Some i
-  | LockOwned i => Some i
-  | LockRelRunning i => Some i
-  | _ => None
+  | LockDef o _ => o
+  | LockUB => None
   end.
 
 Lemma owner_correct :
   forall s i, owner s = Some i <-> OwnsLock i s.
-intros.
+unfold owner, OwnsLock. intros.
 split; intros.
-destruct s; simpl in *; try congruence.
-dependent destruction H. left. easy.
-dependent destruction H. right. left. easy.
-dependent destruction H. right. right. easy.
-destruct H.
-subst. easy.
-destruct H.
-subst. easy.
-subst. easy.
+destruct s; subst; easy.
+destruct s. destruct owner0; subst; easy.
+contradiction.
 Qed.

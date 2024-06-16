@@ -4,6 +4,7 @@
 ./Util/Util.v
 ./Util/ListUtil.v
 ./Util/TransUtil.v
+./Util/AtomicUtil.v
 
 ./Core/Program.v
 ./Core/Specs.v

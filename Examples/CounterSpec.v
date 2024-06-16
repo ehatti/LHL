@@ -6,49 +6,39 @@ Variant CounterSig : ESig :=
 | Inc : CounterSig unit
 | Get : CounterSig nat.
 
+Record CounterPend := MkCntPend {
+  CntRetTy : Type;
+  CntName : ThreadName;
+  CntCall : CounterSig CntRetTy
+}.
+
 Variant CounterState :=
-| CounterIdle (n : nat)
-| CounterGetCalled (i : ThreadName) (n : nat)
-| CounterIncCalled (i : ThreadName) (n : nat)
+| CounterDef (n : nat) (m : option CounterPend)
 | CounterUB.
 
+Definition CounterIdle (n : nat) :=
+  CounterDef n None.
+Definition CounterIncRan (i n : nat) :=
+  CounterDef n (Some (MkCntPend _ i Inc)).
+Definition CounterGetRan (i n : nat) :=
+  CounterDef n (Some (MkCntPend _ i Get)).
+
 Variant CounterStep : CounterState -> ThreadEvent CounterSig -> CounterState -> Prop :=
-| CounterCallInc i n :
-  CounterStep (CounterIdle n) (i, CallEv Inc) (CounterIncCalled i n)
-| CounterRetInc i n :
-  CounterStep (CounterIncCalled i n) (i, RetEv Inc tt) (CounterIdle (S n))
-| CounterCallGet i n :
-  CounterStep (CounterIdle n) (i, CallEv Get) (CounterGetCalled i n)
-| CounterRetGet i n :
-  CounterStep (CounterGetCalled i n) (i, RetEv Get n) (CounterIdle n)
-| CounterRaceInc i j n :
-  CounterStep (CounterIncCalled i n) (j, CallEv Inc) CounterUB
-| CounterStepUB e :
-  CounterStep CounterUB e CounterUB.
+| CntInvInc i n :
+    CounterStep (CounterIdle n) (i, CallEv Inc) (CounterIncRan i n)
+| CntRetInc i n :
+    CounterStep (CounterIncRan i n) (i, RetEv Inc tt) (CounterIdle (S n))
+| CntInvGet i n :
+    CounterStep (CounterIdle n) (i, CallEv Get) (CounterGetRan i n)
+| CntRetGet i n :
+    CounterStep (CounterGetRan i n) (i, RetEv Get n) (CounterIdle n)
+| CntRaceInc i n :
+    CounterStep (CounterIncRan i n) (i, CallEv Inc) CounterUB
+| CntStepUB e :
+    CounterStep CounterUB e CounterUB.
 
 Definition counterSpec : Spec CounterSig := {|
   State := CounterState;
   Step := CounterStep;
   Init := CounterIdle 0
-|}.
-
-Variant AtomicCounterState :=
-| ACounterIdle (n : nat)
-| ACounterGetCalled (i : ThreadName) (n : nat)
-| ACounterIncCalled (i : ThreadName) (n : nat).
-
-Variant AtomicCounterStep : AtomicCounterState -> ThreadEvent CounterSig -> AtomicCounterState -> Prop :=
-| ACounterCallInc i n :
-  AtomicCounterStep (ACounterIdle n) (i, CallEv Inc) (ACounterIncCalled i n)
-| ACounterRetInc i n :
-  AtomicCounterStep (ACounterIncCalled i n) (i, RetEv Inc tt) (ACounterIdle (S n))
-| ACounterCallGet i n :
-  AtomicCounterStep (ACounterIdle n) (i, CallEv Get) (ACounterGetCalled i n)
-| ACounterRetGet i n :
-  AtomicCounterStep (ACounterGetCalled i n) (i, RetEv Get n) (ACounterIdle n).
-
-Definition atomicCounterSpec : Spec CounterSig := {|
-  State := AtomicCounterState;
-  Step := AtomicCounterStep;
-  Init := ACounterIdle 0
 |}.
