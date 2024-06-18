@@ -81,6 +81,19 @@ Definition implVComp {E F G} (impl : Impl E F) (impl' : Impl F G) : Impl E G :=
 
 Notation "x |> y" := (implVComp x y) (at level 80, right associativity).
 
+CoInductive progEq {E} {Ret}: Prog E Ret -> Prog E Ret -> Prop :=
+| BindEq Ret' (e: E Ret') (f1: Ret' -> Prog E Ret) (f2: Ret' -> Prog E Ret):
+    (forall v, progEq (f1 v) (f2 v)) ->
+    progEq (Bind e f1) (Bind e f2)
+| ReturnEq r:
+    progEq (Return r) (Return r)
+| NoopEq p1 p2:
+    progEq p1 p2 ->
+    progEq (NoOp p1) (NoOp p2).
+
+Definition implEq {E F} (impl : Impl E F) (impl' : Impl E F) : Prop :=
+  forall Ret (f : F Ret), progEq (impl Ret f) (impl' Ret f).
+
 (* Control/extra constructs *)
 
 Definition call {E F A} `{SigCoercion E F} (m : E A) : Prog F A :=

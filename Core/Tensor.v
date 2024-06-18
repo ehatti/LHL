@@ -27,5 +27,21 @@ Section Tensor.
       Step := StepTensor;
       Init := (specL.(Init), specR.(Init))
     |}.
-
 End Tensor.
+
+Definition tensorImpl 
+  {EL FL} (ML : Impl EL FL) {ER FR} (MR : Impl ER FR) : Impl (EL |+| ER) (FL |+| FR) :=
+  fun Ret m =>
+    match m with
+      | inl mL => mapProg (fun _ => inl) (ML Ret mL)
+      | inr mR => mapProg (fun _ => inr) (MR Ret mR)
+    end.
+
+Definition tensorLayer
+          {EL FL} (layL : Layer EL FL)
+          {ER FR} (layR : Layer ER FR) :
+  Layer (EL |+| ER) (FL |+| FR) :=
+  {|
+    USpec := tensorSpec layL.(USpec) layR.(USpec);
+    LImpl := tensorImpl layL.(LImpl) layR.(LImpl)
+  |}.

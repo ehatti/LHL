@@ -68,6 +68,15 @@ Qed.
 
 (* Basic Refinement Properties *)
 
+Lemma specRefines_trans {E} : 
+  forall (spec1 : Spec E) (spec2 : Spec E) (spec3 : Spec E),
+    specRefines spec1 spec2 -> specRefines spec2 spec3 -> 
+    specRefines spec1 spec3.
+Proof. 
+  intros. unfold specRefines in *.  eapply TransUtil.Incl_trans.
+  apply H. apply H0.
+Qed.
+
 Lemma layerRefines_trans {E1 E2 E3 F} :
   forall (lay1 : Layer E1 F) (lay2 : Layer E2 F) (lay3 : Layer E3 F),
     layerRefines lay1 lay2 -> layerRefines lay2 lay3 ->
@@ -77,6 +86,13 @@ Proof.
   eapply TransUtil.Incl_trans.
   apply H. apply H0.
 Qed.
+
+(* implEq implies refinement *)
+
+Theorem implEq_refines : 
+  forall E F spec impl impl',
+  @implEq E F impl impl' -> specRefines (overObj (spec :> impl)) (overObj (spec :> impl')).
+Admitted.
 
 (* Eutt implies refinement *)
 
