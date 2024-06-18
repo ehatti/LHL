@@ -15,12 +15,13 @@
 ./Core/Logic.v
 ./Core/LogicFacts.v
 ./Core/Tensor.v
+./Core/TensorFacts.v
 ./Core/ProgramRules.v
 
 ./Core/ProgramFacts.v
 ./Core/SimulatesFacts.v
 ./Core/EuttRefinesSetup.v
-# ./Core/RefinesFacts.v
+./Core/RefinesFacts.v
 ./Core/VCompFacts.v
 
 # Requires Paco
