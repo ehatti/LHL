@@ -80,30 +80,20 @@ Definition Inv (i : ThreadName) : Prec :=
       ctrval s <= tkt) /\
     ctrval s <= newtkt s /\
     (mytkt i s = Some (ctrval s) ->
-      owner (PState ρ) = Some i \/ owner (PState ρ) = None) /\
+      PState ρ = LockOwned i \/ PState ρ = LockUnowned) /\
     (newtkt s = ctrval s ->
       PState ρ = LockUnowned) /\
-    (owner (PState ρ) = Some i ->
+    (PState ρ = LockOwned i ->
       mytkt i s = Some (ctrval s)).
-
-Definition Acqed (i : ThreadName) : Prec := fun s ρs =>
-  exists ρ, ρs = eq ρ /\
-  (owner (PState ρ) = Some i /\ Inv i s ρs) \/
-  (owner (PState ρ) <> Some i).
-
-Definition Reled (i : ThreadName) : Prec := fun s ρs =>
-  exists ρ, ρs = eq ρ /\
-  (owner (PState ρ) <> Some i /\ Inv i s ρs) \/
-  (owner (PState ρ) = Some i).
 
 Definition Precs (i : ThreadName) {A} (m : LockSig A) : Prec :=
   fun s ρs => exists ρ, ρs = eq ρ /\
     match m with
     | Acq =>
-        owner (PState ρ) <> Some i ->
+        (PState ρ <> LockOwned i /\ PState ρ <> LockUB) ->
           Inv i s ρs
     | Rel =>
-        owner (PState ρ) = Some i ->
+        PState ρ = LockOwned i ->
           Inv i s ρs
     end.
 
@@ -111,13 +101,17 @@ Definition Posts (i : ThreadName) {A} (m : LockSig A) : Post A :=
   fun _ s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\
     match m with
     | Acq =>
-        owner (PState ρ) <> Some i ->
-          owner (PState σ) = Some i /\
-          Inv i t σs
+        (PState σ = LockOwned i /\
+          PState ρ <> LockOwned i /\ PState ρ <> LockUB /\
+          Inv i t σs) \/
+        (PState σ = LockUB /\
+          (PState ρ = LockOwned i \/ PState ρ = LockUB))
     | Rel =>
-        owner (PState ρ) = Some i ->
-          owner (PState σ) <> Some i /\
-          Inv i t σs
+        (PState σ <> LockOwned i /\
+          PState ρ = LockOwned i /\
+          Inv i t σs) \/
+        (PState σ = LockUB /\
+          PState ρ <> LockOwned i)
     end.
 
 Definition ManyInvokeReturn i : Relt :=
@@ -137,28 +131,57 @@ Definition Rely (i : ThreadName) : Relt :=
       ctrval t <= tkt') /\
     (ctrval s <= newtkt s ->
       ctrval t <= newtkt t) /\
-    ((mytkt i s = Some (ctrval s) -> owner (PState ρ) = Some i \/ owner (PState ρ) = None) ->
+    ((mytkt i s = Some (ctrval s) -> PState ρ = LockOwned i \/ PState ρ = LockUnowned) ->
       mytkt i t = Some (ctrval t) ->
-      owner (PState σ) = Some i \/ owner (PState σ) = None) /\
+      PState σ = LockOwned i \/ PState σ = LockUnowned) /\
     ((newtkt s = ctrval s -> PState ρ = LockUnowned) ->
       newtkt t = ctrval t ->
       PState σ = LockUnowned) /\
-    ((owner (PState ρ) = Some i -> mytkt i s = Some (ctrval s)) ->
-      owner (PState σ) = Some i ->
+    ((PState ρ = LockOwned i -> mytkt i s = Some (ctrval s)) ->
+      PState σ = LockOwned i ->
       mytkt i t = Some (ctrval t)) /\
-    (owner (PState ρ) = Some i <-> owner (PState σ) = Some i) /\
-    (owner (PState ρ) = Some i ->
+    (PState ρ = LockOwned i <-> PState σ = LockOwned i) /\
+    (PState ρ = LockOwned i ->
       PState ρ = PState σ /\
       countState s = countState t) /\
-    (owner (PState ρ) <> Some i <-> owner (PState σ) <> Some i) /\
-    fst s i = fst t i
+    (PState ρ <> LockOwned i <-> PState σ <> LockOwned i) /\
+    fst s i = fst t i /\
+    (PState σ <> LockUB -> PState ρ <> LockUB) /\
+    (PState σ = LockUB -> PState ρ <> LockOwned i ->
+      PState ρ = LockUB) /\
+    (PState ρ = LockUB ->
+      PState σ = LockUB)
   ).
 
 Definition Guar (i : ThreadName) : Relt :=
   fun s ρs t σs =>
     forall j, i <> j -> Rely j s ρs t σs.
 
+(* Tactics *)
+
+Ltac decide_prop P :=
+  let H := fresh in
+  assert (H : P \/ ~P) by apply excluded_middle;
+  destruct H.
+
 (* Extra lemmas *)
+
+Lemma not_and {P Q} :
+  (~(P /\ Q)) = ~P \/ ~Q.
+apply propositional_extensionality. split; intros.
+decide_prop P. decide_prop Q.
+exfalso. apply H. easy.
+right. easy.
+left. easy.
+unfold not. intros. psimpl.
+destruct H; contradiction.
+Qed.
+
+Lemma DNE {P} :
+  (~~P) = P.
+apply propositional_extensionality.
+tauto.
+Qed.
 
 Lemma tollens {P Q : Prop} :
   ~Q -> (P -> Q) -> ~P.
@@ -297,8 +320,8 @@ Qed.
 Lemma Rely_pres_not_owned :
   forall i s ρ t σ,
   Rely i s (eq ρ) t (eq σ) ->
-  owner (PState σ) <> Some i <->
-  owner (PState ρ) <> Some i.
+  PState σ <> LockOwned i <->
+  PState ρ <> LockOwned i.
 unfold Rely. intros. specialize (H ρ eq_refl). psimpl.
 apply eq_inj in H. subst.
 destruct H0.
@@ -312,12 +335,61 @@ destruct H0.
 }
 Qed.
 
+Lemma Rely_pres_UB_backward :
+  forall i s ρ t σ,
+  Rely i s (eq ρ) t (eq σ) ->
+  PState σ = LockUB ->
+  PState ρ <> LockOwned i ->
+  PState ρ = LockUB.
+unfold Rely. intros.
+specialize (H ρ eq_refl). psimpl.
+apply eq_inj in H. subst.
+destruct H2.
+apply noStateChange in H. psimpl.
+specialize (H3 x eq_refl). psimpl.
+congruence.
+psimpl.
+apply H12; easy.
+Qed.
+
+Lemma Rely_pres_UB_forward :
+  forall i s ρ t σ,
+  Rely i s (eq ρ) t (eq σ) ->
+  PState ρ = LockUB ->
+  PState σ = LockUB.
+unfold Rely. intros.
+specialize (H ρ eq_refl). psimpl.
+apply eq_inj in H. subst.
+destruct H1.
+apply noStateChange in H. psimpl.
+specialize (H2 x eq_refl). psimpl.
+congruence.
+psimpl.
+auto.
+Qed.
+
+Lemma Rely_pres_not_UB :
+  forall i s ρ t σ,
+  Rely i s (eq ρ) t (eq σ) ->
+  PState σ <> LockUB ->
+  PState ρ <> LockUB.
+unfold Rely. intros. specialize (H ρ eq_refl). psimpl.
+destruct H1.
+{
+  apply noStateChange in H1. psimpl. specialize (H3 σ eq_refl). psimpl.
+  congruence.
+}
+{
+  psimpl. apply eq_inj in H. subst.
+  apply H11. easy.
+}
+Qed.
 
 Lemma Rely_pres_owned :
   forall i s ρ t σ,
   Rely i s (eq ρ) t (eq σ) ->
-  owner (PState σ) = Some i <->
-  owner (PState ρ) = Some i.
+  PState σ = LockOwned i <->
+  PState ρ = LockOwned i.
 unfold Rely. intros. specialize (H ρ eq_refl). psimpl.
 apply eq_inj in H. subst.
 destruct H0.
@@ -425,14 +497,14 @@ destruct H0, H1.
 {
   right.
   apply noStateChange in H. destruct_all.
-  move H10 at bottom. symmetry in H10.
-  specialize (H11 x0 eq_refl). destruct_all. subst.
-  symmetry in H12. move H12 at bottom.
-  repeat rewrite (countState_eq _ _ H10) in *.
-  repeat rewrite (ctrval_eq _ _ H10) in *.
-  repeat rewrite (mytkt_eq _ _ _ H10) in *.
-  repeat rewrite (newtkt_eq _ _ H10) in *.
-  repeat rewrite H12 in *.
+  move H13 at bottom. symmetry in H13.
+  specialize (H14 x0 eq_refl). destruct_all. subst.
+  symmetry in H15. move H15 at bottom.
+  repeat rewrite (countState_eq _ _ H13) in *.
+  repeat rewrite (ctrval_eq _ _ H13) in *.
+  repeat rewrite (mytkt_eq _ _ _ H13) in *.
+  repeat rewrite (newtkt_eq _ _ H13) in *.
+  repeat rewrite H15 in *.
   rewrite H9.
   easy.
 }
@@ -440,12 +512,12 @@ destruct H0, H1.
   right.
   apply noStateChange in H0. destruct_all.
   specialize (H2 x1 eq_refl). destruct_all. subst.
-  symmetry in H1. move H1 at bottom.
+  (* symmetry in H1. move H1 at bottom. *)
   repeat rewrite (countState_eq _ _ H1) in *.
   repeat rewrite (ctrval_eq _ _ H1) in *.
   repeat rewrite (mytkt_eq _ _ _ H1) in *.
   repeat rewrite (newtkt_eq _ _ H1) in *.
-  repeat rewrite H12 in *.
+  repeat rewrite H15 in *.
   rewrite H0.
   easy.
 }
@@ -460,12 +532,21 @@ destruct H0, H1.
   split. rewrite H6. easy.
   split.
   {
-    intros. assert (H19' := H19). apply H7 in H19. psimpl.
-    rewrite H19 in H19'. apply H16 in H19'. psimpl.
-    rewrite H19, H20. easy.
+    intros. assert (H25' := H25). apply H7 in H25. psimpl.
+    rewrite H25' in H25. symmetry in H25. assert (H25'' := H25).
+    apply H19 in H25. psimpl.
+    rewrite H25', <- H25, H26. easy.
   }
   split. rewrite H8. easy.
-  rewrite H9. easy.
+  split. rewrite H9. easy.
+  split. auto.
+  split.
+  {
+    intros. apply H11. apply H23.
+    easy. apply H8. easy.
+    easy.
+  }
+  auto.
 }
 Qed.
 
@@ -519,101 +600,124 @@ Qed.
 
 Lemma init_in_Precs :
   forall i A (m : LockSig A), Precs i m (allIdle, Init VE) (eq initPoss).
-unfold Precs, Reled, Acqed, Inv. intros.
+unfold Precs. intros.
 exists initPoss. split. easy.
-destruct m; simpl.
-{
-  intros. exists initPoss. split. easy.
-  easy.
-}
-{
-  intros. exists initPoss. split. easy.
-  easy.
-}
+destruct m.
+simpl. intros.
+exists initPoss. easy.
+simpl. intros.
+exists initPoss. easy.
 Qed.
-
-Ltac decide_prop P :=
-  let H := fresh in
-  assert (H : P \/ ~P) by apply excluded_middle;
-  destruct H.
 
 Lemma Precs_stable :
   forall i A (m : LockSig A), Stable (Rely i) (Precs i m).
-unfold Precs, Acqed, Reled. intros. destruct m.
+unfold Stable, stablePrec, sub, subPrec, Precs. intros. psimpl.
+assert (exists τ, ρ = eq τ).
+eapply Rely_pres_single. exact H0. psimpl.
+exists x0. split. easy.
+destruct m.
 {
-  unfold Stable, stablePrec, sub, subPrec. intros. psimpl.
-  assert (exists τ, ρ = eq τ).
-  eapply Rely_pres_single. exact H0. psimpl.
-  exists x0. split. easy. intros.
-  assert (owner (PState x1) <> Some i).
-  eapply (Rely_pres_not_owned _ _ _ _ _ H0). easy.
-  apply H1 in H2. clear H1.
-  apply Inv_stable.
-  psplit. exact H2. easy.
+  intros. psimpl.
+  apply Inv_stable. psplit. 2: exact H0.
+  apply H1.
+  eapply (Rely_pres_not_owned _ _ _ _ _ H0) in H.
+  eapply (Rely_pres_not_UB _ _ _ _ _ H0) in H2.
+  easy.
 }
 {
-  unfold Stable, stablePrec, sub, subPrec. intros. psimpl.
-  assert (exists τ, ρ = eq τ).
-  eapply Rely_pres_single. exact H0. psimpl.
-  exists x0. split. easy. intros.
-  assert (owner (PState x1) = Some i).
-  eapply (Rely_pres_owned _ _ _ _ _ H0). easy.
-  apply H1 in H2. clear H1.
-  apply Inv_stable.
-  psplit. exact H2. easy.
+  intros.
+  apply Inv_stable. psplit. 2: exact H0.
+  apply H1.
+  eapply (Rely_pres_owned _ _ _ _ _ H0) in H. easy.
 }
 Qed.
 
 Lemma Posts_stable :
   forall i A (m : LockSig A) v, Stable (Rely i) (Posts i m v).
-unfold Posts, Acqed, Reled. intros. destruct m.
+unfold Stable, stablePost, stableRelt, sub, subRelt, Posts. destruct m.
+split; intros; psimpl.
 {
-  unfold Stable, stablePost, stableRelt, sub, subRelt.
-  split; intros; psimpl.
+  assert (exists τ, x0 = eq τ).
+  eapply Rely_pres_single. exact H. psimpl.
+  specialize (H1 x1 eq_refl). psimpl.
+  exists x0. split. easy.
+  destruct H1; psimpl.
   {
-    assert (exists τ, x0 = eq τ).
-    eapply Rely_pres_single. exact H. psimpl.
-    specialize (H1 x1 eq_refl). psimpl.
-    exists x0. split. easy.
-    intros. apply H1.
-    eapply Rely_pres_not_owned.
-    exact H. easy.
+    left. repeat split.
+    easy.
+    eapply (Rely_pres_not_owned _ _ _ _ _ H). easy.
+    eapply Rely_pres_not_UB. exact H. easy.
+    easy.
   }
   {
-    specialize (H ρ0 eq_refl). psimpl.
-    assert (exists τ, σ = eq τ).
-    eapply Rely_pres_single. exact H1. psimpl.
-    exists x0. split. easy.
-    intros. apply H0 in H. clear H0.
-    psimpl. split.
-    eapply Rely_pres_owned. 
-    exact H1. easy.
-    apply Inv_stable.
-    psplit. exact H0. easy.
+    right. split.
+    easy.
+    decide_prop (PState ρ0 = LockOwned i).
+    left. easy.
+    right.
+    assert (PState x1 <> LockOwned i).
+    eapply (Rely_pres_not_owned _ _ _ _ _ H). easy.
+    destruct H1. contradiction.
+    eapply Rely_pres_UB_backward. exact H. easy. easy.
   }
 }
 {
-  unfold Stable, stablePost, stableRelt, sub, subRelt.
-  split; intros; psimpl.
+  specialize (H ρ0 eq_refl). psimpl.
+  assert (exists τ, σ = eq τ).
+  eapply Rely_pres_single. exact H1. psimpl.
+  exists x0. split. easy.
+  destruct H0; psimpl.
   {
-    assert (exists τ, x0 = eq τ).
-    eapply Rely_pres_single. exact H. psimpl.
-    specialize (H1 x1 eq_refl). psimpl.
-    exists x0. split. easy.
-    intros. apply H1. clear H1.
-    eapply Rely_pres_owned. exact H.
-    easy. 
+    left. repeat split.
+    eapply Rely_pres_owned. exact H1. easy.
+    easy.
+    easy.
+    apply Inv_stable. psplit.
+    exact H3. easy.
   }
   {
-    specialize (H ρ0 eq_refl). psimpl.
-    assert (exists τ, σ = eq τ).
-    eapply Rely_pres_single. exact H1. psimpl.
-    exists x0. split. easy.
-    intros. apply H0 in H. clear H0. psimpl.
-    split.
+    right. split.
+    eapply Rely_pres_UB_forward. exact H1.
+    easy.
+    easy.
+  }
+}
+split; intros; psimpl.
+{
+  assert (exists τ, x0 = eq τ).
+  eapply Rely_pres_single. exact H. psimpl.
+  specialize (H1 x1 eq_refl). psimpl.
+  exists x0. split. easy.
+  destruct H1; psimpl.
+  {
+    left.
+    split. easy.
+    split. eapply (Rely_pres_owned _ _ _ _ _ H). easy.
+    easy.
+  }
+  {
+    right.
+    split. easy.
+    eapply (Rely_pres_not_owned _ _ _ _ _ H). easy.
+  }
+}
+{
+  specialize (H ρ0 eq_refl). psimpl.
+  assert (exists τ, σ = eq τ).
+  eapply Rely_pres_single. exact H1. psimpl.
+  exists x0. split. easy.
+  destruct H0; psimpl.
+  {
+    left. repeat split.
     eapply Rely_pres_not_owned. exact H1. easy.
-    apply Inv_stable.
-    psplit. exact H0. easy.
+    easy.
+    apply Inv_stable. psplit.
+    exact H2. easy.
+  }
+  {
+    right. split.
+    eapply Rely_pres_UB_forward. exact H1. easy.
+    easy.
   }
 }
 Qed.
@@ -629,8 +733,50 @@ unfold sub, subPrec, Precs, Posts. intros. destruct m1, m2.
   unfold TReturn, InterOStep in H0. psimpl. destruct x0.
   eapply mapPossRet_pres_single in H4. subst.
   exists (retPoss i x1). split. easy.
-  simpl. intros.
-  
+  intros. psimpl.
+  destruct H2; psimpl; contradiction.
+}
+{
+  psimpl. specialize (H2 x5 eq_refl). psimpl.
+  unfold TReturn, InterOStep in H0. psimpl. destruct x0.
+  eapply mapPossRet_pres_single in H4. subst.
+  exists (retPoss i x1). split. easy.
+  intros. psimpl.
+  destruct H2; psimpl. 2:{ rewrite H4 in H2. discriminate. }
+  unfold Inv in H7. psimpl. apply eq_inj in H4. subst.
+  unfold Inv. exists (retPoss i x0). split. easy.
+  psimpl. symmetry in H0.
+  repeat rewrite (countState_eq _ _ H0) in *.
+  repeat rewrite (newtkt_eq _ _ H0) in *.
+  repeat rewrite (mytkt_eq _ _ _ H0) in *.
+  repeat rewrite (ctrval_eq _ _ H0) in *.
+  easy.
+}
+{
+  psimpl. specialize (H2 x5 eq_refl). psimpl.
+  unfold TReturn, InterOStep in H0. psimpl. destruct x0.
+  eapply mapPossRet_pres_single in H4. subst.
+  exists (retPoss i x1). split. easy.
+  intros. psimpl.
+  destruct H2; psimpl. 2: contradiction.
+  unfold Inv in H7. psimpl. apply eq_inj in H4. subst.
+  unfold Inv. exists (retPoss i x0). split. easy.
+  psimpl. symmetry in H0.
+  repeat rewrite (countState_eq _ _ H0) in *.
+  repeat rewrite (newtkt_eq _ _ H0) in *.
+  repeat rewrite (mytkt_eq _ _ _ H0) in *.
+  repeat rewrite (ctrval_eq _ _ H0) in *.
+  easy.
+}
+{
+  psimpl. specialize (H2 x5 eq_refl). psimpl.
+  unfold TReturn, InterOStep in H0. psimpl. destruct x0.
+  eapply mapPossRet_pres_single in H4. subst.
+  exists (retPoss i x1). split. easy.
+  intros. psimpl.
+  destruct H2; psimpl.
+  contradiction.
+  rewrite H4 in H2. discriminate.
 }
 Qed.
 

@@ -292,9 +292,6 @@ Record VerifyImpl
     P i A m (allIdle, VE.(Init)) (eq initPoss);
   P_stable : forall i A m,
     Stable (R i) (P i A m);
-  (* P_Inv_stable : forall i A (m : F A),
-    prComp (P i A m) (TInvoke impl i A m) ->> R i ==>
-    prComp (P i A m) (TInvoke impl i A m); *)
   Q_stable : forall i Ret (m : F Ret) v,
     Stable (R i) (Q i Ret m v);
   switch_code : forall i A m1 B m2 v,
