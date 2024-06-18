@@ -23,3 +23,5 @@ Ltac dec_eq_nats i j :=
   let H := fresh in
   assert (H : i = j \/ i <> j) by apply excluded_middle;
   destruct H; subst.
+
+Axiom classicT : forall P : Prop, {P} + {~P}.

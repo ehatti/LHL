@@ -110,8 +110,6 @@ Inductive set_list : list nat -> Type :=
   set_list is ->
   set_list (i :: is).
 
-Axiom classicT : forall P : Prop, {P} + {~P}.
-
 Fixpoint dedup (is : list nat) : list nat :=
   match is with
   | nil => nil

@@ -54,8 +54,8 @@ repeat lazymatch goal with
 | [ H : PrecCompose ?P ?Q ?s ?ρ |- _] => destruct H
 | [ H : ?P /\ ?Q |- _ ] => destruct H
 | [ H : exists x, ?P |- _ ] => destruct H
-| [ H : TInvoke ?impl ?i ?A ?l ?s ?ρ ?t ?σ |- _ ] => destruct H
 | [ H : ReltToPrec ?R ?s ?ρ |- _ ] => destruct H
+| [ H : PrecToRelt ?R ?s ?ρ ?t ?σ |- _ ] => destruct H
 | [ H : StReltToRelt ?Q ?s ?ρ ?t ?σ |- _ ] => destruct H
 end;
 simpl in *;
@@ -1183,11 +1183,7 @@ destruct e.
       rewrite <- x.
       exists (R n).
       split.
-      {
-        eapply (weakenSafe (P:= prComp (Ps n A m) (TInvoke M n A m))).
-        apply H.(P_Inv_stable).
-        apply H.(all_verified).
-      }
+      apply H.(all_verified).
       split.
       {
         psplit. 2: apply H.(R_refl).
@@ -1202,12 +1198,12 @@ destruct e.
         split; intros.
         {
           exists (invPoss n ρ m).
-          split. exists ρ. easy.
+          split. exists ρ. easy. unfold mapInvPoss.
           apply H7 in H8. simpl. rewrite eqb_id.
           repeat split; (easy || apply differ_pointwise_trivial).
         }
         {
-          destruct_all. subst. simpl.
+          destruct_all. subst. unfold mapInvPoss. simpl.
           exists x1. split. easy.
           rewrite eqb_id. apply H7 in H8.
           destruct_all.
@@ -1242,12 +1238,12 @@ destruct e.
         split; intros.
         {
           exists (invPoss n ρ m).
-          split. exists ρ. easy.
+          split. exists ρ. easy. unfold mapInvPoss.
           apply H7 in H11. simpl. rewrite eqb_id.
           repeat split; (easy || apply differ_pointwise_trivial).
         }
         {
-          destruct_all. subst. simpl.
+          destruct_all. subst.  unfold mapInvPoss. simpl.
           exists x1. split. easy.
           rewrite eqb_id. apply H7 in H11.
           repeat split; (easy || apply differ_pointwise_trivial).
@@ -1281,12 +1277,12 @@ destruct e.
           split; intros.
           {
             exists (invPoss n ρ m).
-            split. exists ρ. easy.
+            split. exists ρ. easy. unfold mapInvPoss.
             apply H7 in H12. simpl. rewrite eqb_id.
             repeat split; (easy || apply differ_pointwise_trivial).
           }
           {
-            destruct_all. subst. simpl.
+            destruct_all. subst. unfold mapInvPoss. simpl.
             exists x4. split. easy.
             rewrite eqb_id. apply H7 in H12.
             destruct_all.
@@ -1339,12 +1335,12 @@ destruct e.
           split; intros.
           {
             exists (invPoss n ρ m).
-            split. exists ρ. easy.
+            split. exists ρ. easy. unfold mapInvPoss.
             apply H7 in H13. simpl. rewrite eqb_id.
             repeat split; (easy || apply differ_pointwise_trivial).
           }
           {
-            destruct_all. subst. simpl.
+            destruct_all. subst. unfold mapInvPoss. simpl.
             exists x3. split. easy.
             rewrite eqb_id. apply H7 in H13.
             destruct_all.
@@ -1419,7 +1415,7 @@ destruct e.
         eapply H.(switch_code) with (m1:=m) (v:=n0).
         pdestruct H9.
         psplit. psplit. unfold ReltToPrec.
-        repeat eexists. exact H9. exact H10.
+        repeat eexists. exact H5. exact H9. exact H10.
         exists n0.
         split.
         econstructor. econstructor; easy. easy.
@@ -1431,14 +1427,14 @@ destruct e.
         split; intros.
         {
           exists (retPoss n ρ).
-          split. exists ρ. easy.
+          split. exists ρ. easy. unfold mapRetPoss.
           apply H16 in H14. destruct_all.
           simpl. rewrite eqb_id.
           rewrite H10 in H2. dependent destruction H2.
           repeat split; (easy || apply differ_pointwise_trivial).
         }
         {
-          destruct_all. subst. simpl.
+          destruct_all. subst. unfold mapRetPoss. simpl.
           exists x6. split. easy.
           rewrite eqb_id.
           apply H16 in H14. destruct_all.
@@ -1472,14 +1468,14 @@ destruct e.
         {
           exists (retPoss n ρ).
           split. exists ρ. easy. subst.
-          assert (H18' := H18).
+          assert (H18' := H18). unfold mapRetPoss.
           apply H17 in H18. apply H14 in H18'. destruct_all.
           simpl. rewrite eqb_id.
           rewrite H11 in H2. dependent destruction H2.
           repeat split; try (easy || apply differ_pointwise_trivial).
         }
         {
-          destruct_all. subst. simpl.
+          destruct_all. subst. unfold mapRetPoss. simpl.
           exists x9. split. easy.
           rewrite eqb_id. assert (H18' := H18).
           apply H14 in H18. apply H17 in H18'. destruct_all.
@@ -1515,14 +1511,14 @@ destruct e.
           split; intros.
           {
             exists (retPoss n ρ).
-            split. exists ρ. easy.
+            split. exists ρ. easy. unfold mapRetPoss.
             apply H14 in H12. destruct_all.
             simpl. rewrite eqb_id.
             rewrite H11 in H2. dependent destruction H2.
             repeat split; (easy || apply differ_pointwise_trivial).
           }
           {
-            destruct_all. subst. simpl.
+            destruct_all. subst. unfold mapRetPoss. simpl.
             exists x6. split. easy.
             rewrite eqb_id.
             apply H14 in H12. destruct_all.
@@ -1574,14 +1570,14 @@ destruct e.
           split; intros.
           {
             exists (retPoss n ρ).
-            split. exists ρ. easy.
+            split. exists ρ. easy. unfold mapRetPoss.
             apply H14 in H12. destruct_all.
             simpl. rewrite eqb_id.
             rewrite H11 in H2. dependent destruction H2.
             repeat split; (easy || apply differ_pointwise_trivial).
           }
           {
-            destruct_all. subst. simpl.
+            destruct_all. subst. unfold mapRetPoss. simpl.
             exists x6. split. easy.
             rewrite eqb_id.
             apply H14 in H12. destruct_all.

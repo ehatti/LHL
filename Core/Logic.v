@@ -211,18 +211,19 @@ Definition mapPoss {F} {VF : Spec F} (ρs σs : PossSet VF) (P : Poss VF -> Poss
   (forall ρ, ρs ρ -> exists σ, σs σ /\ P ρ σ) /\
   (forall σ, σs σ -> exists ρ, ρs ρ /\ P ρ σ).
 
+Definition mapInvPoss {F VF A} i (m : F A) (ρ σ : @Poss F VF) :=
+  ρ.(PCalls) i = CallIdle /\ σ.(PCalls) i = CallPoss m /\
+  ρ.(PRets) i = RetIdle /\ σ.(PRets) i = RetIdle /\
+  Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
+  Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
+  ρ.(PState) = σ.(PState).
+
 Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     TIdle i s ρs /\
     InterOStep impl i (fst s) (CallEv m) (fst t) /\
     snd s = snd t /\
-    mapPoss ρs σs (fun ρ σ =>
-      ρ.(PCalls) i = CallIdle /\ σ.(PCalls) i = CallPoss m /\
-      ρ.(PRets) i = RetIdle /\ σ.(PRets) i = RetIdle /\
-      Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
-      Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
-      ρ.(PState) = σ.(PState))
-  .
+    mapPoss ρs σs (mapInvPoss i m).
 
 Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
@@ -236,17 +237,19 @@ Definition Returned {E F VE VF} (i : ThreadName) {A} (m : F A) : @Prec E F VE VF
         ρ.(PRets) i = RetPoss m v /\
         ρ.(PCalls) i = CallDone m.
 
+Definition mapRetPoss {F VF A} i (m : F A) v (ρ σ : @Poss F VF) :=
+  σ.(PCalls) i = CallIdle /\ ρ.(PCalls) i = CallDone m /\
+  σ.(PRets) i = RetIdle /\ ρ.(PRets) i = RetPoss m v /\
+  Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
+  Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
+  σ.(PState) = ρ.(PState).
+
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     exists (v : Ret),
       InterOStep impl i (fst s) (RetEv m v) (fst t) /\
       snd s = snd t /\
-      mapPoss ρs σs (fun ρ σ =>
-        σ.(PCalls) i = CallIdle /\ ρ.(PCalls) i = CallDone m /\
-        σ.(PRets) i = RetIdle /\ ρ.(PRets) i = RetPoss m v /\
-        Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
-        Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
-        σ.(PState) = ρ.(PState)).
+      mapPoss ρs σs (mapRetPoss i m v).
 
 Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
@@ -289,16 +292,16 @@ Record VerifyImpl
     P i A m (allIdle, VE.(Init)) (eq initPoss);
   P_stable : forall i A m,
     Stable (R i) (P i A m);
-  P_Inv_stable : forall i A (m : F A),
+  (* P_Inv_stable : forall i A (m : F A),
     prComp (P i A m) (TInvoke impl i A m) ->> R i ==>
-    prComp (P i A m) (TInvoke impl i A m);
+    prComp (P i A m) (TInvoke impl i A m); *)
   Q_stable : forall i Ret (m : F Ret) v,
     Stable (R i) (Q i Ret m v);
   switch_code : forall i A m1 B m2 v,
-    Q i A m1 v <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i B m2;
+    prComp (P i _ m1) (Q i A m1 v) <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i B m2;
   all_verified : forall i A m,
     VerifyProg i (R i) (G i)
-      (prComp (P i A m) (TInvoke impl i _ m))
+      (prComp (P i A m) (TInvoke impl i _ m) ->> R i)
       (impl _ m)
       (fun v => Q i A m v ->> PrecToRelt (Returned i m))
 }.
