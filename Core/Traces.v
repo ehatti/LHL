@@ -176,7 +176,55 @@ Definition InterOSteps {E : ESig} F (impl : Impl E F) :
 Definition InterSteps {E F : ESig} {spec : Spec E} (impl : Impl E F) :=
   Steps (InterStep (spec:=spec) impl).
 
-Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F := 
+Lemma InterUSteps_pres {E F} {spec : Spec E} :
+  forall t i A (m : F A) p s,
+  InterUSteps F spec s p t ->
+  ((exists p, fst s i = Cont m p) \/
+   (exists B um k, fst s i = UCall (A:=B) m um k)) ->
+  ((exists p, fst t i = Cont m p) \/
+   (exists B um k, fst t i = UCall (A:=B) m um k)).
+intros. generalize dependent s.
+induction p; cbn; intros.
+{
+  dependent destruction H. easy.
+}
+{
+  dependent destruction H. destruct a. cbn in *. apply IHp in H0. easy.
+  destruct H. destruct o; cbn in *. destruct e; cbn in *;
+  dependent destruction H; dependent destruction H;
+  cbn in *.
+  dec_eq_nats i t0.
+  {
+    rewrite <- x0 in H3. rewrite <- x.
+    destruct H3; destruct_all; dependent destruction H.
+    right. repeat econstructor.
+  }
+  {
+    rewrite H0 in H3; easy.
+  }
+  dec_eq_nats i t0.
+  {
+    rewrite <- x0 in H3. rewrite <- x.
+    destruct H3; destruct_all; dependent destruction H.
+    left. repeat econstructor.
+  }
+  {
+    rewrite H0 in H3; easy.
+  }
+  do 2 dependent destruction H. cbn in *.
+  dec_eq_nats i t0.
+  {
+    rewrite <- x0 in H3. rewrite <- x.
+    destruct H3; destruct_all; dependent destruction H.
+    left. repeat econstructor.
+  }
+  {
+    rewrite H0 in H3; easy.
+  }
+}
+Qed.
+
+Program Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F := 
   {|
     State := InterState F lay.(USpec);
     Step thst ev thst'' :=
@@ -186,6 +234,39 @@ Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F :=
           InterUSteps F lay.(USpec) (ths', snd thst) p thst'';
     Init := (allIdle, lay.(USpec).(Init))
   |}.
+
+Definition overObjActiveMap {E F} (s : ThreadsSt E F) : ActiveMap F :=
+  fun i => match s i with
+  | Idle => None
+  | Cont m _ => Some (existT _ _ m)
+  | UCall m _ _ => Some (existT _ _ m)
+  end.
+
+Next Obligation.
+change (fun _ : ThreadName => @None {A & F A})
+with (overObjActiveMap (@allIdle E F)).
+generalize dependent (@allIdle E F).
+generalize dependent (Init (USpec lay)).
+induction p; cbn; intros.
+{
+  constructor.
+}
+{
+  dependent destruction H. destruct_all. destruct H, a. cbn in *.
+  dependent destruction H.
+  {
+    destruct st''. apply SCCall with (a' := overObjActiveMap t1).
+    3: { eapply IHp. exact H0. }
+    unfold overObjActiveMap. rewrite <- x1. easy.
+    unfold overObjActiveMap.
+    clear H0 IHp x1.
+    eapply InterUSteps_pres in H1.
+    2:{ left. cbn. eexists. symmetry. exact x. }
+    destruct H1; destruct_all; cbn in *; rewrite H; easy.
+  }
+  admit.
+}
+Admitted.
 
 (* Refinement *)
 
