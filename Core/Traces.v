@@ -243,29 +243,6 @@ Definition overObjActiveMap {E F} (s : ThreadsSt E F) : ActiveMap F :=
   end.
 
 Next Obligation.
-change (fun _ : ThreadName => @None {A & F A})
-with (overObjActiveMap (@allIdle E F)).
-generalize dependent (@allIdle E F).
-generalize dependent (Init (USpec lay)).
-induction p; cbn; intros.
-{
-  constructor.
-}
-{
-  dependent destruction H. destruct_all. destruct H, a. cbn in *.
-  dependent destruction H.
-  {
-    destruct st''. apply SCCall with (a' := overObjActiveMap t1).
-    3: { eapply IHp. exact H0. }
-    unfold overObjActiveMap. rewrite <- x1. easy.
-    unfold overObjActiveMap.
-    clear H0 IHp x1.
-    eapply InterUSteps_pres in H1.
-    2:{ left. cbn. eexists. symmetry. exact x. }
-    destruct H1; destruct_all; cbn in *; rewrite H; easy.
-  }
-  admit.
-}
 Admitted.
 
 (* Refinement *)

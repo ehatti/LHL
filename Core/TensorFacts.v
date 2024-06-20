@@ -16,7 +16,8 @@ From LHL.Util Require Import
 From Coq Require Import
   Program.Equality
   Bool.Bool
-  Arith.PeanoNat.
+  Arith.PeanoNat
+  Logic.FunctionalExtensionality.
 
 Fixpoint projLeft {E F} (p : Trace (ThreadEvent (E |+| F))) : Trace (ThreadEvent E) :=
   match p with
@@ -72,7 +73,7 @@ assert (exists st, Steps (Step specE') (Init specE') (projLeft a) st).
 {
   clear H0. apply H. clear H.
   generalize dependent (Init specE). generalize dependent (Init specF).
-  generalize dependent (fun _ : ThreadName => @None TensorActive).
+  generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
   induction a.
   {
     cbn. intros. dependent destruction H1.
@@ -103,7 +104,7 @@ assert (exists st, Steps (Step specF') (Init specF') (projRight a) st).
 {
   clear H H2. apply H0. clear H0.
   generalize dependent (Init specE). generalize dependent (Init specF).
-  generalize dependent (fun _ : ThreadName => @None TensorActive).
+  generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
   induction a.
   {
     cbn. intros. dependent destruction H1.
@@ -133,7 +134,7 @@ assert (exists st, Steps (Step specF') (Init specF') (projRight a) st).
 clear H H0. destruct_all.
 generalize dependent (Init specE). generalize dependent (Init specF).
 generalize dependent (Init specE'). generalize dependent (Init specF').
-generalize dependent (fun _ : ThreadName => @None TensorActive).
+generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
 induction a; cbn in *; intros.
 {
   repeat econstructor.
@@ -187,13 +188,31 @@ Qed.
 
 Check MkTS.
 
+Definition tensorLeftActiveMap {E F} (a : TensorActive E F) : ThreadName -> option {A & E A} :=
+  fun i => match a i with
+  | Some (existT _ _ (inl m)) => Some (existT _ _ m)
+  | _ => None
+  end.
+
+Definition tensorNoRight {E F} (a : TensorActive E F) :=
+  forall i,
+    ~(exists A (m : F A), a i = Some (existT _ _ (inr m))).
+
+Lemma eq_help {A} :
+  forall x y : A, x = y -> x ~= y.
+intros. rewrite H. easy.
+Qed.
+
 Lemma tensor_liftLeft_trivial {E F} :
   forall (specE : Spec E) (specF : Spec F),
   forall s t c p a,
+  SeqConsistent (tensorLeftActiveMap a) p ->
+  tensorNoRight a ->
   (exists a', Steps (TensorStep specE specF) (MkTS a s c) (liftLeft p) (MkTS a' t c)) <->
   Steps (Step specE) s p t.
 split; intros.
 {
+  clear H H0.
   generalize dependent a. generalize dependent s.
   induction p; cbn; intros.
   {
@@ -211,18 +230,126 @@ split; intros.
   }
 }
 {
-  generalize dependent a. generalize dependent s.
+  generalize dependent s. generalize dependent a.
   induction p; cbn; intros.
   {
-    dependent destruction H.
+    dependent destruction H1.
     repeat econstructor.
   }
+  dependent destruction H; dependent destruction H4.
   {
-    destruct a, e; cbn in *; dependent destruction H.
-    eapply IHp in H0. destruct_all. exists x.
-    eapply StepsMore with (st'':= MkTS _ _ _). cbn.
-    split. exact H.
-    split
+    assert (
+      (tensorLeftActiveMap (F:=F) (fun j => if i =? j then Some (existT _ _ (inl m)) else a0 j) = a')
+    ).
+    {
+      extensionality j.
+      dec_eq_nats i j.
+      {
+        unfold tensorLeftActiveMap. rewrite eqb_id. easy.
+      }
+      {
+        rewrite H1. 2: easy. unfold tensorLeftActiveMap.
+        rewrite eqb_nid. easy. easy.
+      }
+    }
+    apply IHp with
+      (a:=fun j =>
+        if i =? j then
+          Some (existT _ _ (inl m))
+        else
+          a0 j) in H5.
+    2:{ rewrite H6 at 1. easy. }
+    2:{
+      assert (H3' := H3).
+      unfold tensorNoRight. intros. specialize (H3 i0). move H3 at bottom.
+      unfold not. intros. apply H3. clear H3.
+      destruct_all.
+      dec_eq_nats i i0.
+      { rewrite eqb_id in H3. dependent destruction H3. }
+      {
+        rewrite eqb_nid in H3.
+        specialize (H3' i0). exfalso.
+        apply H3'. rewrite H3. repeat econstructor.
+        easy.
+      }
+    }
+    destruct_all.
+    exists x. eapply StepsMore with
+      (st'':= MkTS (fun j =>
+        if i =? j then
+          Some (existT _ _ (inl m))
+        else
+          a0 j) _ _). cbn.
+    split. exact H4.
+    split.
+    {
+      unfold tensorLeftActiveMap in H. specialize (H3 i).
+      destruct (a0 i). destruct s0, s0.
+      discriminate.
+      exfalso. apply H3. repeat econstructor.
+      easy.
+    }
+    split. rewrite eqb_id. easy.
+    split. apply differ_pointwise_trivial.
+    easy.
+    easy.
+  }
+  {
+    assert (
+      (tensorLeftActiveMap (F:=F) (fun j => if i =? j then None else a0 j) = a')
+    ).
+    {
+      extensionality j.
+      dec_eq_nats i j.
+      {
+        unfold tensorLeftActiveMap. rewrite eqb_id. easy.
+      }
+      {
+        rewrite H1. 2: easy. unfold tensorLeftActiveMap.
+        rewrite eqb_nid. easy. easy.
+      }
+    }
+    apply IHp with
+      (a:=fun j =>
+        if i =? j then
+          None
+        else
+          a0 j) in H5.
+    2:{ rewrite H6 at 1. easy. }
+    2:{
+      assert (H3' := H3).
+      unfold tensorNoRight. intros. specialize (H3 i0). move H3 at bottom.
+      unfold not. intros. apply H3. clear H3.
+      destruct_all.
+      dec_eq_nats i i0.
+      { rewrite eqb_id in H3. dependent destruction H3. }
+      {
+        rewrite eqb_nid in H3.
+        specialize (H3' i0). exfalso.
+        apply H3'. rewrite H3. repeat econstructor.
+        easy.
+      }
+    }
+    destruct_all.
+    exists x. eapply StepsMore with
+      (st'':= MkTS (fun j =>
+        if i =? j then
+          None
+        else
+          a0 j) _ _). cbn.
+    split. exact H4.
+    split.
+    {
+      unfold tensorLeftActiveMap in H. specialize (H3 i).
+      destruct (a0 i). destruct s0, s0.
+      dependent destruction H. easy.
+      exfalso. apply H3. repeat econstructor.
+      easy.
+    }
+    split. rewrite eqb_id. easy.
+    split. apply differ_pointwise_trivial.
+    easy.
+    easy.
   }
 }
 Qed.

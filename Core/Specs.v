@@ -5,7 +5,8 @@ From Coq Require Import
   Arith.PeanoNat.
 
 From LHL.Util Require Import
-  TransUtil.
+  TransUtil
+  Util.
 
 Definition ThreadName := nat.
 
@@ -23,11 +24,13 @@ Inductive SeqConsistent {E} : ActiveMap E -> list (ThreadEvent E) -> Prop :=
 | SCCall (a a' : ActiveMap E) i A (m : E A) p :
     a i = None ->
     a' i = Some (existT _ _ m) ->
+    differ_pointwise a a' i ->
     SeqConsistent a' p ->
     SeqConsistent a ((i, CallEv m) :: p)
 | SCRet (a a' : ActiveMap E) i A (m : E A) v p :
     a i = Some (existT _ _ m) ->
     a' i = None ->
+    differ_pointwise a a' i ->
     SeqConsistent a' p ->
     SeqConsistent a ((i, RetEv m v) :: p).
 

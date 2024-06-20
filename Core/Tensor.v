@@ -77,10 +77,10 @@ induction p; cbn; intros.
   dependent destruction H. destruct st''.
   destruct a, e, m; cbn in *; destruct_all;
   eapply IHp in H0; clear IHp.
-  econstructor. easy. exact H2. easy.
-  econstructor. easy. exact H2. easy.
-  econstructor. easy. exact H2. easy.
-  econstructor. easy. exact H2. easy.
+  econstructor. easy. exact H2. easy. easy.
+  econstructor. easy. exact H2. easy. easy.
+  econstructor. easy. exact H2. easy. easy.
+  econstructor. easy. exact H2. easy. easy.
 }
 Qed.
 
