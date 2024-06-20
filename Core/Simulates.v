@@ -4,9 +4,9 @@ From LHL.Core Require Import
 
 Section Sim.
 
-  Context {E: ESig}
-          (spec : Spec E) (* concrete *)
-          (spec' : Spec E) (* abstract *).
+  Context {T E}
+          (spec : Spec T E) (* concrete *)
+          (spec' : Spec T E) (* abstract *).
 
   CoInductive Simulates (s1 : spec.(State)) (s1' : spec'.(State)) : Prop :=
   | SimStep :

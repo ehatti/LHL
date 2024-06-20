@@ -56,7 +56,6 @@ repeat lazymatch goal with
 | [ H : exists x, ?P |- _ ] => destruct H
 | [ H : ReltToPrec ?R ?s ?ρ |- _ ] => destruct H
 | [ H : PrecToRelt ?R ?s ?ρ ?t ?σ |- _ ] => destruct H
-| [ H : StReltToRelt ?Q ?s ?ρ ?t ?σ |- _ ] => destruct H
 end;
 simpl in *;
 subst;
@@ -73,7 +72,7 @@ simpl in *. *)
 
 Section lemmas.
 
-Context {E F VE VF} {R : @Relt E F VE VF}.
+Context {T E F VE VF} {R : @Relt T E F VE VF}.
 
 Lemma reltCompIdLeft {Q : Relt VE VF} :
   Q ->> id = Q.
@@ -220,7 +219,7 @@ Qed.
 
 End lemmas.
 
-Lemma rtp_prId {E F} {VE : Spec E} {VF : Spec F} :
+Lemma rtp_prId {T E F} {VE : Spec T E} {VF : Spec T F} :
   forall (P : Prec VE VF) Q S,
   ReltToPrec (prComp P Q ->> S) = P <<- Q <<- S.
 intros.
@@ -238,7 +237,7 @@ exact H1.
 easy.
 Qed.
 
-Lemma precReltCompAssoc {E F VE VF} {P : @Prec E F VE VF} Q S :
+Lemma precReltCompAssoc {T E F VE VF} {P : @Prec T E F VE VF} Q S :
   P <<- (Q ->> S) = P <<- Q <<- S.
 extensionality s.
 extensionality ρ.
@@ -253,7 +252,7 @@ exact H1.
 easy.
 Qed.
 
-Lemma reltCompAssoc {E F} {VE : Spec E} {VF : Spec F} {R1 R2 R3 : Relt VE VF} :
+Lemma reltCompAssoc {T E F} {VE : Spec T E} {VF : Spec T F} {R1 R2 R3 : Relt VE VF} :
   (R1 ->> R2) ->> R3 = R1 ->> R2 ->> R3.
 extensionality s.
 extensionality ρ.
@@ -273,7 +272,7 @@ easy.
 Qed.
 
 
-Lemma precCompAssoc {E F} {VE : Spec E} {VF : Spec F} {P} {R1 R2 : Relt VE VF} :
+Lemma precCompAssoc {T E F} {VE : Spec T E} {VF : Spec T F} {P} {R1 R2 : Relt VE VF} :
   P <<- R1 <<- R2 = P <<- (R1 ->> R2).
 extensionality s. extensionality ρ.
 apply propositional_extensionality.
@@ -289,7 +288,7 @@ exact H0.
 easy.
 Qed.
 
-Lemma rtcTrans {E F VE VF} {R : @Relt E F VE VF} :
+Lemma rtcTrans {T E F VE VF} {R : @Relt T E F VE VF} :
   (RTC R ->> RTC R) ==> RTC R.
 unfold sub, subRelt, ReltCompose.
 intros.
@@ -302,7 +301,7 @@ apply IHRTC.
 easy.
 Qed.
 
-Lemma rtcTransTac {E F VE VF} {R : @Relt E F VE VF} {s ρ t σ r τ} :
+Lemma rtcTransTac {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
   RTC R s ρ t σ ->
   RTC R t σ r τ ->
   RTC R s ρ r τ.
@@ -313,7 +312,7 @@ exact H.
 easy.
 Qed.
 
-Lemma extendRtcLeft {E F VE VF} {R : @Relt E F VE VF} {s ρ t σ r τ} :
+Lemma extendRtcLeft {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
   R s ρ t σ ->
   RTC R t σ r τ ->
   RTC R s ρ r τ.
@@ -323,7 +322,7 @@ exact H.
 easy.
 Qed.
 
-Lemma extendRtcRight {E F VE VF} {R : @Relt E F VE VF} {s ρ t σ r τ} :
+Lemma extendRtcRight {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
   RTC R s ρ t σ ->
   R t σ r τ ->
   RTC R s ρ r τ.
@@ -336,7 +335,7 @@ exact H0.
 constructor.
 Qed.
 
-Lemma weakenCommitPre {E F} {VE : Spec E} {VF : Spec F} {i G Q P' e} :
+Lemma weakenCommitPre {T E F} {VE : Spec T E} {VF : Spec T F} {i G Q P' e} :
   forall P : Relt VE VF,
   P' ==> P ->
   Commit i G P e Q ->
@@ -353,7 +352,7 @@ easy.
 easy.
 Qed.
 
-Lemma weakenCommit {E F} {VE : Spec E} {VF : Spec F} {i G P Q' e} :
+Lemma weakenCommit {T E F} {VE : Spec T E} {VF : Spec T F} {i G P Q' e} :
   forall Q : Relt VE VF,
   Q ==> Q' ->
   Commit i G P e Q ->
@@ -371,9 +370,9 @@ apply H. easy.
 easy.
 Qed.
 
-CoFixpoint weakenSafe {E F VE VF i R G P P' A Q C} :
+CoFixpoint weakenSafe {T E F VE VF i R G P P' A Q C} :
   (P' ==> P) ->
-  SafeProg (E:=E) (F:=F) (VE:=VE) (VF:=VF) (A:=A) i R G P C Q ->
+  SafeProg (T:=T) (E:=E) (F:=F) (VE:=VE) (VF:=VF) (A:=A) i R G P C Q ->
   SafeProg i R G P' C Q.
 intros.
 destruct H0.
@@ -464,7 +463,7 @@ repeat lazymatch goal with
   clear H H0 t σ
 end.
 
-Definition poss_to_mod {F} {VF : Spec F} (ρ : Poss VF) : InterState F VF :=
+Definition poss_to_mod {T F} {VF : Spec T F} (ρ : Poss VF) : InterState F VF :=
   (
     fun i =>
       match PCalls ρ i with
@@ -479,12 +478,12 @@ Definition poss_to_mod {F} {VF : Spec F} (ρ : Poss VF) : InterState F VF :=
     PState ρ
   ).
 
-Record LHLState {E F}
-  {VE : Spec E} {VF : Spec F}
+Record LHLState {T E F}
+  {VE : Spec T E} {VF : Spec T F}
   {M : Impl E F}
-  {R G : ThreadName -> Relt VE VF}
-  {Ps : ThreadName -> forall A, F A -> Prec VE VF}
-  {Qs : ThreadName -> forall A, F A -> Post VE VF A}
+  {R G : T -> Relt VE VF}
+  {Ps : T -> forall A, F A -> Prec VE VF}
+  {Qs : T -> forall A, F A -> Post VE VF A}
   {s : InterState F VE} {ρs : PossSet VF}
 := MkLHLState {
   all_safe : forall i, match fst s i with
@@ -505,7 +504,7 @@ Record LHLState {E F}
       (Is ->> R i) ==> Is
   end
 }.
-Arguments LHLState {E F VE VF} M R G Ps Qs s ρs.
+Arguments LHLState {T E F VE VF} M R G Ps Qs s ρs.
 
 Inductive Lift {A : Type} : Prop :=
 | lift : A -> Lift.
@@ -520,19 +519,19 @@ exists x0, x.
 easy.
 Qed.
 
-Definition invPoss {A F} {VF : Spec F} i (ρ : Poss VF) (m : F A) : Poss VF := {|
+Definition invPoss {T A F} {VF : Spec T F} i (ρ : Poss VF) (m : F A) : Poss VF := {|
   PState := ρ.(PState);
   PCalls j := if i =? j then CallPoss m else PCalls ρ j;
   PRets j := if i =? j then RetIdle else PRets ρ j
 |}.
 
-Definition retPoss {F} {VF : Spec F} i (ρ : Poss VF) : Poss VF := {|
+Definition retPoss {T F} {VF : Spec T F} i (ρ : Poss VF) : Poss VF := {|
   PState := ρ.(PState);
   PCalls j := if i =? j then CallIdle else PCalls ρ j;
   PRets j := if i =? j then RetIdle else PRets ρ j
 |}.
 
-Theorem soundness {E F} (lay : Layer E F) VF R G Ps Qs :
+Theorem soundness {T E F} (lay : Layer T E F) VF R G Ps Qs :
   VerifyImpl lay.(USpec) VF R G Ps lay.(LImpl) Qs ->
   Lin (overObj lay) VF.
 intros.
@@ -608,7 +607,7 @@ clear H2.
     intros.
     apply (H.(init_in_P)).
   }
-  generalize dependent (@allIdle E F, Init VE).
+  generalize dependent (@allIdle T E F, Init VE).
   generalize dependent (eq (initPoss (VF:=VF))).
   intro ρs. generalize dependent ρs.
   induction x0; simpl; intros; destruct_all.
@@ -664,7 +663,7 @@ destruct e.
   dependent destruction H2. simpl in *.
   dependent destruction H2.
   assert (H1' := H1). destruct H1'.
-  specialize (all_safe0 n). rewrite H2 in all_safe0.
+  specialize (all_safe0 t0). rewrite H2 in all_safe0.
   destruct_all. dependent destruction H5. unfold Commit in H7.
   apply (H7 s ρs t) in H4. clear H7. destruct_all.
   2:{
@@ -690,7 +689,7 @@ destruct e.
   {
     constructor. constructor.
     intros.
-    dec_eq_nats i n.
+    dec_eq_nats i t0.
     {
       rewrite <- x.
       exists (x1 ->> QI), QR.
@@ -737,7 +736,7 @@ destruct e.
           intros.
           apply H.(P_stable).
           psplit. apply H8.
-          apply H.(G_in_R) with (i:=n); easy.
+          apply H.(G_in_R) with (i:=t0); easy.
         }
       }
       {
@@ -756,7 +755,7 @@ destruct e.
         {
           rewrite <- precCompAssoc.
           psplit. exact H8.
-          apply H.(G_in_R) with (i:=n); easy.
+          apply H.(G_in_R) with (i:=t0); easy.
         }
         {
           unfold sub, subRelt. intros.
@@ -792,7 +791,7 @@ destruct e.
         {
           rewrite <- precCompAssoc.
           psplit. exact H14.
-          apply H.(G_in_R) with (i:=n); easy.
+          apply H.(G_in_R) with (i:=t0); easy.
         }
         split.
         {
@@ -853,8 +852,8 @@ destruct e.
   dependent destruction H2. simpl in *.
   dependent destruction H2.
   assert (H1' := H1). destruct H1'.
-  specialize (all_safe0 n). rewrite H2 in all_safe0.
-  destruct_all. specialize (H5 n0). destruct_all.
+  specialize (all_safe0 t0). rewrite H2 in all_safe0.
+  destruct_all. specialize (H5 n). destruct_all.
   rewrite <- rtp_prId in H7.
   assert (H7' := H7).
   unfold Commit in H5. apply H5 with (t:=t) in H7. clear H5.
@@ -872,10 +871,10 @@ destruct e.
     constructor.
     constructor.
     intros.
-    dec_eq_nats i n.
+    dec_eq_nats i t0.
     {
       rewrite <- x.
-      exists (x1 ->> x2 n0).
+      exists (x1 ->> x2 n).
       split. easy.
       split.
       {
@@ -924,7 +923,7 @@ destruct e.
         apply H.(P_stable).
         psplit.
         apply H13.
-        apply H.(G_in_R) with (i:=n); easy.
+        apply H.(G_in_R) with (i:=t0); easy.
       }
       {
         destruct_all.
@@ -941,7 +940,7 @@ destruct e.
         {
           rewrite <- precCompAssoc.
           psplit. exact H13.
-          apply H.(G_in_R) with (i:=n); easy.
+          apply H.(G_in_R) with (i:=t0); easy.
         }
         {
           unfold sub, subRelt. intros.
@@ -977,7 +976,7 @@ destruct e.
         {
           rewrite <- precCompAssoc.
           psplit. exact H14.
-          apply H.(G_in_R) with (i:=n); easy.
+          apply H.(G_in_R) with (i:=t0); easy.
         }
         split.
         {
@@ -1035,7 +1034,7 @@ destruct e.
   dependent destruction H2. simpl in *.
   dependent destruction H2.
   assert (H1' := H1). move H1 at bottom. destruct H1.
-  specialize (all_safe0 n). rewrite H2 in all_safe0.
+  specialize (all_safe0 t0). rewrite H2 in all_safe0.
   destruct_all. dependent destruction H1.
   exists ρs.
   split.
@@ -1053,7 +1052,7 @@ destruct e.
     apply H5 with (tht:=t) in H7. destruct_all.
     2:{ unfold differ_pointwise. symmetry. apply H3. easy. }
     2:{ econstructor. exact H2. easy. }
-    dec_eq_nats i n.
+    dec_eq_nats i t0.
     {
       rewrite <- x.
       exists (x1 ->> QS).
@@ -1072,7 +1071,7 @@ destruct e.
       move H1' at bottom.
       destruct H1'. specialize (all_safe0 i). simpl in *.
       rewrite <- H3. 2: easy.
-      destruct (t0 i).
+      destruct (t1 i).
       {
         unfold TIdle in *. destruct_all. simpl in *.
         split. split.
@@ -1081,7 +1080,7 @@ destruct e.
         intros.
         apply H.(P_stable).
         psplit. apply H11.
-        eapply H.(G_in_R) with (i:=n). easy.
+        eapply H.(G_in_R) with (i:=t0). easy.
         easy.
       }
       {
@@ -1100,7 +1099,7 @@ destruct e.
         {
           rewrite <- precCompAssoc.
           psplit. exact H11.
-          apply H.(G_in_R) with (i:=n). easy.
+          apply H.(G_in_R) with (i:=t0). easy.
           easy.
         }
         {
@@ -1139,7 +1138,7 @@ destruct e.
         {
           rewrite <- precCompAssoc.
           psplit. exact H12.
-          apply H.(G_in_R) with (i:=n); easy.
+          apply H.(G_in_R) with (i:=t0); easy.
         }
         split.
         {
@@ -1167,21 +1166,21 @@ destruct e.
   dependent destruction H2. simpl in *.
   dependent destruction H2.
   assert (H1' := H1). destruct H1'.
-  specialize (all_safe0 n). rewrite H2 in all_safe0.
+  specialize (all_safe0 t0). rewrite H2 in all_safe0.
   unfold TIdle in all_safe0. destruct_all.
-  exists (fun σ => exists ρ, ρs ρ /\ σ = invPoss n ρ m).
+  exists (fun σ => exists ρ, ρs ρ /\ σ = invPoss t0 ρ m).
   split.
   {
-    exists (invPoss n x0 m), x0. easy.
+    exists (invPoss t0 x0 m), x0. easy.
   }
   split.
   {
     constructor. constructor.
     intros.
-    dec_eq_nats i n.
+    dec_eq_nats i t0.
     {
       rewrite <- x.
-      exists (R n).
+      exists (R t0).
       split.
       apply H.(all_verified).
       split.
@@ -1197,7 +1196,7 @@ destruct e.
         intros. destruct_all. subst. simpl.
         split; intros.
         {
-          exists (invPoss n ρ m).
+          exists (invPoss t0 ρ m).
           split. exists ρ. easy. unfold mapInvPoss.
           apply H7 in H8. simpl. rewrite eqb_id.
           repeat split; (easy || apply differ_pointwise_trivial).
@@ -1229,7 +1228,7 @@ destruct e.
         apply H.(P_stable).
         psplit.
         apply H9.
-        eapply H.(Inv_in_R) with (i:=n). easy.
+        eapply H.(Inv_in_R) with (i:=t0). easy.
         eexists _, m. unfold TInvoke.
         split. easy.
         split.
@@ -1237,7 +1236,7 @@ destruct e.
         split. easy.
         split; intros.
         {
-          exists (invPoss n ρ m).
+          exists (invPoss t0 ρ m).
           split. exists ρ. easy. unfold mapInvPoss.
           apply H7 in H11. simpl. rewrite eqb_id.
           repeat split; (easy || apply differ_pointwise_trivial).
@@ -1268,7 +1267,7 @@ destruct e.
           exact H9.
           psplit.
           exact H11.
-          eapply H.(Inv_in_R) with (i:=n). easy.
+          eapply H.(Inv_in_R) with (i:=t0). easy.
           eexists _, m. unfold TInvoke.
           split. easy.
           split.
@@ -1276,7 +1275,7 @@ destruct e.
           split. easy.
           split; intros.
           {
-            exists (invPoss n ρ m).
+            exists (invPoss t0 ρ m).
             split. exists ρ. easy. unfold mapInvPoss.
             apply H7 in H12. simpl. rewrite eqb_id.
             repeat split; (easy || apply differ_pointwise_trivial).
@@ -1326,7 +1325,7 @@ destruct e.
         {
           rewrite <- precCompAssoc.
           psplit. exact H10.
-          apply H.(Inv_in_R) with (i:=n). easy.
+          apply H.(Inv_in_R) with (i:=t0). easy.
           eexists _, m.
           split. easy.
           split. econstructor. econstructor; easy. easy.
@@ -1334,7 +1333,7 @@ destruct e.
           intros. destruct_all. subst. simpl.
           split; intros.
           {
-            exists (invPoss n ρ m).
+            exists (invPoss t0 ρ m).
             split. exists ρ. easy. unfold mapInvPoss.
             apply H7 in H13. simpl. rewrite eqb_id.
             repeat split; (easy || apply differ_pointwise_trivial).
@@ -1364,7 +1363,7 @@ destruct e.
   {
     intros. destruct_all. subst. simpl.
     exists x1. split. easy.
-    exists [(n, OEvent (CallEv m))].
+    exists [(t0, OEvent (CallEv m))].
     split. easy.
     econstructor. 2: constructor.
     econstructor. econstructor. simpl.
@@ -1381,27 +1380,27 @@ destruct e.
   unfold StateStep in H3. simpl in H3.
   dependent destruction H2. simpl in *.
   dependent destruction H2.
-  exists (fun σ => exists ρ, ρs ρ /\ σ = retPoss n ρ).
+  exists (fun σ => exists ρ, ρs ρ /\ σ = retPoss t0 ρ).
   assert (H1' := H1). move H1' at top. move H1 at bottom.
   split.
   {
-    exists (retPoss n x0), x0. easy.
+    exists (retPoss t0 x0), x0. easy.
   }
   split.
   {
     destruct H1.
-    specialize (all_safe0 n). rewrite H2 in all_safe0. destruct_all.
+    specialize (all_safe0 t0). rewrite H2 in all_safe0. destruct_all.
     dependent destruction H1.
     constructor. constructor. intros.
     do 2 pdestruct H5.
-    eassert ((Qs n A m n0 ->> PrecToRelt (Returned n m)) x4 x5 s ρs).
+    eassert ((Qs t0 A m n ->> PrecToRelt (Returned t0 m)) x4 x5 s ρs).
     {
       apply H1.
       psplit. 2: exact H7.
       split. 2: easy.
       easy.
     }
-    dec_eq_nats i n.
+    dec_eq_nats i t0.
     {
       rewrite <- x.
       split. split.
@@ -1412,11 +1411,11 @@ destruct e.
       }
       {
         intros.
-        eapply H.(switch_code) with (m1:=m) (v:=n0).
+        eapply H.(switch_code) with (m1:=m) (v:=n).
         pdestruct H9.
         psplit. psplit. unfold ReltToPrec.
         repeat eexists. exact H5. exact H9. exact H10.
-        exists n0.
+        exists n.
         split.
         econstructor. econstructor; easy. easy.
         split. easy.
@@ -1426,7 +1425,7 @@ destruct e.
         destruct_all. subst.
         split; intros.
         {
-          exists (retPoss n ρ).
+          exists (retPoss t0 ρ).
           split. exists ρ. easy. unfold mapRetPoss.
           apply H16 in H14. destruct_all.
           simpl. rewrite eqb_id.
@@ -1447,7 +1446,7 @@ destruct e.
       move H1' at bottom. destruct H1'. specialize (all_safe0 i).
       rewrite <- H3. 2: easy.
       pdestruct H9. unfold PrecToRelt, Returned in H11. destruct_all.
-      remember (fst s i). destruct t0.
+      remember (fst s i). destruct t1.
       {
         unfold TIdle in *. destruct_all.
         split. split.
@@ -1459,14 +1458,14 @@ destruct e.
         apply H.(P_stable).
         psplit.
         apply H16.
-        eapply H.(Ret_in_R) with (i:=n). easy.
-        eexists _, m, n0.
+        eapply H.(Ret_in_R) with (i:=t0). easy.
+        eexists _, m, n.
         split.
         econstructor. econstructor; easy. easy.
         split. easy.
         split; intros.
         {
-          exists (retPoss n ρ).
+          exists (retPoss t0 ρ).
           split. exists ρ. easy. subst.
           assert (H18' := H18). unfold mapRetPoss.
           apply H17 in H18. apply H14 in H18'. destruct_all.
@@ -1502,15 +1501,15 @@ destruct e.
           rewrite <- precCompAssoc.
           psplit.
           exact H16.
-          apply H.(Ret_in_R) with (i:=n). easy.
-          eexists _, m, n0.
+          apply H.(Ret_in_R) with (i:=t0). easy.
+          eexists _, m, n.
           split.
           econstructor; simpl. econstructor; easy. easy.
           split. easy.
           intros. destruct_all. subst. simpl.
           split; intros.
           {
-            exists (retPoss n ρ).
+            exists (retPoss t0 ρ).
             split. exists ρ. easy. unfold mapRetPoss.
             apply H14 in H12. destruct_all.
             simpl. rewrite eqb_id.
@@ -1562,14 +1561,14 @@ destruct e.
         {
           rewrite <- precCompAssoc.
           psplit. exact H17.
-          apply H.(Ret_in_R) with (i:=n). easy.
-          eexists _, m, n0.
+          apply H.(Ret_in_R) with (i:=t0). easy.
+          eexists _, m, n.
           split. econstructor. econstructor; easy. easy.
           split. easy.
           intros. destruct_all. subst. simpl.
           split; intros.
           {
-            exists (retPoss n ρ).
+            exists (retPoss t0 ρ).
             split. exists ρ. easy. unfold mapRetPoss.
             apply H14 in H12. destruct_all.
             simpl. rewrite eqb_id.
@@ -1602,14 +1601,14 @@ destruct e.
   {
     intros. destruct_all. subst. simpl.
     exists x1. split. easy.
-    exists [(n, OEvent (RetEv m n0))].
+    exists [(t0, OEvent (RetEv m n))].
     split. easy.
     destruct H1.
-    specialize (all_safe0 n). rewrite H2 in all_safe0.
+    specialize (all_safe0 t0). rewrite H2 in all_safe0.
     destruct_all.
     dependent destruction H1.
     do 2 pdestruct H6.
-    eassert ((Qs n A m n0 ->> PrecToRelt (Returned n m)) _ _ s ρs).
+    eassert ((Qs t0 A m n ->> PrecToRelt (Returned t0 m)) _ _ s ρs).
     {
       apply H1.
       psplit. 2: exact H8.

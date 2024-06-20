@@ -89,9 +89,42 @@ Qed.
 
 (* implEq implies refinement *)
 
+Inductive progEqTS {E F} : ThreadState E F -> ThreadState E F -> Prop :=
+| PEIdle :
+  progEqTS Idle Idle
+| PECont A (m : F A) p q :
+  progEq p q ->
+  progEqTS (Cont m p) (Cont m q)
+| PECall A B om um f g :
+  (forall x, progEq (f x) (g x)) ->
+  progEqTS (UCall (A:=A) (B:=B) om um f) (UCall om um g).
+
 Theorem implEq_refines : 
   forall E F spec impl impl',
   @implEq E F impl impl' -> specRefines (overObj (spec :> impl)) (overObj (spec :> impl')).
+unfold specRefines, Incl, IsTraceOfSpec.
+intros. destruct_all. exists x.
+repeat rewrite projInterSteps in *.
+destruct_all. subst. exists x0. split. easy.
+split. 2: easy.
+clear H2.
+cbn in *.
+cut (
+  forall s s' c p,
+  (forall i, progEqTS (s i) (s' i)) ->
+  InterSteps impl (s, c) p x ->
+  InterSteps impl' (s', c) p x 
+).
+{
+  intros.
+  eapply H0 with (s:=allIdle).
+  constructor.
+  easy.
+}
+induction p; cbn; intros.
+{
+  dependent destruction H2.
+}
 Admitted.
 
 (* Eutt implies refinement *)
