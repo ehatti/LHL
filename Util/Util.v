@@ -63,28 +63,32 @@ Section UPDT_ISTATE.
 
 End UPDT_ISTATE.
 
-Definition eqb {T} (x y : T) : bool :=
-  if classicT (x = y) then
-    true
-  else
-    false.
-Infix "=?" := eqb (at level 70).
+Require Import Coq.Arith.PeanoNat.
 
-Lemma eqb_id {T} : forall n : T, n =? n = true.
-unfold eqb. intros.
-destruct (classicT (n = n)).
+Lemma eqb_id : forall n : nat, n =? n = true.
+intros.
+induction n.
 easy.
+simpl.
+f_equal.
+easy.
+Qed.
+
+Lemma eqb_nid : forall n m : nat, n <> m -> n =? m = false.
+fix rec 1.
+intros.
+destruct n.
+destruct m.
+easy.
+easy.
+destruct m.
+easy.
+simpl in *.
+apply rec.
 congruence.
 Qed.
 
-Lemma eqb_nid {T} : forall n m : T, n <> m -> n =? m = false.
-intros. unfold eqb.
-destruct (classicT (n = m)).
-contradiction.
-easy.
-Qed.
-
-Lemma differ_pointwise_trivial {T A} (f : T -> A) i x :
+Lemma differ_pointwise_trivial {A} (f : nat -> A) i x :
   differ_pointwise f (fun j => if i =? j then x else f j) i.
 unfold differ_pointwise.
 intros.

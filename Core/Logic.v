@@ -22,61 +22,72 @@ Variant PRet {F : ESig} :=
 | RetPoss {A} (m : F A) (v : A).
 Arguments PRet : clear implicits.
 
-Record Poss {T F} {VF : Spec T F} := MkPoss {
+Record Poss {F} {VF : Spec F} := MkPoss {
   PState : VF.(State);
-  PCalls : T -> PCall F;
-  PRets : T -> PRet F
+  PCalls : ThreadName -> PCall F;
+  PRets : ThreadName -> PRet F
 }.
-Arguments Poss {T F} VF.
+Arguments Poss {F} VF.
 
-Definition PossSet {T F} (VF : Spec T F) :=
+Definition PossSet {F} (VF : Spec F) :=
   Poss VF -> Prop.
 
-Definition Prec {T E F} (VE : Spec T E) (VF : Spec T F) :=
-  InterState F VE ->
+Definition Prec {E F} (VE : Spec E) (VF : Spec F) :=
+  @InterState E F VE ->
   PossSet VF ->
   Prop.
 
-Definition Relt {T E F} (VE : Spec T E) (VF : Spec T F) :=
-  InterState F VE ->
+Definition Relt {E F} (VE : Spec E) (VF : Spec F) :=
+  @InterState E F VE ->
   PossSet VF ->
-  InterState F VE ->
+  @InterState E F VE ->
   PossSet VF ->
   Prop.
 
-Definition Post {T E F} (VE : Spec T E) (VF : Spec T F) A :=
+Definition Post {E F} (VE : Spec E) (VF : Spec F) A :=
   A -> Relt VE VF.
 
-Inductive RTC {T E F} {VE : Spec T E} {VF : Spec T F} (R : Relt VE VF) : Relt VE VF :=
+Definition StRelt {E} (VE : Spec E) F :=
+  @InterState E F VE ->
+  @InterState E F VE ->
+  Prop.
+
+Inductive RTC {E F} {VE : Spec E} {VF : Spec F} (R : Relt VE VF) : Relt VE VF :=
 | RTCRefl s ρ : RTC R s ρ s ρ
 | RTCStep s ρ t σ r τ :
     R s ρ t σ ->
     RTC R t σ r τ ->
     RTC R s ρ r τ.
 
-Definition prComp {T E F} {VE : Spec T E} {VF : Spec T F} (P : Prec VE VF) (R : Relt VE VF) : Relt VE VF :=
+Definition prComp {E F} {VE : Spec E} {VF : Spec F} (P : Prec VE VF) (R : Relt VE VF) : Relt VE VF :=
   fun s ρ t σ => P s ρ /\ R s ρ t σ.
 
-Definition ReltToPrec {T E F} {VE : Spec T E} {VF : Spec T F} (R : Relt VE VF) : Prec VE VF :=
+Definition ReltToPrec {E F} {VE : Spec E} {VF : Spec F} (R : Relt VE VF) : Prec VE VF :=
   fun t σ => exists s ρ, R s ρ t σ.
 Coercion ReltToPrec : Relt >-> Prec.
 
-Definition PrecToRelt {T E F} {VE : Spec T E} {VF : Spec T F} (P : Prec VE VF) : Relt VE VF :=
+Definition PrecToRelt {E F} {VE : Spec E} {VF : Spec F} (P : Prec VE VF) : Relt VE VF :=
   fun s ρ t σ =>
     P s ρ /\
     s = t /\
     ρ = σ.
 
-Definition PostToRelt {T E F} {VE : Spec T E} {VF : Spec T F} {A} (Q : Post VE VF A) : Relt VE VF :=
+Definition PostToRelt {E F} {VE : Spec E} {VF : Spec F} {A} (Q : Post VE VF A) : Relt VE VF :=
   fun s ρ t σ => exists v, Q v s ρ t σ.
 Coercion PostToRelt : Post >-> Relt.
 
-Definition PrecCompose {T E F} {VE : Spec T E} {VF : Spec T F} (P : Prec VE VF) (R : Relt VE VF) : Prec VE VF :=
+Definition StReltToRelt {E F} {VE : Spec E} {VF : Spec F} (Q : StRelt VE F) : Relt VE VF :=
+  fun s ρ t σ =>
+    Q s t /\
+    ρ = σ.
+Coercion StReltToRelt : StRelt >-> Relt.
+
+Definition PrecCompose {E F} {VE : Spec E} {VF : Spec F} (P : Prec VE VF) (R : Relt VE VF) : Prec VE VF :=
   fun t σ => exists s ρ, P s ρ /\ R s ρ t σ.
 
 Notation "R <<- G" := (PrecCompose R G) (left associativity, at level 37).
 
-Definition ReltCompose {T E F} {VE : Spec T E} {VF : Spec T F} (R G : Relt VE VF) : Relt VE VF :=
+Definition ReltCompose {E F} {VE : Spec E} {VF : Spec F} (R G : Relt VE VF) : Relt VE VF :=
   fun s ρ r τ => exists t σ, R s ρ t σ /\ G t σ r τ.
 Notation "R ->> G" := (ReltCompose R G) (right associativity, at level 39).
 
@@ -84,33 +95,33 @@ Class HasSub A :=
   sub : A -> A -> Prop.
 Notation "P ==> Q" := (sub P Q) (right associativity, at level 41).
 
-Global Instance subPrec {T E F} {VE : Spec T E} {VF : Spec T F} : HasSub (Prec VE VF) :=
+Global Instance subPrec {E F} {VE : Spec E} {VF : Spec F} : HasSub (Prec VE VF) :=
   fun P Q => forall s ρ, P s ρ -> Q s ρ.
 
-Global Instance subRelt {T E F} {VE : Spec T E} {VF : Spec T F} : HasSub (Relt VE VF) :=
+Global Instance subRelt {E F} {VE : Spec E} {VF : Spec F} : HasSub (Relt VE VF) :=
   fun P Q => forall s ρ t σ, P s ρ t σ -> Q s ρ t σ.
 
-Class HasStable {T E F} {VE : Spec T E} {VF : Spec T F} A :=
+Class HasStable {E F} {VE : Spec E} {VF : Spec F} A :=
   Stable : Relt VE VF -> A -> Prop.
 
-Global Instance stableRelt {T E F} {VE : Spec T E} {VF : Spec T F} : HasStable (Relt VE VF) :=
+Global Instance stableRelt {E F} {VE : Spec E} {VF : Spec F} : HasStable (Relt VE VF) :=
   fun R Q => (R ->> Q ==> Q) /\ (Q ->> R ==> Q).
 
-Global Instance stablePrec {T E F} {VE : Spec T E} {VF : Spec T F} : HasStable (Prec VE VF) :=
+Global Instance stablePrec {E F} {VE : Spec E} {VF : Spec F} : HasStable (Prec VE VF) :=
   fun R P => P <<- R ==> P.
 
-Global Instance stablePost {T E F} {VE : Spec T E} {VF : Spec T F} {A} : HasStable (Post VE VF A) :=
+Global Instance stablePost {E F} {VE : Spec E} {VF : Spec F} {A} : HasStable (Post VE VF A) :=
   fun R Q => forall v, stableRelt R (Q v).
 
-Definition id {T E F VE VF} : @Relt T E F VE VF :=
+Definition id {E F VE VF} : @Relt E F VE VF :=
   fun s ρ t σ => s = t /\ ρ = σ.
 
-Definition ptop {T E F VE VF} : @Prec T E F VE VF :=
+Definition ptop {E F VE VF} : @Prec E F VE VF :=
   fun _ _ => True.
-Definition rtop {T E F VE VF} : @Relt T E F VE VF :=
+Definition rtop {E F VE VF} : @Relt E F VE VF :=
   fun _ _ _ _ => True.
 
-Variant PossStep {T F} {VF : Spec T F} i (ρ σ : Poss VF) : Prop :=
+Variant PossStep {F} {VF : Spec F} i (ρ σ : Poss VF) : Prop :=
 | PCommitCall A (m : F A) :
   VF.(Step) ρ.(PState) (i, CallEv m) σ.(PState) ->
   ρ.(PCalls) i = CallPoss m /\
@@ -126,7 +137,7 @@ Variant PossStep {T F} {VF : Spec T F} i (ρ σ : Poss VF) : Prop :=
   σ.(PRets) i = RetPoss m v ->
   PossStep i ρ σ.
 
-Inductive PossSteps {T F} {VF : Spec T F} : Poss VF -> Poss VF -> Prop :=
+Inductive PossSteps {F} {VF : Spec F} : Poss VF -> Poss VF -> Prop :=
 | PossStepsRefl ρ :
     PossSteps ρ ρ
 | PossStepsStep i ρ σ τ :
@@ -136,7 +147,7 @@ Inductive PossSteps {T F} {VF : Spec T F} : Poss VF -> Poss VF -> Prop :=
     PossSteps σ τ ->
     PossSteps ρ τ.
 
-Definition Commit {T E F} {VE : Spec T E} {VF : Spec T F} i
+Definition Commit {E F} {VE : Spec E} {VF : Spec F} i
   (G : Relt VE VF)
   (P : Prec VE VF)
   (ev : Event E)
@@ -156,7 +167,7 @@ Definition Commit {T E F} {VE : Spec T E} {VF : Spec T F} i
       Q s ρs t σs /\
       G s ρs t σs.
 
-Definition SilentStep {T E F} {VE : Spec T E} {VF : Spec T F} i
+Definition SilentStep {E F} {VE : Spec E} {VF : Spec F} i
   (G : Relt VE VF)
   (P : Prec VE VF)
   (Q : Relt VE VF) :=
@@ -167,7 +178,7 @@ Definition SilentStep {T E F} {VE : Spec T E} {VF : Spec T F} i
     Q (ths, s) ρs (tht, s) ρs /\
     G (ths, s) ρs (tht, s) ρs.
 
-CoInductive SafeProg {T E F} {VE : Spec T E} {VF : Spec T F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
+CoInductive SafeProg {E F} {VE : Spec E} {VF : Spec F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
 | SafeReturn A v R G P Q :
     P ==> Q v ->
     SafeProg i R G A P (Return v) Q
@@ -186,9 +197,9 @@ CoInductive SafeProg {T E F} {VE : Spec T E} {VF : Spec T F} i : Relt VE VF -> R
     SafeProg i R G A P (NoOp C) Q
 .
 
-Arguments SafeProg {T E F VE VF} i R G {A} P C Q.
+Arguments SafeProg {E F VE VF} i R G {A} P C Q.
 
-Definition TIdle {T E F VE VF} (i : T) : @Prec T E F VE VF :=
+Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
   fun s ρs =>
     fst s i = Idle /\
     forall ρ,
@@ -196,29 +207,29 @@ Definition TIdle {T E F VE VF} (i : T) : @Prec T E F VE VF :=
       ρ.(PCalls) i = CallIdle /\
       ρ.(PRets) i = RetIdle.
 
-Definition mapPoss {T F} {VF : Spec T F} (ρs σs : PossSet VF) (P : Poss VF -> Poss VF -> Prop) :=
+Definition mapPoss {F} {VF : Spec F} (ρs σs : PossSet VF) (P : Poss VF -> Poss VF -> Prop) :=
   (forall ρ, ρs ρ -> exists σ, σs σ /\ P ρ σ) /\
   (forall σ, σs σ -> exists ρ, ρs ρ /\ P ρ σ).
 
-Definition mapInvPoss {T F VF A} i (m : F A) (ρ σ : @Poss T F VF) :=
+Definition mapInvPoss {F VF A} i (m : F A) (ρ σ : @Poss F VF) :=
   ρ.(PCalls) i = CallIdle /\ σ.(PCalls) i = CallPoss m /\
   ρ.(PRets) i = RetIdle /\ σ.(PRets) i = RetIdle /\
   Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
   Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
   ρ.(PState) = σ.(PState).
 
-Definition TInvoke {T E F VE VF} impl (i : T) Ret (m : F Ret) : @Relt T E F VE VF :=
+Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     TIdle i s ρs /\
     InterOStep impl i (fst s) (CallEv m) (fst t) /\
     snd s = snd t /\
     mapPoss ρs σs (mapInvPoss i m).
 
-Definition InvokeAny {T E F VE VF} impl i : @Relt T E F VE VF :=
+Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
     exists Ret (m : F Ret), TInvoke impl i Ret m s ρ t σ.
 
-Definition Returned {T E F VE VF} (i : T) {A} (m : F A) : @Prec T E F VE VF :=
+Definition Returned {E F VE VF} (i : ThreadName) {A} (m : F A) : @Prec E F VE VF :=
   fun s ρs =>
     exists (v : A),
       fst s i = Cont m (Return v) /\
@@ -226,46 +237,46 @@ Definition Returned {T E F VE VF} (i : T) {A} (m : F A) : @Prec T E F VE VF :=
         ρ.(PRets) i = RetPoss m v /\
         ρ.(PCalls) i = CallDone m.
 
-Definition mapRetPoss {T F VF A} i (m : F A) v (ρ σ : @Poss T F VF) :=
+Definition mapRetPoss {F VF A} i (m : F A) v (ρ σ : @Poss F VF) :=
   σ.(PCalls) i = CallIdle /\ ρ.(PCalls) i = CallDone m /\
   σ.(PRets) i = RetIdle /\ ρ.(PRets) i = RetPoss m v /\
   Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
   Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
   σ.(PState) = ρ.(PState).
 
-Definition TReturn {T E F VE VF} (impl : Impl E F) (i : T) {Ret} (m : F Ret) : @Relt T E F VE VF :=
+Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     exists (v : Ret),
       InterOStep impl i (fst s) (RetEv m v) (fst t) /\
       snd s = snd t /\
       mapPoss ρs σs (mapRetPoss i m v).
 
-Definition ReturnAny {T E F VE VF} impl i : @Relt T E F VE VF :=
+Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
     exists Ret (m : F Ret), TReturn impl i m s ρ t σ.
 
-Definition VerifyProg {T E F VE VF A} i
-  (R G : @Relt T E F VE VF)
+Definition VerifyProg {E F VE VF A} i
+  (R G : @Relt E F VE VF)
   (P : Relt VE VF)
   (C : Prog E A)
   (Q : Post VE VF A)
   : Prop :=
   SafeProg i R G P C Q.
 
-Definition initPoss {T F VF} : @Poss T F VF := {|
+Definition initPoss {F VF} : @Poss F VF := {|
   PState := VF.(Init);
   PCalls _ := CallIdle;
   PRets _ := RetIdle;
 |}.
 
 Record VerifyImpl
-  {T E F}
-  {VE : Spec T E}
-  {VF : Spec T F}
-  {R G : T -> Relt VE VF}
-  {P : T -> forall Ret, F Ret -> Prec VE VF}
+  {E F}
+  {VE : Spec E}
+  {VF : Spec F}
+  {R G : ThreadName -> Relt VE VF}
+  {P : ThreadName -> forall Ret, F Ret -> Prec VE VF}
   {impl : Impl E F}
-  {Q : T -> forall Ret, F Ret -> Post VE VF Ret} : Prop
+  {Q : ThreadName -> forall Ret, F Ret -> Post VE VF Ret} : Prop
 := {
   R_refl : forall i s ρ,
     R i s ρ s ρ;
@@ -291,4 +302,4 @@ Record VerifyImpl
       (impl _ m)
       (fun v => Q i A m v ->> PrecToRelt (Returned i m))
 }.
-Arguments VerifyImpl {T E F} VE VF R G P impl Q.
+Arguments VerifyImpl {E F} VE VF R G P impl Q.

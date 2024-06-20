@@ -1,29 +1,31 @@
 From LHL.Core Require Import
     Program.
 
+Definition ThreadName := nat.
+
 Variant Event {E : ESig} :=
 | CallEv {A} (m : E A)
 | RetEv {A} (m : E A) (n : A).
 Arguments Event : clear implicits.
 
-Definition ThreadEvent T E : Type := {i : T & Event (E i)}.
+Definition ThreadEvent (E : ESig) : Type := ThreadName * Event E.
 
-Record Spec {T : Type} {E : T -> ESig} : Type :=  {
+Record Spec {E : ESig} : Type :=  {
     State : Type;
-    Step : State -> ThreadEvent T E -> State -> Prop;
+    Step : State -> ThreadEvent E -> State -> Prop;
     Init : State
 }.
 Arguments Spec : clear implicits.
 
-Record Layer {T E F} : Type := mkLayer {
-    USpec : Spec T E;
+Record Layer {E F : ESig} : Type := mkLayer {
+    USpec : Spec E;
     LImpl : Impl E F; 
 }.
 Arguments Layer : clear implicits.
-Arguments mkLayer {T E F} USpec LImpl.
+Arguments mkLayer {E F} USpec LImpl.
 Notation "x :> y" := (mkLayer x y) (at level 80, right associativity).
 
-Definition idLayer {T E} (spec : Spec T E) :=
+Definition idLayer {E : ESig} (spec : Spec E) :=
     {|
         USpec := spec;
         LImpl := idImpl
@@ -39,11 +41,11 @@ Arguments LEvent : clear implicits.
 
 Definition Silent {E} : option (Event E) := None.
 
-Definition ThreadLEvent A E F : Type := A * LEvent E F.
+Definition ThreadLEvent E F : Type := nat * LEvent E F.
 
 (* Layer Composition *)
 
-Definition layVComp {T E F G} (lay : Layer T E F) (impl : Impl F G) : Layer T E G :=
+Definition layVComp {E F G} (lay : Layer E F) (impl : Impl F G) : Layer E G :=
     {|
         USpec := lay.(USpec);
         LImpl := implVComp lay.(LImpl) impl

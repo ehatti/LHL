@@ -3,11 +3,11 @@ From LHL.Core Require Import
   Specs.
 
 Section Tensor.
-  Context {TL TR EL ER}
-          (specL : Spec TL EL)
-          (specR : Spec TR ER).
+  Context {EL ER}
+          (specL : Spec EL)
+          (specR : Spec ER).
 
-  Definition StepTensor st (ev : ThreadEvent (TL + TR) (EL |+| ER)) st' :=
+  Definition StepTensor st (ev : ThreadEvent (EL |+| ER)) st' :=
     match ev with
       | (i, CallEv m) => 
           match m with

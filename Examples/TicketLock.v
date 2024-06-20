@@ -157,16 +157,12 @@ Definition Guar (i : ThreadName) : Relt :=
   fun s ρs t σs =>
     forall j, i <> j -> Rely j s ρs t σs.
 
-(* Misc *)
+(* Tactics *)
 
 Ltac decide_prop P :=
   let H := fresh in
   assert (H : P \/ ~P) by apply excluded_middle;
   destruct H.
-
-Definition singRelt (R : InterState F VE -> Poss VF -> InterState F VE -> Poss VF -> Prop) : Relt :=
-  fun s ρs t σs =>
-    forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\ R s ρ t σ.
 
 (* Extra lemmas *)
 
@@ -726,7 +722,7 @@ split; intros; psimpl.
 }
 Qed.
 
-Lemma impl_switch_code :
+Lemma ticketLockImpl_switch_code :
   forall i A (m1 : LockSig A) B (m2 : LockSig B) v,
   prComp (Precs i m1) (Posts i m1 v) <<- PrecToRelt (Returned i m1) <<-
   TReturn ticketLockImpl i m1 ==>
@@ -784,27 +780,6 @@ unfold sub, subPrec, Precs, Posts. intros. destruct m1, m2.
 }
 Qed.
 
-Lemma acq_correct i :
-  VerifyProg i (Rely i) (Guar i)
-  (prComp (Precs i Acq) (TInvoke ticketLockImpl i unit Acq) ->> Rely i)
-  (ticketLockImpl unit Acq)
-  (fun v : unit => Posts i Acq v ->> PrecToRelt (Returned i Acq)).
-cbn. unfold acq.
-eapply lemBind.
-eapply lemCall with
-  (Q:=fun s ρs t σs => _).
-Admitted.
-
-Lemma rel_correct i :
-  VerifyProg i (Rely i) (Guar i)
-  (prComp (Precs i Rel) (TInvoke ticketLockImpl i unit Rel) ->> Rely i)
-  (ticketLockImpl unit Rel)
-  (fun v : unit => Posts i Rel v ->> PrecToRelt (Returned i Rel)).
-cbn. unfold rel.
-eapply weakenPrec with
-  (P:= singRelt (fun s ρ t σ =>
-    )).
-
 Theorem ticketLockCorrect :
   VerifyImpl VE VF Rely Guar Precs ticketLockImpl Posts.
 constructor.
@@ -816,8 +791,4 @@ apply Ret_in_Rely.
 apply init_in_Precs.
 apply Precs_stable.
 apply Posts_stable.
-apply impl_switch_code.
-destruct m.
-apply acq_correct.
-apply rel_correct.
-Qed.
+apply ticketLockImpl_switch_code.

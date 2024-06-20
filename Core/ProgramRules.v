@@ -116,8 +116,7 @@ intros. psimpl.
 apply H. easy.
 Qed.
 
-Lemma lemCall {A} {P : Relt VE VF} {m : E A} :
-  forall Q S,
+Lemma lemCall {A Q S} {P : Relt VE VF} {m : E A} :
   Stable R Q ->
   Stable R S ->
   Commit i G P (CallEv m) Q ->
