@@ -651,7 +651,6 @@ apply IHp.
 easy.
 Qed.
 
-
 (* Eutt *)
 
 Inductive euttTS_ {E F : ESig} :

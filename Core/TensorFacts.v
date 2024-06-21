@@ -15,9 +15,10 @@ From LHL.Util Require Import
 
 From Coq Require Import
   Program.Equality
-  Bool.Bool
   Arith.PeanoNat
-  Logic.FunctionalExtensionality.
+  Logic.FunctionalExtensionality
+  Lists.List.
+Import ListNotations.
 
 Fixpoint projLeft {E F} (p : Trace (ThreadEvent (E |+| F))) : Trace (ThreadEvent E) :=
   match p with
@@ -675,8 +676,8 @@ Definition tensorTS {E E' F F'} (s : ThreadState E E') (t : ThreadState F F') : 
 
 Lemma split_tensor_steps {E F} :
   forall (specE : Spec E) (specF : Spec F),
-  forall p tL tR sL sR,
-  Steps (StepTensor specE specF) (sL, sR) p (tL, tR) ->
+  forall p tL tR sL sR a a',
+  Steps (TensorStep specE specF) (MkTS a sL sR) p (MkTS a' tL tR) ->
   Steps (Step specE) sL (projLeft p) tL /\
   Steps (Step specF) sR (projRight p) tR.
 intros specE specF p tL tR. induction p;
@@ -685,7 +686,7 @@ intros; cbn in *; dependent destruction H.
   repeat constructor.
 }
 {
-  destruct a, e, m; unfold StepTensor in H;
+  destruct a, e, m; unfold TensorStep in H;
   destruct_all; destruct st''; cbn in *; subst;
   apply IHp in H0; destruct_all.
   split. econstructor. exact H. easy. easy.
@@ -695,21 +696,498 @@ intros; cbn in *; dependent destruction H.
 }
 Qed.
 
-(* Lemma complete_square {E E' F F'} :
-  forall p : Trace (ThreadEvent (E' |+| F')),
-  forall l : Trace (ThreadLEvent E E'),
-  forall r : Trace (ThreadLEvent F F'),
-  projLeft p = projOver l ->
-  projRight p = projOver r ->
-  exists q : Trace (ThreadLEvent (E |+| F) (E' |+| F')),
-    projOver q = p /\
-    projLeft (projUnderThr q)  = projUnderThr l /\
-    projRight (projUnderThr q) = projUnderThr r.
-intros.
-induction p; cbn in *; intros.
+Definition liftTSLeft {E E' F F'} (s : ThreadState E E') : ThreadState (E |+| F) (E' |+| F') :=
+  match s with
+  | Idle => Idle
+  | Cont m p => Cont (inl m) (mapProg (fun _ => inl) p)
+  | UCall om um k => UCall (inl om) (inl um) (fun x => mapProg (fun _ => inl) (k x))
+  end.
+
+Definition liftTSRight {E E' F F'} (s : ThreadState F F') : ThreadState (E |+| F) (E' |+| F') :=
+  match s with
+  | Idle => Idle
+  | Cont m p => Cont (inr m) (mapProg (fun _ => inr) p)
+  | UCall om um k => UCall (inr om) (inr um) (fun x => mapProg (fun _ => inr) (k x))
+  end.
+
+Ltac destruct_steps :=
+repeat (
+cbn in *;
+destruct_all;
+subst;
+match goal with
+| [ H : InterSteps ?M ?s nil ?t |- _] => dependent destruction H
+| [ H : InterSteps ?M ?s (?e :: ?p) ?t |- _] => dependent destruction H
+| [ H : InterStep ?M ?s ?e ?t |- _] => unfold InterStep in H
+| [ H : StateStep ?s ?e ?t |- _] => unfold StateStep in H
+| [ H : ThreadsStep ?M ?s ?e ?t |- _] => unfold ThreadsStep in H
+| [ H : PointStep ?S ?s ?e ?t |- _] => dependent destruction H
+| [ H : OverThreadStep ?M ?s ?e ?t |- _] => dependent destruction H
+| [ H : UnderThreadStep ?s ?e ?t |- _] => dependent destruction H
+| [ s : InterState ?F ?spec |- _] => destruct s
+end).
+
+Lemma over_call_states {E F} {V : Spec E} {M : Impl E F} :
+  forall i A (m : F A) s t,
+  InterStep (spec:=V) M s (i, OEvent (CallEv m)) t ->
+  fst t i <> Idle.
+unfold InterStep, ThreadsStep. intros. destruct_all.
+dependent destruction H. cbn in *. dependent destruction H.
+rewrite <- x. easy.
+Qed.
+
+Lemma step_no_diff {E F} {V : Spec E} {M : Impl E F} :
+  forall i e s t,
+  InterStep (spec:=V) M s (i, e) t ->
+  forall j, j <> i -> fst s j = fst t j.
+unfold InterStep, ThreadsStep. intros. destruct_all.
+dependent destruction H. cbn in *.
+rewrite H0; easy.
+Qed.
+
+Definition tensorActive {E E' F F'} (s : ThreadsSt E E') (t : ThreadsSt F F') : ActiveMap (E |+| F) :=
+  fun i => match s i with
+  | UCall om um k => Some (existT _ _ (inl um))
+  | _ =>
+    match t i with
+    | UCall om um k => Some (existT _ _ (inr um))
+    | _ => None
+    end
+  end.
+
+Definition liftLeftEvent {E E' F F'} (e : ThreadLEvent E E') : ThreadLEvent (E |+| F) (E' |+| F') :=
+  (fst e, match snd e with
+  | UEvent (Some (CallEv m)) => UEvent (Some (CallEv (inl m)))
+  | UEvent (Some (RetEv m v)) => UEvent (Some (RetEv (inl m) v))
+  | UEvent None => UEvent None
+  | OEvent (CallEv m) => OEvent (CallEv (inl m))
+  | OEvent (RetEv m v) => OEvent (RetEv (inl m) v)
+  end).
+
+Definition liftRightEvent {E E' F F'} (e : ThreadLEvent F F') : ThreadLEvent (E |+| F) (E' |+| F') :=
+  (fst e, match snd e with
+  | UEvent (Some (CallEv m)) => UEvent (Some (CallEv (inr m)))
+  | UEvent (Some (RetEv m v)) => UEvent (Some (RetEv (inr m) v))
+  | UEvent None => UEvent None
+  | OEvent (CallEv m) => OEvent (CallEv (inr m))
+  | OEvent (RetEv m v) => OEvent (RetEv (inr m) v)
+  end).
+
+Definition liftLeftState {E E' F F'} {V : Spec E} {W : Spec F} (s : InterState E' V) (ts : ThreadsSt F F') (t : State W) : InterState (E' |+| F') (tensorSpec V W) :=
+  (fun i => liftTSLeft (fst s i), MkTS (specL:=V) (specR:=W) (@tensorActive E E' F F' (fst s) ts) (snd s) t).
+
+Definition liftRightState {E E' F F'} {V : Spec E} {W : Spec F} (ss : ThreadsSt E E') (s : State V) (t : InterState F' W) : InterState (E' |+| F') (tensorSpec V W) :=
+  (fun i => liftTSRight (fst t i), MkTS (specL:=V) (specR:=W) (@tensorActive E E' F F' ss (fst t)) s (snd t)).
+
+Inductive tensor_system {E E' F F'} : ActiveMap (E |+| F) -> ActiveMap (E' |+| F') -> Trace (ThreadLEvent E E') -> Trace (ThreadLEvent F F') -> Trace (ThreadEvent (E' |+| F')) -> Prop :=
+| TSNil ua oa :
+    tensor_system ua oa nil nil nil
+| TSLeftOverCall ua oa oa' p q i A (om : E' A) r :
+    tensor_system ua oa' p q r ->
+    ua i = None ->
+    differ_pointwise oa oa' i ->
+    oa i = None ->
+    oa' i = Some (existT _ _ (inl om)) ->
+    tensor_system ua oa ((i, OEvent (CallEv om)) :: p) q ((i, CallEv (inl om)) :: r)
+| TSRightOverCall ua oa oa' p q i A (om : F' A) r :
+    tensor_system ua oa' p q r ->
+    ua i = None ->
+    differ_pointwise oa oa' i ->
+    oa i = None ->
+    oa' i = Some (existT _ _ (inr om)) ->
+    tensor_system ua oa p ((i, OEvent (CallEv om)) :: q) ((i, CallEv (inr om)) :: r)
+| TSLeftOverRet ua oa oa' p q i A (om : E' A) v r :
+    tensor_system ua oa' p q r ->
+    ua i = None ->
+    differ_pointwise oa oa' i ->
+    oa i = Some (existT _ _ (inl om)) ->
+    oa' i = None ->
+    tensor_system ua oa ((i, OEvent (RetEv om v)) :: p) q ((i, RetEv (inl om) v) :: r)
+| TSRightOverRet ua oa oa' p q i A (om : F' A) v r :
+    tensor_system ua oa' p q r ->
+    ua i = None ->
+    differ_pointwise oa oa' i ->
+    oa i = Some (existT _ _ (inr om)) ->
+    oa' i = None ->
+    tensor_system ua oa p ((i, OEvent (RetEv om v)) :: q) ((i, RetEv (inr om) v) :: r)
+| TSLeftUnderCall ua ua' oa p q i A (om : E' A) B (um : E B) r :
+    tensor_system ua' oa p q r ->
+    oa i = Some (existT _ _ (inl om)) ->
+    differ_pointwise ua ua' i ->
+    ua i = None ->
+    ua' i = Some (existT _ _ (inl um)) ->
+    tensor_system ua oa ((i, UEvent (Some (CallEv um))) :: p) q r
+| TSRightUnderCall ua ua' oa p q i A (om : F' A) B (um : F B) r :
+    tensor_system ua' oa p q r ->
+    oa i = Some (existT _ _ (inr om)) ->
+    differ_pointwise ua ua' i ->
+    ua i = None ->
+    ua' i = Some (existT _ _ (inr um)) ->
+    tensor_system ua oa p ((i, UEvent (Some (CallEv um))) :: q) r
+| TSLeftUnderRet ua ua' oa p q i A (om : E' A) B (um : E B) v r :
+    tensor_system ua' oa p q r ->
+    oa i = Some (existT _ _ (inl om)) ->
+    differ_pointwise ua ua' i ->
+    ua i = Some (existT _ _ (inl um)) ->
+    ua' i = None ->
+    tensor_system ua oa ((i, UEvent (Some (RetEv um v))) :: p) q r
+| TSRightUnderRet ua ua' oa p q i A (om : F' A) B (um : F B) v r :
+    tensor_system ua' oa p q r ->
+    oa i = Some (existT _ _ (inr om)) ->
+    differ_pointwise ua ua' i ->
+    ua i = Some (existT _ _ (inr um)) ->
+    ua' i = None ->
+    tensor_system ua oa p ((i, UEvent (Some (RetEv um v))) :: q) r
+| TSLeftUnderSil ua oa p q i A (om : E' A) B (um : E B) r :
+    tensor_system ua oa p q r ->
+    oa i = Some (existT _ _ (inl om)) ->
+    ua i = Some (existT _ _ (inl um)) ->
+    tensor_system ua oa ((i, UEvent None) :: p) q r
+| TSRightUnderSil ua oa p q i A (om : F' A) B (um : F B) r :
+    tensor_system ua oa p q r ->
+    oa i = Some (existT _ _ (inr om)) ->
+    ua i = Some (existT _ _ (inr um)) ->
+    tensor_system ua oa p ((i, UEvent None) :: q) r.
+
+Inductive over_rel {E E' F F'} : option {A & (E' |+| F') A} -> ThreadState E E' -> ThreadState F F' -> Prop :=
+| ORIdle :
+    over_rel None Idle Idle
+| ORLeftCont A (om : E' A) p :
+    over_rel (Some (existT _ _ (inl om))) (Cont om p) Idle
+| ORLeftUCall A (om : E' A) B (um : E B) k :
+    over_rel (Some (existT _ _ (inl om))) (UCall om um k) Idle
+| ORRightCont A (om : F' A) p :
+    over_rel (Some (existT _ _ (inr om))) Idle (Cont om p)
+| ORRightUCall A (om : F' A) B (um : F B) k :
+    over_rel (Some (existT _ _ (inr om))) Idle (UCall om um k).
+
+Inductive inter_system {E F} : ActiveMap E -> ActiveMap F -> Trace (ThreadLEvent E F) -> Prop :=
+| ISNil ua oa :
+    inter_system ua oa nil
+| ISOverCall ua oa oa' p i A (om : F A) :
+    inter_system ua oa' p ->
+    differ_pointwise oa oa' i ->
+    ua i = None ->
+    oa i = None ->
+    oa' i = Some (existT _ _ om) ->
+    inter_system ua oa ((i, OEvent (CallEv om)) :: p)
+| ISOverRet ua oa oa' p i A (om : F A) v :
+    inter_system ua oa' p ->
+    differ_pointwise oa oa' i ->
+    ua i = None ->
+    oa i = Some (existT _ _ om) ->
+    oa' i = None ->
+    inter_system ua oa ((i, OEvent (RetEv om v)) :: p)
+| ISUnderCall ua ua' oa p i A (om : F A) B (um : E B) :
+    inter_system ua' oa p ->
+    differ_pointwise ua ua' i ->
+    oa i = Some (existT _ _ om) ->
+    ua i = None ->
+    ua' i = Some (existT _ _ um) ->
+    inter_system ua oa ((i, UEvent (Some (CallEv um))) :: p)
+| ISUnderRet ua ua' oa p i A (om : F A) B (um : E B) v :
+    inter_system ua' oa p ->
+    differ_pointwise ua ua' i ->
+    oa i = Some (existT _ _ om) ->
+    ua i = Some (existT _ _ um) ->
+    ua' i = None ->
+    inter_system ua oa ((i, UEvent (Some (RetEv um v))) :: p)
+| IsUnderSil ua oa p i :
+    inter_system ua oa p ->
+    inter_system ua oa ((i, UEvent None) :: p).
+
+Lemma InterSteps_system {E F} {V : Spec E} {M : Impl E F} :
+  forall s p t,
+  InterSteps (spec:=V) M s p t ->
+  inter_system.
+
+(* Lemma funct_l_help {E F E' F'} {specE : Spec E} {specF : Spec F} {M : Impl E E'} {N : Impl F F'} {LState : InterState E' specE} {RState : InterState F' specF} {x0 : list (ThreadLEvent E E')} {x : list (ThreadLEvent F F')} {o : ThreadName -> option {A : Type & (E' |+| F') A}} {o0 : ThreadName -> option {A : Type & (E |+| F) A}} {a : Trace (ThreadEvent (E' |+| F'))} :
+  tensor_system o0 o x0 x a ->
+  forall (s : State specF) (s0 : State specE) (t0 : ThreadsSt E E'),
+  InterSteps M (t0, s0) x0 LState ->
+  forall t : ThreadsSt F F',
+  InterSteps N (t, s) x RState ->
+  (forall i : ThreadName, over_rel (o i) (t0 i) (t i)) ->
+  exists st q,
+    a = projOver q /\
+  InterSteps (spec:= tensorSpec specE specF) (tensorImpl M N) (fun i => tensorTS (t0 i) (t i), {| TActive := o0; LState := s0; RState := s |}) q st.
+intro H. induction H; cbn; intros; destruct_steps.
 {
-  
-} *)
+  repeat econstructor. easy.
+}
+{
+  eapply IHtensor_system in H7.
+  2: exact H6.
+  2:{
+    intros. specialize (H8 i0). dec_eq_nats i i0.
+    {
+      rewrite H3 in *. rewrite H2 in *.
+      dependent destruction H8. rewrite <- x0. rewrite <- x.
+      constructor.
+    }
+    {
+      rewrite H1. rewrite <- H5. easy. easy. easy.
+    }
+  }
+  destruct_all. subst.
+  exists x0, ((i, OEvent (CallEv (inl om))) :: x1).
+  cbn. split. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t1 j) (t j),_)).
+  split; cbn.
+  econstructor; cbn.
+  econstructor.
+  specialize (H8 i). rewrite H4, H2 in H8.
+  dependent destruction H8. rewrite H4, <- x.
+  easy.
+  cbn.
+  rewrite <- x. easy.
+  intros. rewrite H5; easy.
+  easy.
+  easy.
+}
+{
+  eapply IHtensor_system in H7.
+  2: exact H4.
+  2:{
+    intros. specialize (H8 i0). dec_eq_nats i i0.
+    {
+      rewrite H3 in *. rewrite H2 in *.
+      dependent destruction H8. rewrite <- x2. rewrite <- x0.
+      constructor.
+    }
+    {
+      rewrite H1. rewrite <- H6. easy. easy. easy.
+    }
+  }
+  destruct_all. subst.
+  exists x0, ((i, OEvent (CallEv (inr om))) :: x1).
+  cbn. split. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t0 j) (t1 j),_)).
+  split; cbn.
+  econstructor; cbn.
+  econstructor.
+  specialize (H8 i). rewrite H2, H5 in H8.
+  dependent destruction H8. rewrite H5, <- x.
+  easy.
+  cbn.
+  rewrite <- x. specialize (H8 i).
+  rewrite H5, H2 in H8. dependent destruction H8.
+  rewrite <- x. easy.
+  intros. rewrite H6; easy.
+  easy.
+  easy.
+}
+{
+  eapply IHtensor_system in H6.
+  2: exact H7.
+  2:{
+    intros. specialize (H8 i0). dec_eq_nats i i0.
+    rewrite H3 in *. rewrite H2 in *.
+    rewrite H4 in *. rewrite <- x in *.
+    dependent destruction H8. rewrite <- x. constructor.
+    rewrite H1. rewrite <- H5. easy. easy. easy.
+  }
+  destruct_all. subst.
+  exists x0, ((i, OEvent (RetEv (inl om) v)) :: x1).
+  split. cbn. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t1 j) (t j), _)).
+  split; cbn.
+  econstructor; cbn.
+  econstructor.
+  rewrite H4. cbn.
+  rewrite frobProgId at 1. easy.
+  rewrite <- x. specialize (H8 i).
+  rewrite H2, H4 in H8. dependent destruction H8.
+  rewrite <- x. easy.
+  intros. rewrite H5; easy.
+  easy.
+  easy.
+}
+{
+  eapply IHtensor_system in H7.
+  2: exact H4.
+  2:{
+    intros. specialize (H8 i0). dec_eq_nats i i0.
+    rewrite H3 in *. rewrite H2 in *. rewrite H5 in *.
+    rewrite <- x. dependent destruction H8. rewrite <- x.
+    constructor.
+    rewrite H1. rewrite <- H6. easy. easy. easy.
+  }
+  destruct_all. subst.
+  exists x0, ((i, OEvent (RetEv (inr om) v)) :: x1).
+  split. cbn. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t0 j) (t1 j), _)).
+  split; cbn.
+  econstructor; cbn.
+  econstructor.
+  specialize (H8 i). rewrite H2 in *. rewrite H5 in *.
+  dependent destruction H8. rewrite <- x. cbn.
+  rewrite frobProgId at 1. easy.
+  specialize (H8 i). rewrite H5 in *. rewrite H2 in *.
+  dependent destruction H8. rewrite <- x0. rewrite <- x.
+  easy.
+  intros. rewrite H6; easy.
+  easy.
+  easy.
+}
+{
+  eapply IHtensor_system in H6.
+  2: exact H7.
+  2:{
+    intros. specialize (H9 i0). dec_eq_nats i i0.
+    rewrite H4 in *. rewrite <- x. dependent destruction H9.
+    rewrite <- x. rewrite <- x1. constructor.
+    rewrite <- H5; easy.
+  }
+  destruct_all. subst.
+  exists x0, ((i, UEvent (Some (CallEv (inl um)))) :: x1).
+  cbn. split. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t1 j) (t j), MkTS ua' _ _)).
+  split; cbn.
+  econstructor; cbn.
+  econstructor.
+  rewrite H4. cbn. rewrite frobProgId at 1. easy.
+  specialize (H9 i). rewrite H0 in *. rewrite H4 in *.
+  rewrite <- x. dependent destruction H9. rewrite <- x.
+  easy.
+  intros. rewrite H5; easy.
+  split. exact H8.
+  split. easy.
+  split. easy.
+  split. easy.
+  easy.
+  easy.
+}
+{
+  eapply IHtensor_system in H7.
+  2: exact H4.
+  2:{
+    intros. specialize (H9 i0). dec_eq_nats i i0.
+    rewrite H0 in *. rewrite <- x. rewrite H5 in *.
+    dependent destruction H9. rewrite <- x.
+    constructor. rewrite <- H6; easy.
+  }
+  destruct_all. subst.
+  exists x0, ((i, UEvent (Some (CallEv (inr um)))) :: x1).
+  cbn. split. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t0 j) (t1 j), MkTS ua' _ _)).
+  split; cbn.
+  econstructor; cbn.
+  econstructor.
+  rewrite H5. cbn. specialize (H9 i). rewrite H0 in *. rewrite H5 in *.
+  dependent destruction H9. rewrite <- x. cbn. rewrite frobProgId at 1.
+  cbn. easy.
+  specialize (H9 i). rewrite H0 in *. rewrite <- x in *.
+  rewrite H5 in *. dependent destruction H9. rewrite <- x.
+  constructor.
+  intros. rewrite H6; easy.
+  split. exact H8.
+  split. easy.
+  split. easy.
+  split. easy.
+  easy.
+  easy.
+}
+{
+  eapply IHtensor_system in H6.
+  2: exact H7.
+  2:{
+    intros. specialize (H9 i0). dec_eq_nats i i0.
+    rewrite H0 in *. rewrite H4 in *. rewrite <- x.
+    dependent destruction H9. rewrite <- x. constructor.
+    rewrite <- H5; easy.
+  }
+  destruct_all. subst.
+  exists x0, ((i, UEvent (Some (RetEv (inl um) v))) :: x1).
+  cbn. split. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t1 j) (t j), MkTS ua' _ _)).
+  split; cbn.
+  econstructor; cbn.
+  econstructor. rewrite H4. cbn. easy.
+  rewrite <- x. easy.
+  intros. rewrite H5; easy.
+  split. exact H8.
+  split. easy.
+  split. easy.
+  split. easy.
+  easy.
+  easy.
+}
+{
+  eapply IHtensor_system in H7.
+  2: exact H4.
+  2:{
+    intros. specialize (H9 i0). dec_eq_nats i i0.
+    rewrite H0 in *. rewrite H5 in *. rewrite <- x.
+    dependent destruction H9. rewrite <- x. constructor.
+    rewrite <- H6; easy.
+  }
+  destruct_all. subst.
+  exists x0, ((i, UEvent (Some (RetEv (inr um) v))) :: x1).
+  cbn. split. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t0 j) (t1 j), MkTS ua' _ _)).
+  split; cbn.
+  econstructor; cbn.
+  specialize (H9 i). rewrite H0 in *. rewrite H5 in *.
+  dependent destruction H9. rewrite <- x.
+  econstructor. easy.
+  rewrite <- x0. easy.
+  intros. rewrite H6; easy.
+  split. exact H8.
+  easy.
+  easy.
+}
+{
+  eapply IHtensor_system in H4.
+  2: exact H5.
+  2:{
+    intros. specialize (H6 i0). dec_eq_nats i i0.
+    rewrite H0 in *. rewrite H2 in *. rewrite <- x.
+    dependent destruction H6. rewrite <- x. constructor.
+    rewrite <- H3; easy.
+  }
+  destruct_all. subst.
+  exists x0, ((i, UEvent None) :: x1).
+  split. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t1 j) (t j), MkTS ua _ _)).
+  split; cbn.
+  econstructor.
+  specialize (H6 i). rewrite H2 in *. cbn. rewrite <- x in *. rewrite H0 in *.
+  dependent destruction H6. rewrite <- x.
+  eapply USilentThreadStep.
+  cbn. rewrite frobProgId at 1. rewrite H2. simpl (tensorTS _ _).
+  rewrite frobProgId at 1. cbn. easy.
+  easy.
+  intros. rewrite H3; easy.
+  easy.
+  easy.
+}
+{
+  eapply IHtensor_system in H5.
+  2: exact H2.
+  2:{
+    intros. specialize (H6 i0). dec_eq_nats i i0.
+    rewrite H0 in *. rewrite H3 in *. rewrite <- x in *.
+    dependent destruction H6. rewrite <- x. constructor.
+    rewrite <- H4; easy.
+  }
+  destruct_all. subst.
+  exists x0, ((i, UEvent None) :: x1).
+  split. easy.
+  eapply StepsMore with (st'':=(fun j => tensorTS (t0 j) (t1 j), MkTS ua _ _)).
+  split; cbn.
+  econstructor; cbn.
+  specialize (H6 i).
+  rewrite H3 in *. rewrite <- x in *. rewrite H0 in *.
+  dependent destruction H6. rewrite <- x.
+  cbn. econstructor.
+  rewrite frobProgId at 1. easy.
+  easy.
+  intros. rewrite <- H4; easy.
+  easy.
+  easy.
+}
+Qed.
 
 Theorem tensor_layer_funct_l {E F E' F'}:   
   forall (specE : Spec E) (specF : Spec F) (M : Impl E E') (N : Impl F F'),
@@ -718,14 +1196,57 @@ Theorem tensor_layer_funct_l {E F E' F'}:
     (overObj (tensorLayer (specE :> M) (specF :> N))).
 unfold specRefines, Incl, IsTraceOfSpec. intros.
 destruct_all. destruct x.
+assert (SeqConsistent (fun _ => None) a).
+eapply ((tensorSpec (overObj (specE:>M)) (overObj (specF:>N)))).
+exact H.
 eapply split_tensor_steps with
   (specE:= overObj (specE :> M))
   (specF:= overObj (specF :> N))
   in H.
 repeat rewrite projInterSteps in *.
 destruct_all. cbn in *.
-clear H2 H4.
+cut (
+  exists st q,
+    a = projOver q /\
+    InterSteps (spec:= tensorSpec specE specF) (tensorImpl M N) (allIdle, MkTS (fun _ => None) (Init specE) (Init specF))
+  q
+  st
+).
+{
+  intros. destruct_all. subst.
+  exists x1, x2. repeat split.
+  easy.
+  dependent destruction H7.
+  left. easy.
+  unfold InterStep, ThreadsStep in H6. destruct_all.
+  dependent destruction H6. unfold ThreadStep in H6. cbn in H6.
+  destruct ev, l; cbn in *.
+  dependent destruction H6.
+  right. repeat econstructor. 
+}
+assert (
+  @tensor_system E E' F F' (fun _ => None) (fun _ => None) x0 x a
+).
 
+assert (
+  forall i,
+    @over_rel E E' F F' ((fun _ => None) i) (allIdle i) (allIdle i)
+).
+constructor.
+generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
+generalize dependent (fun _ : ThreadName => @None {A & (E' |+| F') A}).
+change (@allIdle (E |+| F) (E' |+| F'))
+with (fun i => tensorTS (@allIdle E E' i) (@allIdle F F' i)).
+generalize dependent (@allIdle E E').
+generalize dependent (@allIdle F F').
+intros.
+generalize dependent t. generalize dependent t0.
+generalize dependent (Init specE). generalize dependent (Init specF).
+generalize dependent a.
+clear TActive.
+intros.
+eapply funct_l_help.
+exact H6. exact H4. exact H2. easy.
 
 Theorem tensor_layer_funct_r {E F E' F'}:   
   forall (specE : Spec E) (specF : Spec F) (M : Impl E E') (N : Impl F F'),
