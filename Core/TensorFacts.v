@@ -817,15 +817,13 @@ Inductive tensor_system {E E' F F'} : ActiveMap (E |+| F) -> ActiveMap (E' |+| F
     ua i = Some (existT _ _ (inr um)) ->
     ua' i = None ->
     tensor_system ua oa p ((i, UEvent (Some (RetEv um v))) :: q) r
-| TSLeftUnderSil ua oa p q i A (om : E' A) B (um : E B) r :
+| TSLeftUnderSil ua oa p q i A (om : E' A) r :
     tensor_system ua oa p q r ->
     oa i = Some (existT _ _ (inl om)) ->
-    ua i = Some (existT _ _ (inl um)) ->
     tensor_system ua oa ((i, UEvent None) :: p) q r
-| TSRightUnderSil ua oa p q i A (om : F' A) B (um : F B) r :
+| TSRightUnderSil ua oa p q i A (om : F' A) r :
     tensor_system ua oa p q r ->
     oa i = Some (existT _ _ (inr om)) ->
-    ua i = Some (existT _ _ (inr um)) ->
     tensor_system ua oa p ((i, UEvent None) :: q) r.
 
 Inductive over_rel {E E' F F'} : option {A & (E' |+| F') A} -> ThreadState E E' -> ThreadState F F' -> Prop :=
@@ -871,8 +869,9 @@ Inductive inter_system {E F} : ActiveMap E -> ActiveMap F -> Trace (ThreadLEvent
     ua i = Some (existT _ _ um) ->
     ua' i = None ->
     inter_system ua oa ((i, UEvent (Some (RetEv um v))) :: p)
-| IsUnderSil ua oa p i :
+| IsUnderSil ua oa p i A (om : F A) :
     inter_system ua oa p ->
+    oa i = Some (existT _ _ om) ->
     inter_system ua oa ((i, UEvent None) :: p).
 
 Lemma InterSteps_system {E F} {V : Spec E} {M : Impl E F} :
@@ -946,6 +945,7 @@ induction p; cbn; intros; destruct_steps.
     rewrite H3. clear H3. rewrite H1. clear H1.
     econstructor.
     easy.
+    unfold tensorActiveOver. rewrite <- x. easy.
   }
   {
     apply IHp in H2. destruct_all. subst.
@@ -1228,12 +1228,12 @@ intro H. induction H; cbn; intros; destruct_steps.
 }
 {
   eapply IHtensor_system in H4.
-  2: exact H5.
+  2: exact H3.
   2:{
-    intros. specialize (H6 i0). dec_eq_nats i i0.
-    rewrite H0 in *. rewrite H2 in *. rewrite <- x.
-    dependent destruction H6. rewrite <- x. constructor.
-    rewrite <- H3; easy.
+    intros. specialize (H5 i0). dec_eq_nats i i0.
+    rewrite <- x in *. rewrite H1 in *. rewrite H0 in *.
+    dependent destruction H5. rewrite <- x. econstructor.
+    rewrite <- H2; easy.
   }
   destruct_all. subst.
   exists x0, ((i, UEvent None) :: x1).
@@ -1241,39 +1241,36 @@ intro H. induction H; cbn; intros; destruct_steps.
   eapply StepsMore with (st'':=(fun j => tensorTS (t1 j) (t j), MkTS ua _ _)).
   split; cbn.
   econstructor.
-  specialize (H6 i). rewrite H2 in *. cbn. rewrite <- x in *. rewrite H0 in *.
-  dependent destruction H6. rewrite <- x.
-  eapply USilentThreadStep.
-  cbn. rewrite frobProgId at 1. rewrite H2. simpl (tensorTS _ _).
-  rewrite frobProgId at 1. cbn. easy.
-  easy.
-  intros. rewrite H3; easy.
-  easy.
-  easy.
+  2:{ intros. rewrite H2; easy. }
+  2: easy.
+  2: easy.
+  cbn. eapply USilentThreadStep with (p:= mapProg (fun _ => inl) p0).
+  rewrite H1. cbn. rewrite frobProgId at 1. easy.
+  rewrite <- x. cbn. easy.
 }
 {
-  eapply IHtensor_system in H5.
-  2: exact H2.
+  eapply IHtensor_system in H4.
+  2: exact H1.
   2:{
-    intros. specialize (H6 i0). dec_eq_nats i i0.
-    rewrite H0 in *. rewrite H3 in *. rewrite <- x in *.
-    dependent destruction H6. rewrite <- x. constructor.
-    rewrite <- H4; easy.
+    intros. specialize (H5 i0). dec_eq_nats i i0.
+    rewrite <- x in *. rewrite H2 in *. rewrite H0 in *.
+    dependent destruction H5. rewrite <- x. econstructor.
+    rewrite <- H3; easy.
   }
   destruct_all. subst.
   exists x0, ((i, UEvent None) :: x1).
   split. easy.
   eapply StepsMore with (st'':=(fun j => tensorTS (t0 j) (t1 j), MkTS ua _ _)).
   split; cbn.
-  econstructor; cbn.
-  specialize (H6 i).
-  rewrite H3 in *. rewrite <- x in *. rewrite H0 in *.
-  dependent destruction H6. rewrite <- x.
-  cbn. econstructor.
+  econstructor.
+  2:{ intros. rewrite <- H3; easy. }
+  2: easy.
+  2: easy.
+  specialize (H5 i). rewrite H0 in *. rewrite H2 in *.
+  dependent destruction H5. cbn in *.
+  rewrite <- x. rewrite H2. rewrite <- x0.
+  cbn. eapply USilentThreadStep with (p:= mapProg (fun _ => inr) p0).
   rewrite frobProgId at 1. easy.
-  easy.
-  intros. rewrite <- H4; easy.
-  easy.
   easy.
 }
 Qed.
@@ -1308,53 +1305,137 @@ Require Import Lia.
 
 Ltac rw_all :=
 repeat match goal with
-| [ H : ?f ?i = ?v |- _] => rewrite H in *
+| [ H : ?f ?x = ?y |- _] => (repeat rewrite H in * || clear H)
+| [ H : ?x = ?f ?y |- _] => (repeat rewrite <- H in * || clear H)
 end.
 
-Program Fixpoint get_tensor_system {E E' F F'} {x0 : Trace (ThreadLEvent E E')} {x : Trace (ThreadLEvent F F')} {measure (length x0 + length x)} :
+Inductive tensor_trace_square {E E' F F'} : Trace (ThreadLEvent E E') -> Trace (ThreadLEvent F F') -> Trace (ThreadEvent (E' |+| F')) -> Prop :=
+| TTSNil :
+    tensor_trace_square nil nil nil
+| TTSLeftOverCall p q r i A (m : E' A) :
+    tensor_trace_square p q r ->
+    tensor_trace_square ((i, OEvent (CallEv m)) :: p) q ((i, CallEv (inl m)) :: r)
+| TTSLeftOverRet p q r i A (m : E' A) v :
+    tensor_trace_square p q r ->
+    tensor_trace_square ((i, OEvent (RetEv m v)) :: p) q ((i, RetEv (inl m) v) :: r)
+| TTSLeftUnderCall p q r i A (m : E A) :
+    tensor_trace_square p q r ->
+    tensor_trace_square ((i, UEvent (Some (CallEv m))) :: p) q r
+| TTSLeftUnderRet p q r i A (m : E A) v :
+    tensor_trace_square p q r ->
+    tensor_trace_square ((i, UEvent (Some (RetEv m v))) :: p) q r
+| TTSRightOverCall p q r i A (m : F' A) :
+    tensor_trace_square p q r ->
+    tensor_trace_square p ((i, OEvent (CallEv m)) :: q) ((i, CallEv (inr m)) :: r)
+| TTSRightOverRet p q r i A (m : F' A) v :
+    tensor_trace_square p q r ->
+    tensor_trace_square p ((i, OEvent (RetEv m v)) :: q) ((i, RetEv (inr m) v) :: r)
+| TTSRightUnderCall p q r i A (m : F A) :
+    tensor_trace_square p q r ->
+    tensor_trace_square p ((i, UEvent (Some (CallEv m))) :: q) r
+| TTSRightUnderRet p q r i A (m : F A) v :
+    tensor_trace_square p q r ->
+    tensor_trace_square p ((i, UEvent (Some (RetEv m v))) :: q) r
+| TTSLeftUnderSilent p q r i :
+    tensor_trace_square p q r ->
+    tensor_trace_square ((i, UEvent None) :: p) q r
+| TTSRightUnderSilent p q r i :
+    tensor_trace_square p q r ->
+    tensor_trace_square p ((i, UEvent None) :: q) r.
+
+Program Fixpoint get_tensor_trace_square {E E' F F'} {x0 : Trace (ThreadLEvent E E')} {x : Trace (ThreadLEvent F F')} {measure (length x0 + length x)} :
   forall a : Trace (ThreadEvent (E' |+| F')),
-  forall o : ThreadName -> option {A : Type & (E' |+| F') A},
-  SeqConsistent o a ->
   projLeft a = projOver x0 ->
   projRight a = projOver x ->
-  forall o0 : ThreadName -> option {A : Type & F' A}, 
-  forall o1 : ThreadName -> option {A : Type & E' A},
-  forall o2 : ThreadName -> option {A : Type & F A},
-  inter_system o2 o0 x ->
-  forall o3 : ThreadName -> option {A : Type & E A},
-  inter_system o3 o1 x0 ->
-  forall o4 : ThreadName -> option {A : Type & (E |+| F) A},
-  all_active_square o4 o3 o2 o1 o0 o ->
-  tensor_system o4 o x0 x a := _.
+  tensor_trace_square x0 x a := _.
 Next Obligation.
-destruct x, x0.
+rename get_tensor_trace_square into IH.
+destruct x, x0; cbn in *.
 {
   rewrite proj_dirs_nil.
   constructor. easy. easy.
 }
 {
-  dependent destruction H3; cbn in *.
-  {
-    dependent destruction H.
-    {
-      cbn in *. discriminate.
-    }
-    {
-      cbn in *. destruct m.
-      {
-        assert (H11' := H11). specialize (H11 i).
-        dependent destruction H3.
-        econstructor.
-        2:{ rw_all. dependent destruction H11. rewrite <- x2. easy. }
-        2:{ exact H1. }
-        2:{ easy. }
-        2:{ easy. }
-        
-      }
-    }
-  } 
+  destruct t, l, ev; cbn in *.
+  destruct e.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct a. cbn in *. discriminate.
+  destruct t, e, m0; cbn in *; try discriminate.
+  dependent destruction H.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct a. cbn in *. discriminate.
+  destruct t, e, m0; cbn in *; try discriminate.
+  dependent destruction H.
+  econstructor. apply IH. simpl. lia. easy. easy.
 }
-Admitted.
+{
+  destruct t, l, ev; cbn in *.
+  destruct e.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct a. cbn in *. discriminate.
+  destruct t, e, m0; cbn in *; try discriminate.
+  dependent destruction H0.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct a. cbn in *. discriminate.
+  destruct t, e, m0; cbn in *; try discriminate.
+  dependent destruction H0.
+  econstructor. apply IH. simpl. lia. easy. easy.
+}
+{
+  destruct t0, t, l, l0; cbn in *.
+  destruct ev, ev0.
+  destruct e, e0.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct a. cbn in *. discriminate.
+  destruct t, e, m; cbn in *; try discriminate.
+  destruct ev. destruct e0.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  dependent destruction H0.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct ev. destruct e0.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  dependent destruction H0.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct a. cbn in *. discriminate.
+  destruct t, e, m; cbn in *; try discriminate.
+  dependent destruction H.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct ev0. destruct e.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  dependent destruction H.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct ev0. destruct e.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  destruct a. cbn in *. discriminate.
+  destruct t, e, m; cbn in *; try discriminate.
+  dependent destruction H.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  dependent destruction H0.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  dependent destruction H.
+  econstructor. apply IH. simpl. lia. easy. easy.
+  dependent destruction H0.
+  econstructor. apply IH. simpl. lia. easy. easy.
+}
+Qed.
 
 Theorem tensor_layer_funct_l {E F E' F'}:   
   forall (specE : Spec E) (specF : Spec F) (M : Impl E E') (N : Impl F F'),
@@ -1410,8 +1491,253 @@ assert (
   generalize dependent (fun _ : ThreadName => @None {A & F' A}).
   generalize dependent (fun _ : ThreadName => @None {A & (E' |+| F') A}).
   intros.
-  eapply get_tensor_system.
-  easy. exact H2. exact H4. easy.
+  assert (tensor_trace_square x0 x a).
+  apply get_tensor_trace_square; easy.
+  move H4 after H5. move H2 after H4.
+  move H5 at bottom. move H0 before H4.
+  generalize dependent o4. generalize dependent o3.
+  generalize dependent o2. generalize dependent o1.
+  generalize dependent o0. generalize dependent o.
+  clear H H1 TActive LState RState.
+
+  induction H5; try (rename IHtensor_trace_square into IH); cbn; intros.
+  { constructor. }
+  {
+    dependent destruction H0. dependent destruction H4.
+    econstructor.
+    {
+      eapply IH. exact H2. exact H3. exact H4.
+      unfold all_active_square. intros. specialize (H10 i0).
+      dec_eq_nats i i0.
+      {
+        rw_all. dependent destruction H10.
+        rewrite <- x0. rewrite <- x2. rewrite <- x4.
+        econstructor.
+      }
+      {
+        rewrite H1. rewrite H6. easy. easy. easy.
+      }
+    }
+    {
+      specialize (H10 i). rw_all. dependent destruction H10. easy.
+    }
+    { easy. }
+    { easy. }
+    { easy. }
+  }
+  {
+    dependent destruction H0. dependent destruction H4.
+    econstructor.
+    {
+      eapply IH. exact H2. exact H3. exact H4.
+      unfold all_active_square. intros. specialize (H10 i0).
+      dec_eq_nats i i0.
+      {
+        rw_all. dependent destruction H10.
+        rewrite <- x0. rewrite <- x2. rewrite <- x3.
+        econstructor.
+      }
+      {
+        rewrite H1. rewrite H6. easy. easy. easy.
+      }
+    }
+    {
+      specialize (H10 i). rw_all. dependent destruction H10. easy.
+    }
+    { easy. }
+    { easy. }
+    { easy. }
+  }
+  {
+    dependent destruction H4.
+    eapply TSLeftUnderCall with (ua':=fun j => if i =? j then Some (existT _ _ (inl m)) else o4 j).
+    2:{
+      specialize (H7 i). rw_all. dependent destruction H7.
+      symmetry. exact x.
+    }
+    2:{
+      specialize (H7 i). rw_all. dependent destruction H7.
+      unfold differ_pointwise. intros. rewrite eqb_nid; easy.
+    }
+    {
+      eapply IH. easy. exact H2. exact H4.
+      unfold all_active_square. intros. specialize (H7 i0).
+      dec_eq_nats i i0.
+      {
+        rewrite H6 in *. rewrite H3 in *. rewrite H1 in *.
+        dependent destruction H7.
+        rewrite <- x0. rewrite <- x2. rewrite <- x3. rewrite <- x.
+        rewrite eqb_id. constructor.
+      }
+      {
+        rewrite eqb_nid. rewrite H. easy. easy. easy.
+      }
+    }
+    {
+      specialize (H7 i). rw_all. dependent destruction H7. easy.
+    }
+    {
+      rewrite eqb_id. easy.
+    }
+  }
+  {
+    dependent destruction H4.
+    eapply TSLeftUnderRet with (ua':=fun j => if i =? j then None else o4 j).
+    2:{
+      specialize (H7 i). rw_all. dependent destruction H7.
+      symmetry. exact x.
+    }
+    2:{
+      specialize (H7 i). rw_all. dependent destruction H7.
+      unfold differ_pointwise. intros. rewrite eqb_nid; easy.
+    }
+    {
+      eapply IH. easy. exact H2. exact H4.
+      unfold all_active_square. intros. specialize (H7 i0).
+      dec_eq_nats i i0.
+      {
+        rewrite H6 in *. rewrite H3 in *. rewrite H1 in *.
+        dependent destruction H7.
+        rewrite <- x0. rewrite <- x2. rewrite <- x1. rewrite <- x.
+        rewrite eqb_id. constructor.
+      }
+      {
+        rewrite eqb_nid. rewrite H. easy. easy. easy.
+      }
+    }
+    {
+      specialize (H7 i). rw_all. dependent destruction H7. easy.
+    }
+    {
+      rewrite eqb_id. easy.
+    }
+  }
+  {
+    dependent destruction H0. dependent destruction H3.
+    eapply TSRightOverCall with (oa':=a').
+    {
+      eapply IH. easy. exact H3. exact H9.
+      unfold all_active_square. intros. specialize (H10 i0).
+      dec_eq_nats i i0.
+      {
+        rw_all. dependent destruction H10.
+        rewrite <- x0. rewrite <- x1. rewrite <- x3.
+        econstructor.
+      }
+      {
+        rewrite H1. rewrite H4. easy. easy. easy.
+      }
+    }
+    { specialize (H10 i). rw_all. dependent destruction H10. easy. }
+    { easy. }
+    { easy. }
+    { easy. }
+  }
+  {
+    dependent destruction H0. dependent destruction H3.
+    eapply TSRightOverRet with (oa':=a').
+    {
+      eapply IH. easy. exact H3. exact H9.
+      unfold all_active_square. intros. specialize (H10 i0).
+      dec_eq_nats i i0.
+      {
+        rw_all. dependent destruction H10.
+        rewrite <- x0. rewrite <- x1. rewrite <- x3.
+        econstructor.
+      }
+      {
+        rewrite H1. rewrite H4. easy. easy. easy.
+      }
+    }
+    { specialize (H10 i). rw_all. dependent destruction H10. easy. }
+    { easy. }
+    { easy. }
+    { easy. }
+  }
+  {
+    dependent destruction H2.
+    eapply TSRightUnderCall with (ua':=fun j => if i =? j then Some (existT _ _ (inr m)) else o4 j).
+    2:{
+      specialize (H7 i). rw_all. dependent destruction H7.
+      symmetry. exact x.
+    }
+    2:{
+      specialize (H7 i). rw_all. dependent destruction H7.
+      unfold differ_pointwise. intros. rewrite eqb_nid; easy.
+    }
+    {
+      eapply IH. easy. exact H2. exact H6.
+      unfold all_active_square. intros. specialize (H7 i0).
+      dec_eq_nats i i0.
+      {
+        rewrite eqb_id. rw_all. dependent destruction H7.
+        rewrite <- x1. rewrite <- x3. rewrite <- x.
+        econstructor.
+      }
+      {
+        rewrite eqb_nid. rewrite H. easy. easy. easy.
+      }
+    }
+    {
+      specialize (H7 i). rw_all. dependent destruction H7. easy.
+    }
+    {
+      rewrite eqb_id. easy.
+    }
+  }
+  {
+    dependent destruction H2.
+    eapply TSRightUnderRet with (ua':=fun j => if i =? j then None else o4 j).
+    2:{
+      specialize (H7 i). rw_all. dependent destruction H7.
+      symmetry. exact x.
+    }
+    2:{
+      specialize (H7 i). rw_all. dependent destruction H7.
+      unfold differ_pointwise. intros. rewrite eqb_nid; easy.
+    }
+    {
+      eapply IH. easy. exact H2. exact H6.
+      unfold all_active_square. intros. specialize (H7 i0).
+      dec_eq_nats i i0.
+      {
+        rewrite eqb_id. rw_all. dependent destruction H7.
+        rewrite <- x2. rewrite <- x1. rewrite <- x.
+        econstructor.
+      }
+      {
+        rewrite eqb_nid. rewrite H. easy. easy. easy.
+      }
+    }
+    {
+      specialize (H7 i). rw_all. dependent destruction H7. easy.
+    }
+    {
+      rewrite eqb_id. easy.
+    }
+  }
+  {
+    dependent destruction H4.
+    econstructor.
+    {
+      eapply IH. easy. exact H2. exact H4. easy.
+    }
+    {
+      specialize (H3 i). rw_all. dependent destruction H3.
+      symmetry. exact x. easy.
+    }
+  }
+  {
+    dependent destruction H2.
+    econstructor.
+    {
+      eapply IH. easy. exact H2. exact H4. easy.
+    }
+    {
+      specialize (H3 i). rw_all. dependent destruction H3.
+      symmetry. exact x. easy.
+    }
+  }
 }
 assert (
   forall i,
@@ -1432,6 +1758,7 @@ clear TActive.
 intros.
 eapply funct_l_help.
 exact H6. exact H4. exact H2. easy.
+Qed.
 
 Theorem tensor_layer_funct_r {E F E' F'}:   
   forall (specE : Spec E) (specF : Spec F) (M : Impl E E') (N : Impl F F'),
