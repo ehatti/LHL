@@ -1760,6 +1760,76 @@ eapply funct_l_help.
 exact H6. exact H4. exact H2. easy.
 Qed.
 
+Lemma join_tensor_steps {E F} :
+  forall (specE : Spec E) (specF : Spec F),
+  forall p a tL tR,
+  SeqConsistent a p ->
+  forall sL sR,
+  Steps (Step specE) sL (projLeft p) tL ->
+  Steps (Step specF) sR (projRight p) tR ->
+  exists a',
+    Steps (TensorStep specE specF) (MkTS a sL sR) p (MkTS a' tL tR).
+intros specE specF p a tL tR. intro. induction H; cbn; intros.
+{
+  dependent destruction H. dependent destruction H0.
+  repeat econstructor.
+}
+{
+  destruct m; cbn in *.
+  {
+    dependent destruction H3.
+    eapply IHSeqConsistent in H4. 2: exact H5.
+    destruct_all. exists x.
+    eapply StepsMore with (st'':= MkTS a' _ _); cbn.
+    split. exact H3.
+    easy.
+    easy.
+  }
+  {
+    dependent destruction H4.
+    eapply IHSeqConsistent in H5. 2: exact H3.
+    destruct_all. exists x.
+    eapply StepsMore with (st'':= MkTS a' _ _); cbn.
+    split. exact H4.
+    easy.
+    easy.
+  }
+}
+{
+  destruct m; cbn in *.
+  {
+    dependent destruction H3.
+    eapply IHSeqConsistent in H4. 2: exact H5.
+    destruct_all. exists x.
+    eapply StepsMore with (st'':= MkTS a' _ _); cbn.
+    split. exact H3.
+    easy.
+    easy.
+  }
+  {
+    dependent destruction H4.
+    eapply IHSeqConsistent in H5. 2: exact H3.
+    destruct_all. exists x.
+    eapply StepsMore with (st'':= MkTS a' _ _); cbn.
+    split. exact H4.
+    easy.
+    easy.
+  }
+}
+Qed.
+
+Inductive left_constraint {E E' F F'} : Status (E |+| F) -> ThreadState (E |+| F) (E' |+| F') -> ThreadState E E' -> Prop :=
+| LCIdle :
+    left_constraint None Idle Idle
+| LCLeftCont A (om : E' A) p :
+    left_constraint None (Cont (inl om) (mapProg (fun _ => inl) p)) (Cont om p)
+| LCLeftUCall A (om : E' A) B (um : E B) k :
+    left_constraint (Some (existT _ _ (inl um))) (UCall (inl om) (inl um) (fun x => mapProg (fun _ => inl) (k x))) (UCall om um k)
+| LCRightCont A (om : F' A) p :
+    left_constraint None (Cont (inr om) (mapProg (fun _ => inr) p)) Idle
+| LCRightUCall A (om : F' A) B (um : F B) k :
+    left_constraint (Some (existT _ _ (inr um))) (UCall (inr om) (inr um) (fun x => mapProg (fun _ => inr) (k x))) Idle.
+
 Theorem tensor_layer_funct_r {E F E' F'}:   
   forall (specE : Spec E) (specF : Spec F) (M : Impl E E') (N : Impl F F'),
   specRefines
@@ -1767,3 +1837,79 @@ Theorem tensor_layer_funct_r {E F E' F'}:
     (tensorSpec (overObj (specE :> M)) (overObj (specF :> N))).
 unfold specRefines, Incl, IsTraceOfSpec. intros. destruct_all.
 simpl (Init _) in *.
+assert (H' := H).
+rewrite projInterSteps in H. destruct_all. subst. cbn.
+destruct x, s.
+cut (
+  exists a' tL tR,
+    Steps (TensorStep (overObj (specE:>M)) (overObj (specF:>N)))
+      (MkTS (specL:= overObj (specE:>M)) (specR:= overObj (specF:>N)) (fun _ => None) (allIdle, Init specE) (allIdle, Init specF))
+      (projOver x0)
+      (MkTS (specL:= overObj (specE:>M)) (specR:= overObj (specF:>N)) a' (tL, LState) (tR, RState))
+).
+{ intros. destruct_all. eexists. exact H. }
+clear H1.
+cut (
+  (exists tL,
+    Steps (Step (overObj (specE:>M))) (allIdle, Init specE) (projLeft (projOver x0)) (tL, LState)) /\
+  (exists tR,
+    Steps (Step (overObj (specF:>N))) (allIdle, Init specF) (projRight (projOver x0)) (tR, RState))
+).
+{
+  intros. destruct_all.
+  apply swapEx. exists x1. apply swapEx. exists x.
+  repeat rewrite projInterSteps in H, H1. destruct_all.
+  apply join_tensor_steps.
+  eapply (seq_cons _). exact H'.
+  easy.
+  easy.
+}
+clear H'.
+repeat rewrite projInterSteps. split; cbn in *.
+cut (
+  exists (tL : ThreadsSt E E') (q : list (ThreadLEvent E E')),
+    projLeft (projOver x0) = projOver q /\
+    InterSteps M (allIdle, Init specE) q (tL, LState)
+).
+{
+  intros. destruct_all. exists x, x1.
+  split. easy.
+  split. easy.
+  dependent destruction H1.
+  left. easy.
+  unfold InterStep, ThreadsStep in H1. destruct_all.
+  dependent destruction H1. unfold ThreadStep in H1.
+  destruct ev, l; cbn in *.
+  dependent destruction H1.
+  right. repeat econstructor.
+}
+{
+  assert (
+    forall i,
+      @left_constraint E E' F F' ((fun _ => None) i) (allIdle i) (allIdle i)
+  ).
+  { constructor. }
+  generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
+  generalize dependent (@allIdle E E').
+  generalize dependent (@allIdle (E |+| F) (E' |+| F')).
+  generalize dependent (Init specE). generalize dependent (Init specF).
+  intros.
+  generalize dependent o. generalize dependent t1.
+  generalize dependent t0. generalize dependent s0.
+  generalize dependent s.
+  induction x0; cbn; intros; destruct_steps.
+  {
+    repeat econstructor. easy.
+  }
+  {
+    destruct a, l, ev; cbn in *.
+    destruct e, m; cbn in *;
+    destruct_all; subst;
+    destruct_steps; cbn in *.
+    {
+      assert (H3' := H3). specialize (H3 n).
+      rewrite H4 in *. rewrite <- x1 in *.
+      dependent destruction H3.
+    }
+  }
+}
