@@ -1428,17 +1428,14 @@ destruct e.
         {
           exists (retPoss n ρ).
           split. exists ρ. easy. unfold mapRetPoss.
-          apply H16 in H14. destruct_all.
-          simpl. rewrite eqb_id.
-          rewrite H10 in H2. dependent destruction H2.
+          specialize (H10 _ H2 _ H14).
+          destruct_all. cbn. rewrite eqb_id.
           repeat split; (easy || apply differ_pointwise_trivial).
         }
         {
           destruct_all. subst. unfold mapRetPoss. simpl.
           exists x6. split. easy.
-          rewrite eqb_id.
-          apply H16 in H14. destruct_all.
-          rewrite H10 in H2. dependent destruction H2.
+          rewrite eqb_id. specialize (H10 _ H2 _ H14). destruct_all.
           repeat split; (easy || apply differ_pointwise_trivial).
         }
       }
@@ -1454,11 +1451,11 @@ destruct e.
         rewrite <- H3. 2: easy. easy.
         intros. destruct_all. subst. simpl.
         rewrite eqb_nid. 2: easy.
-        apply H17. easy.
+        apply H16. easy.
         intros.
         apply H.(P_stable).
         psplit.
-        apply H16.
+        apply H15.
         eapply H.(Ret_in_R) with (i:=n). easy.
         eexists _, m, n0.
         split.
@@ -1467,41 +1464,37 @@ destruct e.
         split; intros.
         {
           exists (retPoss n ρ).
-          split. exists ρ. easy. subst.
-          assert (H18' := H18). unfold mapRetPoss.
-          apply H17 in H18. apply H14 in H18'. destruct_all.
-          simpl. rewrite eqb_id.
-          rewrite H11 in H2. dependent destruction H2.
-          repeat split; try (easy || apply differ_pointwise_trivial).
+          split. exists ρ. easy. subst. unfold mapRetPoss.
+          specialize (H11 _ H2 _ H17). destruct_all.
+          cbn. rewrite eqb_id.
+          repeat split; (easy || apply differ_pointwise_trivial).
         }
         {
           destruct_all. subst. unfold mapRetPoss. simpl.
-          exists x9. split. easy.
-          rewrite eqb_id. assert (H18' := H18).
-          apply H14 in H18. apply H17 in H18'. destruct_all.
-          rewrite H11 in H2. dependent destruction H2.
+          exists x8. split. easy. rewrite eqb_id.
+          specialize (H11 _ H2 _ H17). destruct_all.
           repeat split; (easy || apply differ_pointwise_trivial).
         }
       }
       {
         destruct_all.
-        exists (x9 ->> R i).
+        exists (x8 ->> R i).
         split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i A0 m0) (TInvoke M i A0 m0) ->> x9)).
+          eapply (weakenSafe (P:= prComp (Ps i A0 m0) (TInvoke M i A0 m0) ->> x8)).
           2: easy.
           unfold sub, subRelt. intros.
-          pdestruct H18.
+          pdestruct H17.
           psplit.
-          exact H18.
-          apply H17 in H19.
+          exact H17.
+          apply H16 in H18.
           easy.
         }
         split.
         {
           rewrite <- precCompAssoc.
           psplit.
-          exact H16.
+          exact H15.
           apply H.(Ret_in_R) with (i:=n). easy.
           eexists _, m, n0.
           split.
@@ -1512,56 +1505,54 @@ destruct e.
           {
             exists (retPoss n ρ).
             split. exists ρ. easy. unfold mapRetPoss.
-            apply H14 in H12. destruct_all.
-            simpl. rewrite eqb_id.
-            rewrite H11 in H2. dependent destruction H2.
+            specialize (H11 _ H2 _ H12). destruct_all.
+            cbn. rewrite eqb_id.
             repeat split; (easy || apply differ_pointwise_trivial).
           }
           {
             destruct_all. subst. unfold mapRetPoss. simpl.
             exists x6. split. easy.
             rewrite eqb_id.
-            apply H14 in H12. destruct_all.
-            rewrite H11 in H2. dependent destruction H2.
+            specialize (H11 _ H2 _ H12). destruct_all.
             repeat split; (easy || apply differ_pointwise_trivial).
           }
         }
         {
           unfold sub, subRelt. intros.
-          pdestruct H18. apply H17 in H18.
-          exists x10, x11. easy.
+          pdestruct H17. apply H16 in H17.
+          exists x9, x10. easy.
         }
       }
       {
         destruct_all.
-        exists (x9 ->> R i), (fun v => x10 v ->> R i).
-        intros. specialize (H15 v). destruct_all.
+        exists (x8 ->> R i), (fun v => x9 v ->> R i).
+        intros. specialize (H14 v). destruct_all.
         split.
         {
-          eapply weakenCommitPre with (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x9).
+          eapply weakenCommitPre with (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x8).
           unfold sub, subRelt. intros.
-          pdestruct H20.
-          apply H19 in H21.
-          exists x11, x12. easy.
-          eapply weakenCommit with (Q:= x10 v).
+          pdestruct H19.
+          apply H18 in H20.
+          exists x10, x11. easy.
+          eapply weakenCommit with (Q:= x9 v).
           unfold sub, subRelt. intros.
           psplit. 2: apply H.(R_refl). easy.
           easy.
         }
         split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x9 ->> x10 v)).
+          eapply (weakenSafe (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x8 ->> x9 v)).
           unfold sub, subRelt. intros.
-          pdestruct H20. pdestruct H21.
-          apply H18 in H22. apply H19 in H21.
-          psplit. exact H20.
-          exists x13, x14. easy.
+          pdestruct H19. pdestruct H20.
+          apply H17 in H21. apply H18 in H20.
+          psplit. exact H19.
+          exists x12, x13. easy.
           easy.
         }
         split.
         {
           rewrite <- precCompAssoc.
-          psplit. exact H17.
+          psplit. exact H16.
           apply H.(Ret_in_R) with (i:=n). easy.
           eexists _, m, n0.
           split. econstructor. econstructor; easy. easy.
@@ -1571,30 +1562,28 @@ destruct e.
           {
             exists (retPoss n ρ).
             split. exists ρ. easy. unfold mapRetPoss.
-            apply H14 in H12. destruct_all.
-            simpl. rewrite eqb_id.
-            rewrite H11 in H2. dependent destruction H2.
+            specialize (H11 _ H2 _ H12). destruct_all.
+            cbn. rewrite eqb_id.
             repeat split; (easy || apply differ_pointwise_trivial).
           }
           {
             destruct_all. subst. unfold mapRetPoss. simpl.
             exists x6. split. easy.
             rewrite eqb_id.
-            apply H14 in H12. destruct_all.
-            rewrite H11 in H2. dependent destruction H2.
+            specialize (H11 _ H2 _ H12). destruct_all.
             repeat split; (easy || apply differ_pointwise_trivial).
           }
         }
         split.
         {
           unfold sub, subRelt. intros.
-          pdestruct H20. apply H18 in H20.
-          exists x11, x12. easy.
+          pdestruct H19. apply H17 in H19.
+          exists x10, x11. easy.
         }
         {
           unfold sub, subRelt. intros.
-          pdestruct H20. apply H19 in H20.
-          exists x11, x12. easy.
+          pdestruct H19. apply H18 in H19.
+          exists x10, x11. easy.
         }
       }
     }
@@ -1622,11 +1611,8 @@ destruct e.
     econstructor. 2: easy.
     econstructor. simpl.
     {
-      rewrite eqb_id.
-      apply H14 in H5. clear H14. destruct_all.
-      rewrite H5, H12.
-      rewrite H11 in H2. dependent destruction H2.
-      econstructor; easy.
+      rewrite eqb_id. specialize (H11 _ H2 _ H5). destruct_all.
+      rewrite H11, H12. econstructor; easy.
     }
     {
       simpl. intros.
@@ -1636,3 +1622,11 @@ destruct e.
   }
 }
 Qed.
+
+
+(* Theorem completeness {E F} (lay : Layer E F) VF :
+  Lin (overObj lay) VF ->
+  exists R G Ps Qs,
+    VerifyImpl lay.(USpec) VF R G Ps lay.(LImpl) Qs.
+unfold Lin, KConc. destruct lay. cbn. intros.
+rename USpec into VE. rename LImpl into M. *)

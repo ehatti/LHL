@@ -30,7 +30,7 @@ apply H. apply H'. apply H''.
 Qed.
 
 (* Locality *)
-Theorem locality {E F} : 
+Theorem locality {E F} :
   forall (specE specE' : Spec E) (specF specF' : Spec F) ,
   Lin specE' specE /\ Lin specF' specF <-> Lin (tensorSpec specE' specF') (tensorSpec specE specF).
 Proof.

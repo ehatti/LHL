@@ -231,8 +231,7 @@ Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
 
 Definition Returned {E F VE VF} (i : ThreadName) {A} (m : F A) : @Prec E F VE VF :=
   fun s ρs =>
-    exists (v : A),
-      fst s i = Cont m (Return v) /\
+    forall v, fst s i = Cont m (Return v) ->
       forall ρ, ρs ρ ->
         ρ.(PRets) i = RetPoss m v /\
         ρ.(PCalls) i = CallDone m.
