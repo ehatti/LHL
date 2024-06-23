@@ -60,11 +60,6 @@ Fixpoint from_bwd {A} (xs : bwd_list A) : list A :=
   | Snoc ys x => app (from_bwd ys) (cons x nil)
   end.
 
-Lemma to_bwd_nil {A} (xs : list A) :
-  Start = to_bwd xs ->
-  xs = nil.
-Admitted.
-
 Lemma bwd_app_nil {A} (xs : bwd_list A) :
   bwd_app Start xs = xs.
 induction xs.

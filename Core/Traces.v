@@ -224,6 +224,29 @@ induction p; cbn; intros.
 }
 Qed.
 
+Lemma InterUSteps_pres_idle {E F} {spec : Spec E} :
+  forall i t p s,
+  InterUSteps F spec s p t ->
+  fst s i = Idle ->
+  fst t i = Idle.
+unfold InterUSteps. intros.
+generalize dependent s. induction p; cbn; intros.
+{
+  dependent destruction H. easy.
+}
+{
+  dependent destruction H. unfold InterUStep in H. destruct_all.
+  dependent destruction H. cbn in *.
+  destruct s, a. cbn in *.
+  apply IHp in H1. easy.
+  destruct st''. cbn in *.
+  dependent destruction H.
+  dec_eq_nats i t1. congruence. rewrite <- H0; easy.
+  dec_eq_nats i t1. congruence. rewrite <- H0; easy.
+  dec_eq_nats i t1. congruence. rewrite <- H0; easy.
+}
+Qed.
+
 Program Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F := 
   {|
     State := InterState F lay.(USpec);
@@ -243,7 +266,114 @@ Definition overObjActiveMap {E F} (s : ThreadsSt E F) : ActiveMap F :=
   end.
 
 Next Obligation.
-Admitted.
+change (fun _ : ThreadName => @None {A & F A})
+with (overObjActiveMap (@allIdle E F)).
+generalize dependent (@allIdle E F).
+generalize dependent (Init (USpec lay)).
+induction p; cbn; intros.
+{
+  constructor.
+}
+{
+  dependent destruction H. destruct_all.
+  destruct st'', H, a, e. cbn in *; dependent destruction H.
+  {
+    eapply SCCall with (a':=fun i => if i =? t1 then Some (existT _ _ m) else overObjActiveMap t0 i); unfold overObjActiveMap.
+    rewrite <- x1. easy.
+    rewrite eqb_id. easy.
+    {
+      unfold differ_pointwise. intros.
+      rewrite eqb_nid, H2; try easy.
+      remember (x0 j). destruct t2.
+      eapply InterUSteps_pres_idle with (i:=j) in H1.
+      cbn in *. rewrite H1. easy.
+      easy.
+      move H1 at bottom.
+      eapply InterUSteps_pres with (m:=m0) (i:=j) in H1.
+      destruct H1; destruct_all; cbn in *.
+      rewrite H1. easy.
+      rewrite H1. easy.
+      cbn. rewrite <- Heqt2. left. repeat econstructor.
+      eapply InterUSteps_pres with (m:=om) (i:=j) in H1.
+      destruct H1; destruct_all; cbn in *.
+      rewrite H1. easy.
+      rewrite H1. easy.
+      cbn. rewrite <- Heqt2. right. repeat econstructor.
+    }
+    apply IHp in H0.
+    assert (overObjActiveMap t0 = (fun i : nat =>
+      if i =? t1 then
+      Some
+        (existT (fun A0 : Type => F A0) A m)
+      else match t0 i with
+      | Idle => None
+      | @Cont _ _ A0 m0 _ =>
+          Some (existT (fun A1 : Type => F A1) A0 m0)
+      | @UCall _ _ _ B m0 _ _ =>
+          Some (existT (fun A1 : Type => F A1) B m0)
+      end)).
+    unfold overObjActiveMap. extensionality i. dec_eq_nats i t1.
+    {
+      rewrite eqb_id.
+      eapply InterUSteps_pres with (A:=A) (i:=t1) (m:=m) in H1.
+      destruct H1; destruct_all; cbn in *.
+      rewrite H. easy.
+      rewrite H. easy.
+      cbn. rewrite <- x. left. repeat econstructor.
+    }
+    {
+      rewrite eqb_nid; easy.
+    }
+    symmetry in H. rewrite H. easy.
+  }
+  {
+    cbn in *. dependent destruction H.
+    eapply SCRet with (a':=fun i => if i =? t1 then None else overObjActiveMap t0 i); unfold overObjActiveMap.
+    rewrite <- x1. easy.
+    rewrite eqb_id. easy.
+    {
+      unfold differ_pointwise. intros.
+      rewrite eqb_nid, H2; try easy.
+      remember (x0 j). destruct t2.
+      eapply InterUSteps_pres_idle with (i:=j) in H1.
+      cbn in *. rewrite H1. easy.
+      easy.
+      move H1 at bottom.
+      eapply InterUSteps_pres with (m:=m0) (i:=j) in H1.
+      destruct H1; destruct_all; cbn in *.
+      rewrite H1. easy.
+      rewrite H1. easy.
+      cbn. rewrite <- Heqt2. left. repeat econstructor.
+      eapply InterUSteps_pres with (m:=om) (i:=j) in H1.
+      destruct H1; destruct_all; cbn in *.
+      rewrite H1. easy.
+      rewrite H1. easy.
+      cbn. rewrite <- Heqt2. right. repeat econstructor.
+    }
+    apply IHp in H0.
+    assert (overObjActiveMap t0 = (fun i : nat =>
+      if i =? t1 then
+      None
+      else match t0 i with
+      | Idle => None
+      | @Cont _ _ A0 m0 _ =>
+          Some (existT (fun A1 : Type => F A1) A0 m0)
+      | @UCall _ _ _ B m0 _ _ =>
+          Some (existT (fun A1 : Type => F A1) B m0)
+      end)).
+    unfold overObjActiveMap. extensionality i. dec_eq_nats i t1.
+    {
+      rewrite eqb_id.
+      eapply InterUSteps_pres_idle with (i:=t1) in H1.
+      cbn in *. rewrite H1. easy. easy.
+    }
+    {
+      rewrite eqb_nid; easy.
+    }
+    rewrite <- H. easy.
+  }
+}
+Qed.
 
 (* Refinement *)
 

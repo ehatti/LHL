@@ -1830,6 +1830,19 @@ Inductive left_constraint {E E' F F'} : Status (E |+| F) -> ThreadState (E |+| F
 | LCRightUCall A (om : F' A) B (um : F B) k :
     left_constraint (Some (existT _ _ (inr um))) (UCall (inr om) (inr um) (fun x => mapProg (fun _ => inr) (k x))) Idle.
 
+Inductive right_constraint {E E' F F'} : Status (E |+| F) -> ThreadState (E |+| F) (E' |+| F') -> ThreadState F F' -> Prop :=
+| RCIdle :
+    right_constraint None Idle Idle
+| RCLeftCont A (om : F' A) p :
+    right_constraint None (Cont (inr om) (mapProg (fun _ => inr) p)) (Cont om p)
+| RCLeftUCall A (om : F' A) B (um : F B) k :
+    right_constraint (Some (existT _ _ (inr um))) (UCall (inr om) (inr um) (fun x => mapProg (fun _ => inr) (k x))) (UCall om um k)
+| RCRightCont A (om : E' A) p :
+    right_constraint None (Cont (inl om) (mapProg (fun _ => inl) p)) Idle
+| RCRightUCall A (om : E' A) B (um : E B) k :
+    right_constraint (Some (existT _ _ (inl um))) (UCall (inl om) (inl um) (fun x => mapProg (fun _ => inl) (k x))) Idle.
+
+
 Theorem tensor_layer_funct_r {E F E' F'}:   
   forall (specE : Spec E) (specF : Spec F) (M : Impl E E') (N : Impl F F'),
   specRefines
@@ -1910,6 +1923,471 @@ cut (
       assert (H3' := H3). specialize (H3 n).
       rewrite H4 in *. rewrite <- x1 in *.
       dependent destruction H3.
+      {
+        destruct p;
+        rewrite frobProgId in x4 at 1; cbn in x4; try discriminate.
+        destruct s1. apply IHx0 with (t1:=fun i => if i =? n then UCall om0 e0 p else t1 i) in H1.
+        destruct_all.
+        2:{
+          intros. specialize (H3' i). dec_eq_nats i n.
+          rewrite eqb_id.
+          rewrite <- x in *. rewrite <- x2 in *. rewrite <- x1 in *.
+          rewrite H4 in *. cbn in *. rewrite H5.
+          dependent destruction x4. econstructor.
+          rewrite eqb_nid. cbn in *.
+          rewrite H6. rewrite <- H0. easy. easy. easy. easy.
+        }
+        exists x5, ((n, UEvent (Some (CallEv e0))) :: x6).
+        cbn in *. split. easy.
+        dependent destruction x4.
+        eapply StepsMore with (st'':=(fun i => if i =? n then UCall om0 e p else t1 i,_)); cbn.
+        unfold InterStep, ThreadsStep, StateStep. cbn. split.
+        econstructor. econstructor; cbn.
+        symmetry. exact x.
+        rewrite eqb_id. easy.
+        intros. rewrite eqb_nid; easy.
+        exact H2.
+        easy.
+      }
+      {
+        destruct p; rewrite frobProgId in x4 at 1;
+        cbn in *; discriminate.
+      }
+    }
+    {
+      assert (H3' := H3). specialize (H3 n).
+      rewrite H4 in *. rewrite <- x1 in *.
+      dependent destruction H3.
+      {
+        destruct p;
+        rewrite frobProgId in x4 at 1; cbn in x4; try discriminate.
+      }
+      {
+        destruct s1; cbn in *. eapply IHx0 with (t1:=t1) in H1.
+        2:{
+          intros. specialize (H3' i). dec_eq_nats i n.
+          rewrite H4 in *. rewrite H5 in *. rewrite <- x in *.
+          rewrite <- x2 in *. rewrite <- x1 in *.
+          destruct p; rewrite frobProgId in x4 at 1;
+          cbn in x4; try discriminate.
+          dependent destruction x4. econstructor.
+          rewrite H6. rewrite <- H0. easy. easy. easy.
+        }
+        destruct_all.
+        exists x5, x6. easy.
+      }
+    }
+    {
+      assert (H3' := H3). specialize (H3 n).
+      rewrite H4 in *. rewrite <- x1 in *.
+      dependent destruction H3.
+      destruct s1. cbn in *. apply IHx0 with (t1:=fun i => if i =? n then Cont om0 (k0 n0) else t1 i) in H1.
+      2:{
+        intros. specialize (H3' i). dec_eq_nats i n.
+        rewrite eqb_id. rewrite H5. rewrite <- x2.
+        econstructor.
+        rewrite eqb_nid. rewrite H6. rewrite <- H0.
+        easy. easy. easy. easy.
+      }
+      destruct_all.
+      exists x3, ((n, UEvent (Some (RetEv e n0))) :: x4).
+      split. easy.
+      eapply StepsMore with (st'':=(fun i : nat => if i =? n then Cont om0 (k0 n0) else t1 i, _)).
+      unfold InterStep, ThreadsStep. cbn. split.
+      econstructor. econstructor.
+      cbn. symmetry. exact x.
+      cbn. rewrite eqb_id. easy.
+      intros. rewrite eqb_nid. easy. easy.
+      exact H2.
+      easy.
+    }
+    {
+      destruct s1. cbn in *. eapply IHx0 with (t1:=t1) in H1.
+      2:{
+        intros. specialize (H3 i). dec_eq_nats i n.
+        rewrite H4 in *. rewrite <- x1 in *.
+        dependent destruction H3. rewrite <- x. rewrite H5.
+        rewrite <- x2. econstructor.
+        rewrite H6. rewrite <- H0. easy. easy. easy.
+      }
+      destruct_all.
+      exists x2, x3. easy.
+    }
+    {
+      dependent destruction H. destruct s1. cbn in *.
+      dependent destruction H2.
+      assert (H3' := H3). specialize (H3 n). rewrite <- x1 in H3.
+      dependent destruction H3.
+      {
+        rewrite frobProgId in x4 at 1.
+        destruct p0; cbn in x4; try discriminate.
+        dependent destruction x4.
+        eapply IHx0 with (t1:=fun i => if i =? n then Cont om0 p0 else t1 i) in H1.
+        2:{
+          intros. specialize (H3' i). dec_eq_nats i n. rewrite eqb_id.
+          rewrite <- x in *. rewrite <- x3 in *. rewrite <- x1 in *.
+          rewrite <- x2. econstructor.
+          rewrite eqb_nid. rewrite <- H0; easy. easy.
+        }
+        destruct_all. exists x4, ((n, UEvent None) :: x5).
+        split. easy.
+        eapply StepsMore with (st'':=(fun i => if i =? n then Cont om0 p0 else t1 i,_)).
+        unfold InterStep, ThreadsStep. split.
+        econstructor. econstructor.
+        cbn. symmetry. exact x.
+        cbn. rewrite eqb_id. easy.
+        intros. cbn in *. rewrite eqb_nid; easy.
+        easy.
+        easy.
+      }
+      {
+        rewrite frobProgId in x4 at 1.
+        destruct p0; cbn in x4; try discriminate.
+        dependent destruction x4.
+        eapply IHx0 with (t1:=t1) in H1.
+        2:{
+          intros. specialize (H3' i). dec_eq_nats i n.
+          rewrite <- x3. rewrite <- x2. rewrite <- x.
+          econstructor.
+          rewrite <- H0; easy.
+        }
+        destruct_all.
+        exists x4, x5. easy.
+      }
+    }
+    {
+      destruct s1. cbn in *. dependent destruction H2.
+      destruct m; cbn in *; dependent destruction H; cbn in *.
+      {
+        eapply IHx0 with (t1:=fun i => if i =? n then Cont e (M _ e) else t1 i) in H1.
+        2:{
+          intros. specialize (H3 i). dec_eq_nats i n.
+          rewrite eqb_id. rewrite <- x1 in *. rewrite <- x in *.
+          dependent destruction H3. rewrite <- x3.
+          econstructor.
+          rewrite eqb_nid. rewrite <- H0; easy. easy.
+        }
+        specialize (H3 n). rewrite <- x1 in H3.
+        dependent destruction H3.
+        destruct_all.
+        exists x4, ((n, OEvent (CallEv e)) :: x5).
+        split. cbn. f_equal. easy.
+        eapply StepsMore with (st'':=(fun i => if i =? n then Cont e (M _ e) else t1 i, _)).
+        unfold InterStep, ThreadsStep. split.
+        econstructor. econstructor.
+        cbn. easy.
+        cbn. rewrite eqb_id. easy.
+        cbn. intros. rewrite eqb_nid; easy.
+        easy.
+        easy.
+      }
+      {
+        eapply IHx0 with (t1:=t1) in H1.
+        2:{
+          intros. specialize (H3 i). dec_eq_nats i n.
+          rewrite <- x1 in *. dependent destruction H3.
+          rewrite <- x3. rewrite <- x. rewrite <- x2.
+          econstructor.
+          rewrite <- H0; easy.
+        }
+        destruct_all.
+        exists x2, x3. easy.
+      }
+    }
+    {
+      destruct s1. cbn in *. dependent destruction H2.
+      destruct m; cbn in *; dependent destruction H; cbn in *.
+      {
+        eapply IHx0 with (t1:=fun i => if i =? n then Idle else t1 i) in H1.
+        2:{
+          intros. specialize (H3 i). dec_eq_nats i n.
+          rewrite eqb_id. rewrite <- x1 in *. rewrite <- x.
+          dependent destruction H3.
+          symmetry in x4. rewrite <- x3.
+          econstructor.
+          rewrite eqb_nid. rewrite <- H0; easy. easy.
+        }
+        specialize (H3 n). rewrite <- x1 in H3.
+        dependent destruction H3.
+        destruct_all.
+        exists x5, ((n, OEvent (RetEv e n0)) :: x6).
+        split. cbn. f_equal. easy.
+        eapply StepsMore with (st'':=(fun i => if i =? n then Idle else t1 i, _)).
+        unfold InterStep, ThreadsStep. split.
+        econstructor. econstructor.
+        cbn. rewrite frobProgId in x4 at 1.
+        destruct p; cbn in x4; try discriminate.
+        dependent destruction x4. easy.
+        cbn. rewrite eqb_id. easy.
+        cbn. intros. rewrite eqb_nid; easy.
+        cbn. easy.
+        easy.
+      }
+      {
+        eapply IHx0 with (t1:=t1) in H1.
+        destruct_all.
+        exists x2, x3. easy.
+        intros. specialize (H3 i). dec_eq_nats i n.
+        rewrite <- x1 in H3. dependent destruction H3.
+        rewrite <- x3. rewrite <- x2. rewrite <- x.
+        econstructor.
+        rewrite <- H0; easy.
+      }
     }
   }
 }
+cut (
+  exists (tL : ThreadsSt F F') (q : list (ThreadLEvent F F')),
+    projRight (projOver x0) = projOver q /\
+    InterSteps N (allIdle, Init specF) q (tL, RState)
+).
+{
+  intros. destruct_all. exists x, x1.
+  split. easy.
+  split. easy.
+  dependent destruction H1.
+  left. easy.
+  unfold InterStep, ThreadsStep in H1. destruct_all.
+  dependent destruction H1. unfold ThreadStep in H1.
+  destruct ev, l; cbn in *.
+  dependent destruction H1.
+  right. repeat econstructor.
+}
+{
+  assert (
+    forall i,
+      @right_constraint E E' F F' ((fun _ => None) i) (allIdle i) (allIdle i)
+  ).
+  { constructor. }
+  generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
+  generalize dependent (@allIdle F F').
+  generalize dependent (@allIdle (E |+| F) (E' |+| F')).
+  generalize dependent (Init specF). generalize dependent (Init specE).
+  intros.
+  generalize dependent o. generalize dependent t1.
+  generalize dependent t0. generalize dependent s0.
+  generalize dependent s.
+  induction x0; cbn; intros; destruct_steps.
+  {
+    repeat econstructor. easy.
+  }
+  {
+    destruct a, l, ev; cbn in *.
+    destruct e, m; cbn in *;
+    destruct_all; subst;
+    destruct_steps; cbn in *.
+    {
+      destruct s1. cbn in *. eapply IHx0 with (t1:=t1) in H1.
+      2:{
+        intros. specialize (H3 i). dec_eq_nats i n.
+        rewrite H4 in *. rewrite <- x1 in *. rewrite <- x.
+        dependent destruction H3. rewrite frobProgId in x4 at 1.
+        destruct p; cbn in x4.
+        2: discriminate. 2: discriminate.
+        dependent destruction x4.
+        rewrite <- x.  rewrite frobProgId in x4 at 1.
+        destruct p; cbn in x4; try discriminate.
+        dependent destruction x4.
+        rewrite H5. econstructor.
+        rewrite <- H0. rewrite H6. easy. easy. easy.
+      }
+      destruct_all.
+      exists x2, x3. easy.
+    }
+    {
+      assert (H3' := H3). specialize (H3 n).
+      rewrite H4 in *. rewrite <- x1 in *. dependent destruction H3.
+      {
+        rewrite frobProgId in x4 at 1.
+        destruct p; cbn in x4; try discriminate.
+        dependent destruction x4.
+        destruct s1. cbn in *.
+        eapply IHx0 with (t1:=fun i => if i =? n then UCall om0 f p else t1 i) in H1.
+        2:{
+          intros. specialize (H3' i). dec_eq_nats i n.
+          rewrite eqb_id.
+          rewrite H4 in *. rewrite <- x1 in *. rewrite <- x2.
+          rewrite H5. econstructor.
+          rewrite eqb_nid. rewrite H6. rewrite <- H0.
+          easy. easy. easy. easy.
+        }
+        destruct_all.
+        exists x4, ((n, UEvent (Some (CallEv f))) :: x5).
+        split. easy.
+        eapply StepsMore with (st'':=(fun i => if i =? n then UCall om0 f p else t1 i, _)).
+        unfold InterStep, ThreadsStep. split.
+        econstructor. econstructor.
+        cbn. symmetry. exact x.
+        cbn. rewrite eqb_id. easy.
+        cbn. intros. rewrite eqb_nid; easy.
+        cbn. exact H2.
+        easy.
+      }
+      {
+        rewrite frobProgId in x4 at 1.
+        destruct p; cbn in x4; discriminate.
+      }
+    }
+    {
+      assert (H3' := H3).
+      destruct s1. cbn in *.
+      specialize (H3 n). rewrite <- x1 in H3. rewrite H4 in H3.
+      dependent destruction H3.
+      eapply IHx0 with (t1:=t1) in H1.
+      2:{
+        intros. specialize (H3' i). dec_eq_nats i n.
+        rewrite H4 in *. rewrite <- x1 in *.
+        dependent destruction H3'.
+        rewrite H5. rewrite <- x. rewrite <- x2.
+        econstructor.
+        rewrite H6. rewrite <- H0. easy. easy. easy.
+      }
+      destruct_all.
+      exists x3, x4. easy.
+    }
+    {
+      assert (H3' := H3). specialize (H3 n). destruct s1. cbn in *.
+      rewrite H4 in *. rewrite <- x1 in *. dependent destruction H3.
+      eapply IHx0 with (t1:=fun i => if i =? n then Cont om0 (k0 n0) else t1 i) in H1.
+      2:{
+        intros. specialize (H3' i). dec_eq_nats i n.
+        rewrite eqb_id. rewrite H4 in *. rewrite <- x1 in *.
+        dependent destruction H3'. rewrite H5. rewrite <- x2.
+        econstructor.
+        rewrite eqb_nid. rewrite <- H0. rewrite H6.
+        easy. easy. easy. easy.
+      }
+      destruct_all.
+      exists x3, ((n, UEvent (Some (RetEv f n0))) :: x4).
+      split. easy.
+      eapply StepsMore with (st'':=(fun i => if i =? n then Cont om0 (k0 n0) else t1 i, _)).
+      unfold InterStep, ThreadsStep. split.
+      econstructor. econstructor.
+      cbn. symmetry. exact x.
+      cbn. rewrite eqb_id. easy.
+      cbn. intros. rewrite eqb_nid; easy.
+      cbn. exact H2.
+      easy.
+    }
+    {
+      dependent destruction H. destruct s1. cbn in *.
+      dependent destruction H2.
+      assert (H3' := H3). specialize (H3 n). rewrite <- x1 in H3.
+      dependent destruction H3.
+      {
+        rewrite frobProgId in x4 at 1.
+        destruct p0; cbn in x4; try discriminate.
+        dependent destruction x4.
+        eapply IHx0 with (t1:=fun i => if i =? n then Cont om0 p0 else t1 i) in H1.
+        2:{
+          intros. specialize (H3' i). dec_eq_nats i n. rewrite eqb_id.
+          rewrite <- x in *. rewrite <- x3 in *. rewrite <- x1 in *.
+          rewrite <- x2. econstructor.
+          rewrite eqb_nid. rewrite <- H0; easy. easy.
+        }
+        destruct_all. exists x4, ((n, UEvent None) :: x5).
+        split. easy.
+        eapply StepsMore with (st'':=(fun i => if i =? n then Cont om0 p0 else t1 i,_)).
+        unfold InterStep, ThreadsStep. split.
+        econstructor. econstructor.
+        cbn. symmetry. exact x.
+        cbn. rewrite eqb_id. easy.
+        intros. cbn in *. rewrite eqb_nid; easy.
+        easy.
+        easy.
+      }
+      {
+        rewrite frobProgId in x4 at 1.
+        destruct p0; cbn in x4; try discriminate.
+        dependent destruction x4.
+        eapply IHx0 with (t1:=t1) in H1.
+        2:{
+          intros. specialize (H3' i). dec_eq_nats i n.
+          rewrite <- x3. rewrite <- x2. rewrite <- x.
+          econstructor.
+          rewrite <- H0; easy.
+        }
+        destruct_all.
+        exists x4, x5. easy.
+      }
+    }
+    {
+      destruct s1. cbn in *. dependent destruction H2.
+      destruct m; cbn in *; dependent destruction H; cbn in *.
+      {
+        eapply IHx0 with (t1:=t1) in H1.
+        destruct_all.
+        exists x2, x3. easy.
+        intros. specialize (H3 i). dec_eq_nats i n.
+        rewrite <- x1 in H3. dependent destruction H3.
+        rewrite <- x3. rewrite <- x2. rewrite <- x.
+        econstructor.
+        rewrite <- H0; easy.
+      }
+      {
+        eapply IHx0 with (t1:=fun i => if i =? n then Cont f (N _ f) else t1 i) in H1.
+        2:{
+          intros. specialize (H3 i). dec_eq_nats i n.
+          rewrite eqb_id. rewrite <- x1 in *. rewrite <- x in *.
+          dependent destruction H3. rewrite <- x3.
+          econstructor.
+          rewrite eqb_nid. rewrite <- H0; easy. easy.
+        }
+        specialize (H3 n). rewrite <- x1 in H3.
+        dependent destruction H3.
+        destruct_all.
+        exists x4, ((n, OEvent (CallEv f)) :: x5).
+        split. cbn. f_equal. easy.
+        eapply StepsMore with (st'':=(fun i => if i =? n then Cont f (N _ f) else t1 i, _)).
+        unfold InterStep, ThreadsStep. split.
+        econstructor. econstructor.
+        cbn. easy.
+        cbn. rewrite eqb_id. easy.
+        cbn. intros. rewrite eqb_nid; easy.
+        easy.
+        easy.
+      }
+    }
+    {
+      destruct s1. cbn in *. dependent destruction H2.
+      destruct m; cbn in *; dependent destruction H; cbn in *.
+      {
+        eapply IHx0 with (t1:=t1) in H1.
+        destruct_all.
+        exists x2, x3. easy.
+        intros. specialize (H3 i). dec_eq_nats i n.
+        rewrite <- x1 in H3. dependent destruction H3.
+        rewrite <- x3. rewrite <- x2. rewrite <- x.
+        econstructor.
+        rewrite <- H0; easy.
+      }
+      {
+        eapply IHx0 with (t1:=fun i => if i =? n then Idle else t1 i) in H1.
+        2:{
+          intros. specialize (H3 i). dec_eq_nats i n.
+          rewrite eqb_id. rewrite <- x1 in *. rewrite <- x.
+          dependent destruction H3.
+          symmetry in x4. rewrite <- x3.
+          econstructor.
+          rewrite eqb_nid. rewrite <- H0; easy. easy.
+        }
+        specialize (H3 n). rewrite <- x1 in H3.
+        dependent destruction H3.
+        destruct_all.
+        exists x5, ((n, OEvent (RetEv f n0)) :: x6).
+        split. cbn. f_equal. easy.
+        eapply StepsMore with (st'':=(fun i => if i =? n then Idle else t1 i, _)).
+        unfold InterStep, ThreadsStep. split.
+        econstructor. econstructor.
+        cbn. rewrite frobProgId in x4 at 1.
+        destruct p; cbn in x4; try discriminate.
+        dependent destruction x4. easy.
+        cbn. rewrite eqb_id. easy.
+        cbn. intros. rewrite eqb_nid; easy.
+        cbn. easy.
+        easy.
+      }
+    }
+  }
+}
+Qed.

@@ -89,10 +89,162 @@ Qed.
 
 (* implEq implies refinement *)
 
+Inductive implEq_rel {E F} : ThreadState E F -> ThreadState E F -> Prop :=
+| IEIdle :
+    implEq_rel Idle Idle
+| IECont A (om : F A) p q :
+    progEq p q ->
+    implEq_rel (Cont om p) (Cont om q)
+| IEUCall A (om : F A) B (um : E B) f g :
+    (forall x, progEq (f x) (g x)) ->
+    implEq_rel (UCall om um f) (UCall om um g).
+
+Lemma swapEx {A B} {P : A -> B -> Prop} :
+  (exists x y, P x y) ->
+  (exists y x, P x y).
+intros. destruct_all. repeat eexists. exact H.
+Qed.
+
 Theorem implEq_refines : 
   forall E F spec impl impl',
-  @implEq E F impl impl' -> specRefines (overObj (spec :> impl)) (overObj (spec :> impl')).
-Admitted.
+  @implEq E F impl impl' ->
+  specRefines (overObj (spec :> impl)) (overObj (spec :> impl')).
+unfold specRefines, Incl, IsTraceOfSpec. intros. destruct_all.
+repeat rewrite projInterSteps in *. apply swapEx.
+destruct_all. subst. exists x0. repeat split; try easy.
+clear H2. cbn in *.
+cut (
+  exists y,
+    InterSteps impl' (allIdle, Init spec) x0 y
+).
+{
+  intros. destruct_all. exists x1.
+  repeat split; try easy.
+  dependent destruction H0.
+  left. easy.
+  unfold InterStep, ThreadsStep in H0. destruct_all.
+  dependent destruction H0. cbn in *.
+  unfold ThreadStep in H0. destruct ev, l; cbn in *.
+  dependent destruction H0.
+  right. repeat econstructor.
+}
+assert (forall i, implEq_rel (@allIdle E F i) (@allIdle E F i)).
+constructor.
+revert H1 H0.
+cut (
+  forall t r s,
+  (forall i : ThreadName, @implEq_rel E F (t i) (r i)) ->
+  InterSteps impl (t, s) x0 x ->
+  exists y : InterState F spec, InterSteps impl' (r, s) x0 y
+).
+{
+  intros. eapply H0 in H2. destruct_all.
+  exists x1. exact H2. easy.
+}
+cut (
+  forall t r i e t',
+  implEq_rel (t i) (r i) ->
+  ThreadsStep impl t (i, e) t' ->
+  exists r',
+    implEq_rel (t' i) (r' i) /\
+    ThreadsStep impl' r (i, e) r'
+).
+{
+  intros.
+  generalize dependent t. generalize dependent r.
+  generalize dependent s.
+  induction x0; cbn in *; intros.
+  {
+    repeat econstructor.
+  }
+  {
+    dependent destruction H2. destruct st''.
+    unfold InterStep in H2. destruct_all. destruct a. cbn in *.
+    assert (differ_pointwise t0 t n).
+    { unfold ThreadsStep in H2. dependent destruction H2. easy. }
+    apply H0 with (r:=r) in H2. 2: easy.
+    destruct_all.
+    apply IHx0 with (r:=x) in H3.
+    2:{
+      intros. specialize (H1 i). dec_eq_nats i n.
+      easy.
+      rewrite <- H5.
+      unfold ThreadsStep in H6. dependent destruction H6. cbn in *.
+      rewrite <- H4; easy. easy.
+    }
+    destruct_all. exists x1.
+    eapply StepsMore with (st'':=(x, s0)).
+    2: easy.
+    unfold InterStep. cbn. easy.
+  }
+}
+unfold ThreadsStep. cbn. intros.
+dependent destruction H1. unfold ThreadStep in H1.
+cbn in *. destruct e; cbn in *.
+dependent destruction H1.
+{
+  rewrite H1 in *. dependent destruction H0.
+  rewrite <- x2. dependent destruction H0.
+  exists (fun j => if i =? j then UCall om um f2 else r j).
+  split.
+  { rewrite eqb_id. econstructor. easy. }
+  {
+    econstructor. econstructor.
+    cbn. symmetry. exact x.
+    cbn. rewrite eqb_id. easy.
+    cbn. intros. rewrite eqb_nid; easy.
+  }
+}
+{
+  rewrite H1 in *. dependent destruction H0.
+  rewrite <- x2.
+  exists (fun j => if i =? j then Cont om (g v) else r j).
+  split.
+  { rewrite eqb_id. econstructor. easy. }
+  {
+    econstructor. econstructor.
+    cbn. symmetry. exact x.
+    cbn. rewrite eqb_id. easy.
+    cbn. intros. rewrite eqb_nid; easy.
+  }
+}
+{
+  rewrite H1 in *. dependent destruction H0.
+  rewrite <- x2. dependent destruction H0.
+  exists (fun j => if i =? j then Cont om p2 else r j).
+  split.
+  { rewrite eqb_id. econstructor. easy. }
+  {
+    econstructor. econstructor.
+    cbn. symmetry. exact x.
+    cbn. rewrite eqb_id. easy.
+    cbn. intros. rewrite eqb_nid; easy.
+  }
+}
+dependent destruction H1.
+{
+  exists (fun j => if i =? j then Cont m (impl' A m) else r j).
+  split.
+  { rewrite eqb_id. rewrite <- x. constructor. apply H. }
+  {
+    econstructor. econstructor.
+    cbn. rewrite H1 in H0. dependent destruction H0. easy.
+    cbn. rewrite eqb_id. easy.
+    cbn. intros. rewrite eqb_nid; easy.
+  }
+}
+{
+  exists (fun j => if i =? j then Idle else r j).
+  split.
+  { rewrite eqb_id. rewrite <- x. constructor. }
+  {
+    econstructor. econstructor.
+    cbn. rewrite H1 in H0. do 2 dependent destruction H0. easy.
+    cbn. rewrite eqb_id. easy.
+    cbn. intros. rewrite eqb_nid; easy.
+  }
+}
+Qed.
 
 (* Eutt implies refinement *)
 
