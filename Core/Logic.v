@@ -232,7 +232,7 @@ Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
 Definition Returned {E F VE VF} (i : ThreadName) {A} (m : F A) : @Prec E F VE VF :=
   fun s ρs =>
     forall v, fst s i = Cont m (Return v) ->
-      forall ρ, ρs ρ ->
+      exists ρ, ρs ρ /\
         ρ.(PRets) i = RetPoss m v /\
         ρ.(PCalls) i = CallDone m.
 
@@ -248,7 +248,15 @@ Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F R
     exists (v : Ret),
       InterOStep impl i (fst s) (RetEv m v) (fst t) /\
       snd s = snd t /\
-      mapPoss ρs σs (mapRetPoss i m v).
+      forall σ, σs σ ->
+        σ.(PCalls) i = CallIdle /\
+        σ.(PRets) i = RetIdle /\
+        exists ρ, ρs ρ /\
+          ρ.(PCalls) i = CallDone m /\
+          ρ.(PRets) i = RetPoss m v /\
+          Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
+          Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
+          σ.(PState) = ρ.(PState).
 
 Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>

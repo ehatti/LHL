@@ -651,6 +651,18 @@ apply IHp.
 easy.
 Qed.
 
+Lemma other_inter {E F} {spec : Spec E} {impl : Impl E F} :
+  forall p t i s,
+  OtherSteps (spec:=spec) i impl s p t ->
+  InterSteps impl s p t.
+intros p t i.
+induction p; cbn; intros.
+dependent destruction H. constructor.
+dependent destruction H. destruct_all.
+apply IHp in H0.
+econstructor. exact H1. easy.
+Qed.
+
 (* Eutt *)
 
 Inductive euttTS_ {E F : ESig} :

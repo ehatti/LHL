@@ -749,20 +749,6 @@ Fixpoint projUnderSeq {E F} (p : Trace (LEvent E F)) : Trace (option (Event E)) 
   | cons _ p => projUnderSeq p
   end.
 
-Fixpoint projUnderThrSeq {E F} (p : Trace (LEvent E F)) : Trace (Event E) :=
-  match p with
-  | nil => nil
-  | cons (UEvent (Some e)) p => cons e (projUnderThrSeq p)
-  | cons _ p => projUnderThrSeq p
-  end.
-
-Fixpoint projOverSeq {E F} (p : Trace (LEvent E F)) : Trace (Event F) :=
-  match p with
-  | nil => nil
-  | cons (OEvent e) p => cons e (projOverSeq p)
-  | cons _ p => projOverSeq p
-  end.
-
 Inductive assoc_view {E F G} : list (LEvent E F) -> list (LEvent F G) -> Prop :=
 | AVNil :
     assoc_view nil nil

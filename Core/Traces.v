@@ -149,6 +149,18 @@ Definition InterStep {E F : ESig} {spec : Spec E} (impl : Impl E F)
   ThreadsStep impl (fst s) ev (fst t) /\
   StateStep (snd s) ev (snd t).
 
+Definition SelfSteps {E F : ESig} {spec : Spec E} i (impl : Impl E F)
+  (s : InterState F spec)
+  (p : Trace (LEvent E F))
+  (t : InterState F spec) :=
+  Steps (fun s ev t => InterStep impl s (i, ev) t) s p t.
+
+Definition OtherSteps {E F : ESig} {spec : Spec E} i (impl : Impl E F)
+  (s : InterState F spec)
+  (p : Trace (ThreadLEvent E F))
+  (t : InterState F spec) :=
+  Steps (fun s ev t => fst ev <> i /\ InterStep impl s ev t) s p t.
+
 Definition InterUStep {E F : ESig} {spec : Spec E} (i : ThreadName)
   (s : InterState F spec)
   (ev : option (Event E))
@@ -382,3 +394,19 @@ Definition specRefines {E : ESig} (spec : Spec E) (spec': Spec E) : Prop :=
 
 Definition layerRefines {E E' F} (lay : @Layer E F) (lay': @Layer E' F)  := 
   specRefines (overObj lay) (overObj lay').
+
+(* Extra projections *)
+
+Fixpoint projUnderThrSeq {E F} (p : Trace (LEvent E F)) : Trace (Event E) :=
+  match p with
+  | nil => nil
+  | cons (UEvent (Some e)) p => cons e (projUnderThrSeq p)
+  | cons _ p => projUnderThrSeq p
+  end.
+
+Fixpoint projOverSeq {E F} (p : Trace (LEvent E F)) : Trace (Event F) :=
+  match p with
+  | nil => nil
+  | cons (OEvent e) p => cons e (projOverSeq p)
+  | cons _ p => projOverSeq p
+  end.

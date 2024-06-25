@@ -13,6 +13,7 @@
 ./Core/Linearizability.v
 ./Core/Simulates.v
 ./Core/Logic.v
+./Core/LogicPaco.v
 ./Core/LogicFacts.v
 ./Core/Tensor.v
 ./Core/TensorFacts.v
