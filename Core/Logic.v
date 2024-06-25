@@ -223,7 +223,13 @@ Definition TInvoke {E F VE VF} impl (i : ThreadName) Ret (m : F Ret) : @Relt E F
     TIdle i s ρs /\
     InterOStep impl i (fst s) (CallEv m) (fst t) /\
     snd s = snd t /\
-    mapPoss ρs σs (mapInvPoss i m).
+    σs = (fun σ =>
+      exists ρ, ρs ρ /\
+        σ.(PState) = ρ.(PState) /\
+        σ.(PCalls) i = CallPoss m /\
+        σ.(PRets) i = RetIdle /\
+        Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
+        Util.differ_pointwise ρ.(PRets) σ.(PRets) i).
 
 Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
