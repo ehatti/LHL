@@ -1628,19 +1628,12 @@ intros. psimpl.
 apply H0. easy.
 Qed.
 
-Lemma help_app {E F} :
-  forall (p : Trace (ThreadLEvent E F)) i e (q : Trace (ThreadLEvent F F)),
-  projOver p ++ (i, e) :: nil = projOver q ->
-  exists r r',
-    q = r ++ (i, OEvent e) :: nil ++ r' /\
-    projOver p = projOver r.
-Admitted.
-
 Lemma help_projOver {E F} :
   forall (p : Trace (ThreadLEvent E F)) i e q,
   projOver p = q ++ [(i, e)] ->
   exists r t,
-  p = r ++ [(i, OEvent e)] ++ t.
+    p = r ++ [(i, OEvent e)] ++ t /\
+    projOver r = q.
 intros.
 generalize dependent q. induction p; cbn; intros.
 destruct q; cbn in *; discriminate.
@@ -1660,6 +1653,18 @@ dependent destruction H0.
 exists [], p. easy.
 dependent destruction H. apply IHp in x. clear IHp. psimpl.
 exists ((n, OEvent ev) :: x), x0. easy.
+Qed.
+
+Lemma help_app {E F} :
+  forall (p : Trace (ThreadLEvent E F)) i e (q : Trace (ThreadLEvent F F)),
+  projOver p ++ (i, e) :: nil = projOver q ->
+  exists r r',
+    q = r ++ (i, OEvent e) :: nil ++ r' /\
+    projOver p = projOver r.
+intros. symmetry in H.
+apply help_projOver in H. psimpl.
+exists x, x0. split. easy.
+easy.
 Qed.
 
 Definition m2p {F} {VF : Spec F} (s : InterState F VF) : Poss VF := {|
@@ -1683,6 +1688,62 @@ Definition idImpl_constraint {F} (s : ThreadState F F) :=
   (exists B m, s = Cont m (Bind (B:=B) m Return)) \/
   (exists A m, s = UCall (A:=A) m m Return) \/
   (exists A m v, s = Cont (A:=A) m (Return v)).
+
+Lemma get_idImpl_constraint {F} {VF : Spec F} :
+  forall p st,
+  InterSteps idImpl (allIdle, Init VF) p st ->
+  forall i, idImpl_constraint (fst st i).
+intros.
+assert (forall i, @idImpl_constraint F (allIdle i)).
+left. easy.
+generalize dependent (@allIdle F F).
+generalize dependent (Init VF).
+induction p; intros.
+dependent destruction H. cbn. easy.
+dependent destruction H. destruct st''.
+apply IHp in H0. clear IHp. easy.
+intros. specialize (H1 i0).
+clear H0. unfold InterStep, ThreadsStep in H.
+cbn in *. destruct_all. dependent destruction H.
+unfold ThreadStep in H. destruct a. cbn in *.
+dec_eq_nats i0 n.
+2:{ rewrite <- H0; easy. }
+destruct l; dependent destruction H.
+rewrite <- x0 in H2. rewrite <- x.
+unfold idImpl_constraint in H2.
+destruct H2. discriminate.
+destruct H. destruct_all. dependent destruction H.
+right. right. left. repeat econstructor.
+destruct H. destruct_all. discriminate.
+destruct_all. discriminate.
+rewrite <- x0 in H2. rewrite <- x.
+clear IHp.
+unfold idImpl_constraint in *.
+destruct H2. discriminate.
+destruct H. destruct_all. discriminate.
+destruct H. destruct_all. dependent destruction H.
+right. right. right. repeat econstructor.
+destruct_all. discriminate.
+rewrite <- x0 in H2. rewrite <- x.
+clear IHp. unfold idImpl_constraint in H2.
+destruct H2. discriminate.
+destruct H. destruct_all. discriminate.
+destruct H. destruct_all. discriminate.
+destruct H. destruct_all. discriminate.
+rewrite <- x0 in H2. rewrite <- x.
+clear IHp. unfold idImpl_constraint in *.
+destruct H2. right. left. repeat econstructor.
+destruct H. destruct_all. discriminate.
+destruct H. destruct_all. discriminate.
+destruct H. destruct_all. discriminate.
+rewrite <- x0 in H2. rewrite <- x.
+clear IHp. unfold idImpl_constraint in *.
+destruct H2. discriminate.
+destruct H. destruct_all. discriminate.
+destruct H. destruct_all. discriminate.
+destruct H. destruct_all. dependent destruction H.
+left. easy.
+Qed.
 
 Lemma m2p2m {F} {VF : Spec F} {s : InterState F VF} :
   (forall i, idImpl_constraint (fst s i)) ->
@@ -1768,13 +1829,47 @@ admit.
     eapply SafeBind with
       (QI:=fun _ _ => comp_inv VE VF M)
       (QR:=fun _ _ _ => comp_inv VE VF M).
-    unfold Stable, stableRelt, sub, subRelt. split; intros; psimpl.
-    easy.
-    apply H2. easy.
-    unfold Stable, stablePost, stableRelt, sub, subRelt. split; intros; psimpl.
-    easy.
-    apply H2. easy.
-    unfold Commit. intros.
+    {
+      unfold Stable, stableRelt, sub, subRelt. split; intros; psimpl.
+      easy.
+      apply H2. easy.
+    }
+    {
+      unfold Stable, stablePost, stableRelt, sub, subRelt. split; intros; psimpl.
+      easy.
+      apply H2. easy.
+    }
+    {
+      unfold Commit, ReltToPrec. intros. destruct_all.
+      apply H1 in H0. clear H1. unfold comp_inv in H0. psimpl.
+      exists ((fun σ : Poss VF =>
+        exists q,
+          projOver q = projOver x2 /\
+          InterSteps idImpl (allIdle, Init VF) q (p2m σ))).
+      split.
+      {
+        apply H in H5. destruct_all.
+        exists (m2p x), x1.
+        rewrite m2p2m. easy.
+        intros. eapply get_idImpl_constraint. exact H1.
+      }
+      split.
+      {
+        intros. psimpl.
+        exists \
+      }
+      split.
+      {
+        
+      }
+    }
+    intros. split.
+    {
+
+    }
+    {
+      admit.
+    }
   }
   {
     pfold. constructor. unfold sub, subRelt. intros.
@@ -1808,39 +1903,7 @@ admit.
     destruct x2. cbn in *.
     subst. destruct st''. cbn in *.
     rewrite m2p2m. easy.
-    cbn.
-    assert (forall i, @idImpl_constraint F (allIdle i)).
-    left. easy.
-    clear H7 H5 x x6 H4 H1 H3 H.
-    generalize dependent (@allIdle F F).
-    generalize dependent (Init VF).
-    induction x3; intros.
-    dependent destruction H0.
-    apply H2.
-    dependent destruction H0. destruct st''.
-    eapply IHx3. exact H0.
-    intros. specialize (H2 i1).
-    clear H0. unfold InterStep, ThreadsStep in H. destruct_all.
-    cbn in *.
-    dependent destruction H.
-    destruct a0. cbn in *. unfold ThreadStep in H.
-    dec_eq_nats i1 t4.
-    2:{ rewrite <- H0; easy. }
-    destruct l.
-    {
-      destruct H2. rewrite H2 in H. dependent destruction H.
-      destruct H2. destruct_all. rewrite H2 in H. dependent destruction H.
-      rewrite <- x. right. right. left. repeat econstructor.
-      destruct H2. destruct_all. rewrite H2 in H. dependent destruction H.
-      rewrite <- x. right. right. right. repeat econstructor.
-      destruct_all. rewrite H2 in H. dependent destruction H.
-    }
-    {
-      destruct H2. rewrite H2 in H. dependent destruction H. rewrite <- x. right. left. repeat econstructor.
-      destruct H2. destruct_all. rewrite H2 in H. dependent destruction H.
-      destruct H2. destruct_all. rewrite H2 in H. dependent destruction H.
-      destruct_all. rewrite H2 in H. dependent destruction H. rewrite <- x. left. easy.
-    }
+    intros. eapply get_idImpl_constraint. exact H0.
   }
   {
     pfold. eapply SafeNoOp with (QS:=fun _ _ => comp_inv VE VF M).
