@@ -253,6 +253,9 @@ Definition mapRetPoss {F VF A} i (m : F A) v (ρ σ : @Poss F VF) :=
 Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
   fun s ρs t σs =>
     exists (v : Ret),
+      (exists ρ, ρs ρ /\
+        ρ.(PRets) i = RetPoss m v /\
+        ρ.(PCalls) i = CallDone m) /\
       InterOStep impl i (fst s) (RetEv m v) (fst t) /\
       snd s = snd t /\
       σs = (fun σ => exists ρ, ρs ρ /\ mapRetPoss i m v ρ σ).

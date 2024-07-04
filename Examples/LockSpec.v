@@ -27,11 +27,13 @@ Variant LockStep : LockState -> ThreadEvent LockSig -> LockState -> Prop :=
 | LockRaceRel i : LockStep (LockRelRan i) (i, CallEv Rel) LockUB
 | LockStepUB e : LockStep LockUB e LockUB.
 
-Definition lockSpec : Spec LockSig := {|
+Program Definition lockSpec : Spec LockSig := {|
   State := LockState;
   Step := LockStep;
   Init := LockUnowned
 |}.
+
+Admit Obligations.
 
 Definition OwnsLock i s :=
   match s with

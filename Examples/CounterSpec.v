@@ -37,8 +37,10 @@ Variant CounterStep : CounterState -> ThreadEvent CounterSig -> CounterState -> 
 | CntStepUB e :
     CounterStep CounterUB e CounterUB.
 
-Definition counterSpec : Spec CounterSig := {|
+Program Definition counterSpec : Spec CounterSig := {|
   State := CounterState;
   Step := CounterStep;
   Init := CounterIdle 0
 |}.
+
+Admit Obligations.

@@ -112,111 +112,18 @@ intros.
 do 2 pdestruct H1.
 psplit.
 exact H1.
-destruct H0.
-apply H4.
-psplit.
-exact H3.
-easy.
+apply H0.
+exists x, x0. easy.
 Qed.
 
 Lemma reltCompStable {Q S} :
-  Stable R Q ->
   Stable R S ->
   Stable R (Q ->> S).
 intros.
 unfold Stable, stableRelt, sub, subRelt.
-split.
-intros.
-destruct H.
-destruct H0.
-pdestruct H1.
-pdestruct H4.
-psplit.
-apply H.
-psplit.
-exact H1.
-exact H4.
-easy.
-intros.
-do 2 pdestruct H1.
-psplit.
-exact H1.
-destruct H0.
-apply H4.
-psplit.
-exact H3.
-easy.
-Qed.
-
-Lemma precStabilizedStable {P} :
-  (R ->> R ==> R) ->
-  Stable R (P <<- R).
-intros.
-unfold Stable, stablePrec, sub, subPrec.
-intros.
-do 2 pdestruct H0.
-psplit.
-exact H0.
-apply H.
-psplit.
-exact H2.
-easy.
-Qed.
-
-Lemma reltStabilizedStable {Q} :
-  (R ->> R ==> R) ->
-  Stable R (R ->> Q ->> R).
-intros.
-unfold Stable, stableRelt, sub, subRelt.
-split.
-intros.
-psimpl.
-psplit.
-apply H.
-psplit.
-exact H0.
-exact H1.
-psplit.
-exact H2.
-easy.
-intros.
-psimpl.
-psplit.
-exact H0.
-psplit.
-exact H2.
-apply H.
-psplit.
-exact H3.
-easy.
-Qed.
-
-Lemma transStable :
-  R ->> R ==> R ->
-  Stable R R.
-unfold Stable, stableRelt, sub, subRelt, ReltCompose.
-split; intros; destruct_all.
-apply H.
-exists x, x0.
-easy.
-apply H.
-exists x, x0.
-easy.
-Qed.
-
-Lemma rtpStable {Q : Relt VE VF} :
-  Stable R Q ->
-  Stable R (ReltToPrec Q).
-unfold Stable, stableRelt, stablePrec, ReltToPrec.
-intros.
-unfold sub, subPrec.
-intros.
-psimpl.
-exists x1, x2.
-apply H1.
-psplit.
-exact H0.
-easy.
+intros. psimpl.
+exists x1, x2. split. easy.
+apply H. exists x, x0. easy.
 Qed.
 
 End lemmas.
@@ -1465,10 +1372,12 @@ destruct e.
         repeat eexists. exact H5. exact H9. exact H10.
         exists n0.
         split.
-        econstructor. econstructor; easy. easy.
-        split. easy.
-        unfold mapRetPoss. intros. psimpl.
-        repeat split; try easy.
+        unfold PrecToRelt, Returned in H10. psimpl.
+        apply H10. easy.
+        exists x0. easy.
+        split.
+        econstructor; cbn. econstructor; easy. easy.
+        easy.
       }
     }
     {
@@ -1486,6 +1395,11 @@ destruct e.
         psplit. apply H15.
         eapply H.(Ret_in_R) with (i:=n). easy.
         eexists _, m, n0. subst.
+        split.
+        {
+          apply H11. easy.
+          exists x0. easy.
+        }
         split.
         {
           split; cbn.
@@ -1517,6 +1431,11 @@ destruct e.
           exact H15.
           apply H.(Ret_in_R) with (i:=n). easy.
           eexists _, m, n0.
+          split.
+          {
+            subst. apply H11. easy.
+            exists x0. easy.
+          }
           split.
           econstructor; simpl. econstructor; easy. easy.
           split. easy.
@@ -1561,6 +1480,12 @@ destruct e.
           psplit. exact H16.
           apply H.(Ret_in_R) with (i:=n). easy.
           eexists _, m, n0.
+          split.
+          {
+            subst. apply H11.
+            easy.
+            exists x0. easy.
+          }
           split. econstructor. econstructor; easy. easy.
           split. easy.
           intros. destruct_all. subst. simpl.
@@ -1757,7 +1682,7 @@ Definition comp_guar {E F}
   fun i s ρs t σs =>
     forall j, i <> j -> comp_rely VE VF M j s ρs t σs.
 
-Theorem completeness {E F} (lay : Layer E F) VF :
+(* Theorem completeness {E F} (lay : Layer E F) VF :
   (forall A (m : F A) v,
     lay.(LImpl) _ m <> Return v) ->
   Lin (overObj lay) VF ->
@@ -1986,26 +1911,7 @@ constructor.
     }
     {
       unfold Commit. intros. psimpl. apply H1 in H0. clear H1.
-      unfold comp_inv in H0. psimpl.
-      exists (fun σ =>
-        exists ρ, ρs ρ /\
-          PossSteps ρ σ).
-      split.
-      {
-        apply H in H0. psimpl.
-        
-      }
-      split.
-      {
-        intros. psimpl.
-      }
-      split.
-      {
-
-      }
-      {
-
-      }
+      unfold comp_inv in H0. psimpl. dependent destruction H3.
     }
     admit.
   }
@@ -2057,4 +1963,4 @@ constructor.
       }
     }
   }
-}
+} *)

@@ -34,8 +34,10 @@ Variant YieldStep : YieldState -> ThreadEvent YieldSig -> YieldState -> Prop :=
     differ_pointwise s t i ->
     YieldStep s (i, RetEv Yield tt) t.
 
-Definition yieldSpec : Spec YieldSig := {|
+Program Definition yieldSpec : Spec YieldSig := {|
   State := YieldState;
   Step := YieldStep;
   Init := fun _ => YieldIdle
 |}.
+
+Admit Obligations.

@@ -55,19 +55,19 @@ Definition Prec := Prec VE VF.
 Definition Post := Post VE VF.
 
 Definition countState (s : @InterState E F VE) : State counterSpec :=
-  fst (snd (snd s)).
+  LState (RState (snd s)).
 Definition varState (s : @InterState E F VE) : State (varSpec nat) :=
-  snd (snd (snd s)).
+  RState (RState (snd s)).
 
 Definition newtkt (s : @InterState E F VE) : nat :=
-  fst (fst (snd s)).
+  fst (LState (snd s)).
 Definition ctrval (s : @InterState E F VE) : nat :=
   match countState s with
   | CounterDef n _ => n
   | CounterUB => 0
   end.
 Definition mytkt i (s : @InterState E F VE) : option nat :=
-  match snd (snd (snd s)) i with
+  match RState (RState (snd s)) i with
   | VarUnset => None
   | VarSet n _ => Some n
   end.
@@ -263,24 +263,18 @@ induction H.
   {
     unfold InvokeAny, TInvoke, mapInvPoss in H3. psimpl.
     destruct H4. cbn in *.
-    split. transitivity (fst t i). apply H7. easy. easy.
-    split. transitivity (snd t); easy.
-    intros. apply H2 in H8. clear H2. psimpl.
-    destruct H6. clear H6.
-    apply H9 in H2. psimpl.
-    exists x3. split. easy.
-    congruence.
-  }
-  {
-    unfold ReturnAny, TReturn, mapRetPoss in H3. psimpl.
-    destruct H3. cbn in *.
     split. transitivity (fst t i). apply H6. easy. easy.
     split. transitivity (snd t); easy.
     intros. apply H2 in H7. clear H2. psimpl.
-    destruct H5. clear H5.
-    apply H8 in H2. psimpl.
-    exists x4. split. easy.
-    congruence.
+    exists x3. split. easy. congruence.
+  }
+  {
+    unfold ReturnAny, TReturn, mapRetPoss in H3. psimpl.
+    destruct H4. cbn in *.
+    split. transitivity (fst t i). apply H6. easy. easy.
+    split. transitivity (snd t); easy.
+    intros. apply H2 in H9. psimpl.
+    exists x5. split. easy. congruence.
   }
 }
 Qed.
@@ -561,41 +555,65 @@ Lemma Inv_in_Rely :
 unfold InvokeAny, TInvoke, Rely, sub, subRelt, TIdle. intros.
 destruct_all. subst. destruct H2. cbn in *.
 specialize (H5 ρ0 eq_refl). destruct_all.
-assert (exists τ, σ = eq τ).
-eapply mapPossInv_pres_single. exact H4.
-destruct_all. subst.
-exists x1. split. easy.
-destruct H4. clear H7.
-specialize (H4 ρ0 eq_refl).
-unfold mapInvPoss in H4. destruct_all. subst.
-symmetry in H13. repeat rewrite H13.
-repeat rewrite (mytkt_eq _ _ _ H3).
-repeat rewrite (countState_eq _ _ H3).
-repeat rewrite (newtkt_eq _ _ H3).
-repeat rewrite (ctrval_eq _ _ H3).
-rewrite H2. 2: easy.
-right. easy.
+exists (invPoss i ρ0 x0). split.
+{
+  extensionality σ. apply propositional_extensionality.
+  split; intros; psimpl.
+  destruct x1, σ. unfold invPoss. cbn in *.
+  f_equal. easy.
+  extensionality j0. dec_eq_nats i j0.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H10; easy.
+  extensionality j0. dec_eq_nats i j0.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H11; easy.
+  exists ρ0. cbn. rewrite eqb_id.
+  repeat split; (easy || apply differ_pointwise_trivial).
+}
+{
+  cbn.
+  repeat rewrite (mytkt_eq _ _ _ H3).
+  repeat rewrite (countState_eq _ _ H3).
+  repeat rewrite (newtkt_eq _ _ H3).
+  repeat rewrite (ctrval_eq _ _ H3).
+  right. rewrite H2. 2: easy.
+  easy.
+}
 Qed.
 
 Lemma Ret_in_Rely :
   forall i j : ThreadName, i <> j -> ReturnAny ticketLockImpl i ==> Rely j.
 unfold ReturnAny, TReturn, Rely, sub, subRelt, TIdle. intros.
 destruct_all. subst. cbn in *.
-assert (σ = eq (retPoss i ρ0)).
-eapply mapPossRet_pres_single. exact H3.
-destruct_all. subst. destruct H3.
-exists (retPoss i ρ0). split. easy.
-destruct H0.
-specialize (H1 ρ0 eq_refl). specialize (H3 (retPoss i ρ0) eq_refl).
-psimpl. unfold mapRetPoss in H6. psimpl.
-symmetry in H9. repeat rewrite H9.
-symmetry in H2.
-repeat rewrite (mytkt_eq _ _ _ H2).
-repeat rewrite (countState_eq _ _ H2).
-repeat rewrite (newtkt_eq _ _ H2).
-repeat rewrite (ctrval_eq _ _ H2).
-rewrite H4. 2: easy.
-right. easy.
+exists (retPoss i ρ0). split.
+{
+  extensionality σ. apply propositional_extensionality.
+  unfold mapRetPoss.
+  split; intros; psimpl.
+  {
+    destruct x3, σ. unfold retPoss. cbn in *.
+    f_equal. easy.
+    extensionality j0. dec_eq_nats i j0.
+    rewrite eqb_id. easy.
+    rewrite eqb_nid, H10; easy.
+    extensionality j0. dec_eq_nats i j0.
+    rewrite eqb_id. easy.
+    rewrite eqb_nid, H11; easy.
+  }
+  {
+    exists x2. cbn. rewrite eqb_id.
+    repeat split; (easy || apply differ_pointwise_trivial).
+  }
+}
+{
+  cbn. subst.
+  repeat rewrite (mytkt_eq _ _ _ H3).
+  repeat rewrite (countState_eq _ _ H3).
+  repeat rewrite (newtkt_eq _ _ H3).
+  repeat rewrite (ctrval_eq _ _ H3).
+  right. repeat split; try easy.
+  destruct H2. cbn in H1. rewrite H1; easy.
+}
 Qed.
 
 Lemma init_in_Precs :
@@ -635,32 +653,7 @@ Qed.
 Lemma Posts_stable :
   forall i A (m : LockSig A) v, Stable (Rely i) (Posts i m v).
 unfold Stable, stablePost, stableRelt, sub, subRelt, Posts. destruct m.
-split; intros; psimpl.
-{
-  assert (exists τ, x0 = eq τ).
-  eapply Rely_pres_single. exact H. psimpl.
-  specialize (H1 x1 eq_refl). psimpl.
-  exists x0. split. easy.
-  destruct H1; psimpl.
-  {
-    left. repeat split.
-    easy.
-    eapply (Rely_pres_not_owned _ _ _ _ _ H). easy.
-    eapply Rely_pres_not_UB. exact H. easy.
-    easy.
-  }
-  {
-    right. split.
-    easy.
-    decide_prop (PState ρ0 = LockOwned i).
-    left. easy.
-    right.
-    assert (PState x1 <> LockOwned i).
-    eapply (Rely_pres_not_owned _ _ _ _ _ H). easy.
-    destruct H1. contradiction.
-    eapply Rely_pres_UB_backward. exact H. easy. easy.
-  }
-}
+intros. psimpl.
 {
   specialize (H ρ0 eq_refl). psimpl.
   assert (exists τ, σ = eq τ).
@@ -682,25 +675,7 @@ split; intros; psimpl.
     easy.
   }
 }
-split; intros; psimpl.
-{
-  assert (exists τ, x0 = eq τ).
-  eapply Rely_pres_single. exact H. psimpl.
-  specialize (H1 x1 eq_refl). psimpl.
-  exists x0. split. easy.
-  destruct H1; psimpl.
-  {
-    left.
-    split. easy.
-    split. eapply (Rely_pres_owned _ _ _ _ _ H). easy.
-    easy.
-  }
-  {
-    right.
-    split. easy.
-    eapply (Rely_pres_not_owned _ _ _ _ _ H). easy.
-  }
-}
+intros. psimpl.
 {
   specialize (H ρ0 eq_refl). psimpl.
   assert (exists τ, σ = eq τ).
@@ -731,52 +706,176 @@ unfold sub, subPrec, Precs, Posts. intros. destruct m1, m2.
 {
   psimpl. specialize (H2 x5 eq_refl). psimpl.
   unfold TReturn, InterOStep in H0. psimpl. destruct x0.
-  eapply mapPossRet_pres_single in H4. subst.
-  exists (retPoss i x1). split. easy.
-  intros. psimpl.
-  destruct H2; psimpl; contradiction.
+  dependent destruction H0. cbn in *. dependent destruction H.
+  symmetry in x1. unfold Returned in H1. apply H1 in x1.
+  2: repeat econstructor. psimpl. clear H1.
+  exists (retPoss i x1). split.
+  {
+    unfold mapRetPoss.
+    extensionality σ. apply propositional_extensionality.
+    split; intros; psimpl.
+    {
+      destruct x2, σ. unfold retPoss. cbn in *.
+      f_equal; try easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H10; easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H11; easy.
+    }
+    {
+      exists x1. cbn. rewrite eqb_id.
+      repeat split; (easy || apply differ_pointwise_trivial).
+    }
+  }
+  {
+    cbn. intros. destruct H2; psimpl; contradiction.
+  }
 }
 {
   psimpl. specialize (H2 x5 eq_refl). psimpl.
   unfold TReturn, InterOStep in H0. psimpl. destruct x0.
-  eapply mapPossRet_pres_single in H4. subst.
-  exists (retPoss i x1). split. easy.
-  intros. psimpl.
-  destruct H2; psimpl. 2:{ rewrite H4 in H2. discriminate. }
-  unfold Inv in H7. psimpl. apply eq_inj in H4. subst.
-  unfold Inv. exists (retPoss i x0). split. easy.
-  psimpl. symmetry in H0.
-  repeat rewrite (countState_eq _ _ H0) in *.
-  repeat rewrite (newtkt_eq _ _ H0) in *.
-  repeat rewrite (mytkt_eq _ _ _ H0) in *.
-  repeat rewrite (ctrval_eq _ _ H0) in *.
-  easy.
+  dependent destruction H0. cbn in *. dependent destruction H.
+  symmetry in x1. unfold Returned in H1. apply H1 in x1.
+  2: repeat econstructor. psimpl. clear H1.
+  exists (retPoss i x1). split.
+  {
+    unfold mapRetPoss.
+    extensionality σ. apply propositional_extensionality.
+    split; intros; psimpl.
+    {
+      destruct x2, σ. unfold retPoss. cbn in *.
+      f_equal; try easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H10; easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H11; easy.
+    }
+    {
+      exists x1. cbn. rewrite eqb_id.
+      repeat split; (easy || apply differ_pointwise_trivial).
+    }
+  }
+  {
+    cbn. intros. destruct H2; destruct_all.
+    2: { rewrite H in H1. discriminate. }
+    clear H3. unfold Inv in *. psimpl.
+    apply eq_inj in H3. subst.
+    exists (retPoss i x2). split.
+    unfold mapRetPoss.
+    extensionality σ. apply propositional_extensionality.
+    split; intros; psimpl.
+    {
+      destruct x1, σ. unfold retPoss. cbn in *.
+      f_equal; try easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H17; easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H18; easy.
+    }
+    {
+      exists x2. cbn. rewrite eqb_id.
+      repeat split; (easy || apply differ_pointwise_trivial).
+    }
+    repeat rewrite (countState_eq _ _ H4) in *.
+    repeat rewrite (newtkt_eq _ _ H4) in *.
+    repeat rewrite (mytkt_eq _ _ _ H4) in *.
+    repeat rewrite (ctrval_eq _ _ H4) in *.
+    easy.
+  }
 }
 {
   psimpl. specialize (H2 x5 eq_refl). psimpl.
   unfold TReturn, InterOStep in H0. psimpl. destruct x0.
-  eapply mapPossRet_pres_single in H4. subst.
-  exists (retPoss i x1). split. easy.
-  intros. psimpl.
-  destruct H2; psimpl. 2: contradiction.
-  unfold Inv in H7. psimpl. apply eq_inj in H4. subst.
-  unfold Inv. exists (retPoss i x0). split. easy.
-  psimpl. symmetry in H0.
-  repeat rewrite (countState_eq _ _ H0) in *.
-  repeat rewrite (newtkt_eq _ _ H0) in *.
-  repeat rewrite (mytkt_eq _ _ _ H0) in *.
-  repeat rewrite (ctrval_eq _ _ H0) in *.
-  easy.
+  dependent destruction H0. cbn in *. dependent destruction H.
+  symmetry in x1. unfold Returned in H1. apply H1 in x1.
+  2: repeat econstructor. psimpl. clear H1.
+  exists (retPoss i x1). split.
+  {
+    unfold mapRetPoss.
+    extensionality σ. apply propositional_extensionality.
+    split; intros; psimpl.
+    {
+      destruct x2, σ. unfold retPoss. cbn in *.
+      f_equal; try easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H10; easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H11; easy.
+    }
+    {
+      exists x1. cbn. rewrite eqb_id.
+      repeat split; (easy || apply differ_pointwise_trivial).
+    }
+  }
+  {
+    cbn. intros. destruct H2; destruct_all.
+    2: congruence.
+    clear H3. unfold Inv in *. psimpl.
+    apply eq_inj in H3. subst.
+    exists (retPoss i x2). split.
+    unfold mapRetPoss.
+    extensionality σ. apply propositional_extensionality.
+    split; intros; psimpl.
+    {
+      destruct x1, σ. unfold retPoss. cbn in *.
+      f_equal; try easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H17; easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H18; easy.
+    }
+    {
+      exists x2. cbn. rewrite eqb_id.
+      repeat split; (easy || apply differ_pointwise_trivial).
+    }
+    repeat rewrite (countState_eq _ _ H4) in *.
+    repeat rewrite (newtkt_eq _ _ H4) in *.
+    repeat rewrite (mytkt_eq _ _ _ H4) in *.
+    repeat rewrite (ctrval_eq _ _ H4) in *.
+    easy.
+  }
 }
 {
   psimpl. specialize (H2 x5 eq_refl). psimpl.
   unfold TReturn, InterOStep in H0. psimpl. destruct x0.
-  eapply mapPossRet_pres_single in H4. subst.
-  exists (retPoss i x1). split. easy.
-  intros. psimpl.
-  destruct H2; psimpl.
-  contradiction.
-  rewrite H4 in H2. discriminate.
+  dependent destruction H0. cbn in *. dependent destruction H.
+  symmetry in x1. unfold Returned in H1. apply H1 in x1.
+  2: repeat econstructor. psimpl. clear H1.
+  exists (retPoss i x1). split.
+  {
+    unfold mapRetPoss.
+    extensionality σ. apply propositional_extensionality.
+    split; intros; psimpl.
+    {
+      destruct x2, σ. unfold retPoss. cbn in *.
+      f_equal; try easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H10; easy.
+      extensionality j. dec_eq_nats i j.
+      rewrite eqb_id. easy.
+      rewrite eqb_nid, H11; easy.
+    }
+    {
+      exists x1. cbn. rewrite eqb_id.
+      repeat split; (easy || apply differ_pointwise_trivial).
+    }
+  }
+  {
+    cbn. intros. destruct H2; destruct_all.
+    congruence.
+    rewrite H in H1. discriminate.
+  }
 }
 Qed.
 

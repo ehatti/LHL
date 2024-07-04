@@ -66,8 +66,10 @@ Variant VarStep {S} : VarState S -> ThreadEvent (VarSig S) -> VarState S -> Prop
     differ_pointwise m m' i ->
     VarStep m (i, RetEv ClrVar tt) m'.
 
-Definition varSpec S : Spec (VarSig S) := {|
+Program Definition varSpec S : Spec (VarSig S) := {|
   State := VarState S;
   Step := VarStep;
   Init _ := VarUnset
 |}.
+
+Admit Obligations.

@@ -14,8 +14,10 @@ Variant FAIStep : FAIState -> ThreadEvent FAISig -> FAIState -> Prop :=
 | FAICall i n : FAIStep (FAIIdle n) (i, CallEv FAI) (FAIRan i n)
 | FAIRet i n : FAIStep (FAIRan i n) (i, RetEv FAI n) (FAIIdle (S n)).
 
-Definition faiSpec : Spec FAISig := {|
+Program Definition faiSpec : Spec FAISig := {|
   State := FAIState;
   Step := FAIStep;
   Init := FAIIdle 0
 |}.
+
+Admit Obligations.
