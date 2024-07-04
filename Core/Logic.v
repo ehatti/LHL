@@ -105,7 +105,7 @@ Class HasStable {E F} {VE : Spec E} {VF : Spec F} A :=
   Stable : Relt VE VF -> A -> Prop.
 
 Global Instance stableRelt {E F} {VE : Spec E} {VF : Spec F} : HasStable (Relt VE VF) :=
-  fun R Q => (R ->> Q ==> Q) /\ (Q ->> R ==> Q).
+  fun R Q => (Q ->> R ==> Q).
 
 Global Instance stablePrec {E F} {VE : Spec E} {VF : Spec F} : HasStable (Prec VE VF) :=
   fun R P => P <<- R ==> P.

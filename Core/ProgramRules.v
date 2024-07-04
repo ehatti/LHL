@@ -9,7 +9,8 @@ From LHL.Core Require Import
 
 From Coq Require Import
   Program.Equality
-  Logic.PropExtensionality.
+  Logic.PropExtensionality
+  Logic.FunctionalExtensionality.
 
 From LHL.Util Require Import
   Tactics.
@@ -293,6 +294,37 @@ pcofix rec. intros. punfold H2. dependent destruction H2.
   econstructor. exact H1. easy.
   destruct H3. 2: destruct H3.
   right. eapply rec. easy.
+}
+Qed.
+
+Definition Xor {E F VE VF} (PL PR : @Relt E F VE VF) : Relt VE VF :=
+  fun s ρs t σ =>
+    PL s ρs t σ /\ ~PR s ρs t σ \/
+    ~PL s ρs t σ /\ PR s ρs t σ.
+
+Lemma disjCommit {PL PR} {QL QR : Relt VE VF} {e} :
+  Commit i G PL e QL ->
+  Commit i G PR e QR ->
+  Commit i G (PL \2/ PR) e (QL \4/ QR).
+unfold Commit. intros.
+destruct H1.
+{
+  apply H with (t:=t) (ρs:=ρs) in H4.
+  destruct_all. exists x. split. exists x0. easy.
+  split. easy.
+  split. left. easy. easy.
+  easy.
+  easy.
+  easy.
+}
+{
+  apply H0 with (t:=t) (ρs:=ρs) in H4.
+  destruct_all. exists x. split. exists x0. easy.
+  split. easy.
+  split. right. easy. easy.
+  easy.
+  easy.
+  easy.
 }
 Qed.
 
