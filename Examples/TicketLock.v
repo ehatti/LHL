@@ -157,12 +157,21 @@ Definition Guar (i : ThreadName) : Relt :=
   fun s ρs t σs =>
     forall j, i <> j -> Rely j s ρs t σs.
 
+Definition comInvPoss {F} {VF : Spec F} i (ρ : Poss VF) {A} (m : F A) (s : State VF) : Poss VF := {|
+  PState := s;
+  PCalls j := if i =? j then CallDone m else PCalls ρ j;
+  PRets j := PRets ρ j
+|}.
+
+
 (* Tactics *)
 
 Ltac decide_prop P :=
   let H := fresh in
   assert (H : P \/ ~P) by apply excluded_middle;
   destruct H.
+
+Ltac set_ext x := extensionality x; apply propositional_extensionality.
 
 (* Extra lemmas *)
 
@@ -202,6 +211,13 @@ specialize (H0 x).
 rewrite <- H0. easy.
 Qed.
 
+Lemma eq_inj_wk {A} :
+  forall (x : A) (P : A -> Prop),
+  eq x = P ->
+  forall y, P y -> y = x.
+intros. rewrite <- H in H0. easy.
+Qed.
+
 Lemma newtkt_eq :
   forall s t : @InterState E F VE,
   snd s = snd t ->
@@ -239,6 +255,69 @@ Lemma cntSt_to_ctrval :
   ctrval s = ctrval t.
 unfold ctrval. intros.
 rewrite H. easy.
+Qed.
+
+Lemma Invoke_pres_state {E F VE VF} {M : Impl E F} :
+  forall A m i s ρ t σ,
+  TInvoke (VE:=VE) (VF:=VF) M i A m s (eq ρ) t (eq σ) ->
+  PState ρ = PState σ /\
+  snd s = snd t /\
+  differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
+  differ_pointwise ρ.(PRets) σ.(PRets) i.
+unfold TInvoke, TIdle. intros. psimpl.
+assert (σ = invPoss i ρ m).
+rewrite H2. cbn. rewrite eqb_id.
+exists ρ. repeat split; try (easy || apply differ_pointwise_trivial).
+subst. cbn.
+repeat split; (easy || apply differ_pointwise_trivial).
+Qed.
+
+Lemma Invoke_pres_Inv :
+  forall A m i s ρ t σ,
+  TInvoke (VE:=VE) (VF:=VF) ticketLockImpl i A m s (eq ρ) t (eq σ) ->
+  Inv i s (eq ρ) -> Inv i t (eq σ).
+intros. assert (H' := H). unfold TInvoke, TIdle in H. psimpl.
+destruct H1. cbn in *.
+assert (σ = invPoss i ρ m).
+rewrite H3. cbn. rewrite eqb_id.
+exists ρ. repeat split; try (easy || apply differ_pointwise_trivial).
+subst. unfold Inv in *. psimpl.
+apply eq_inj in H0. subst.
+exists (invPoss i x m). split. easy.
+apply Invoke_pres_state in H'. destruct_all.
+cbn in *.
+symmetry in H12.
+repeat rewrite (countState_eq _ _ H12).
+repeat rewrite (newtkt_eq _ _ H12).
+repeat rewrite (mytkt_eq _ _ _ H12).
+repeat rewrite (ctrval_eq _ _ H12).
+easy.
+Qed.
+
+Lemma Invoke_pres_single {E F VE VF} {M : Impl E F} :
+  forall A m i s ρ t σs,
+  TInvoke (VE:=VE) (VF:=VF) M i A m s (eq ρ) t σs ->
+  exists σ, σs = eq σ.
+intros.
+unfold TInvoke in H. psimpl.
+exists (invPoss i ρ m).
+set_ext σ. split; intros; destruct_all; subst.
+{
+  unfold TIdle in H. destruct_all.
+  specialize (H2 x eq_refl). destruct_all.
+  destruct x, σ. unfold invPoss. cbn in *.
+  f_equal; try easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H6; easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H7; easy.
+}
+{
+  cbn. rewrite eqb_id. exists ρ.
+  repeat split; (easy || apply differ_pointwise_trivial).
+}
 Qed.
 
 Lemma noStateChange :
@@ -879,6 +958,133 @@ unfold sub, subPrec, Precs, Posts. intros. destruct m1, m2.
 }
 Qed.
 
+Lemma acq_correct i :
+  VerifyProg i (Rely i) (Guar i) (prComp (Precs i Acq) (TInvoke ticketLockImpl i unit Acq) ->> Rely i) acq (fun v => Posts i Acq v ->> PrecToRelt (Returned i Acq)).
+Admitted.
+
+Lemma rel_correct i :
+  VerifyProg i (Rely i) (Guar i) (prComp (Precs i Rel) (TInvoke ticketLockImpl i unit Rel) ->> Rely i) rel (fun v => Posts i Rel v ->> PrecToRelt (Returned i Rel)).
+unfold rel. unfold Precs.
+eapply weakenPrec with
+  (P:=fun s ρs t σs =>
+    exists ρ σ : Poss VF, ρs = eq ρ /\ σs = eq σ /\
+      σ.(PCalls) i = CallPoss Rel /\
+      σ.(PRets) i = RetIdle /\
+      PState ρ = PState σ /\
+      (PState σ = LockOwned i /\ Inv i t σs \/
+       PState σ <> LockOwned i)).
+2:{
+  unfold sub, subRelt. intros. psimpl.
+  decide_prop (PState x1 = LockOwned i).
+  {
+
+  }
+  {
+
+  }
+}
+eapply weakenPost.
+eapply (lemCall
+  (Q:=fun s ρs t σs =>
+    exists ρ σ : Poss VF, ρs = eq ρ /\ σs = eq σ /\
+      σ.(PCalls) i = CallDone Rel /\
+      σ.(PRets) i = RetIdle /\
+      (PState ρ = LockOwned i /\ PState σ = LockRelRan i /\ Inv i t σs \/
+       PState ρ <> LockOwned i /\ PState σ = LockUB))
+  (S:=fun _ s ρs t σs =>
+    exists ρ σ : Poss VF, ρs = eq ρ /\ σs = eq σ /\
+      σ.(PCalls) i = CallDone Rel /\
+      σ.(PRets) i = RetPoss Rel tt /\
+      (PState ρ = LockRelRan i /\ PState σ = LockUnowned /\ Inv i t σs \/
+       PState ρ = LockUB /\ PState σ = LockUB))).
+{
+  admit.
+}
+{
+  admit.
+}
+{
+  eapply weakenCommitPre with
+    (P:=fun _ _ t σs =>
+      (exists σ : Poss VF, σs = eq σ /\
+        σ.(PCalls) i = CallPoss Rel /\
+        σ.(PRets) i = RetIdle /\
+        PState σ = LockOwned i /\ Inv i t σs) \/
+      (exists σ : Poss VF, σs = eq σ /\
+        σ.(PCalls) i = CallPoss Rel /\
+        σ.(PRets) i = RetIdle /\
+        PState σ <> LockOwned i)).
+  {
+    unfold sub, subRelt. intros. psimpl.
+    destruct H4; destruct_all.
+    left. exists x0. easy.
+    right. exists x0. easy.
+  }
+  apply disjCommit; unfold Commit; intros; psimpl.
+  {
+    destruct_all.
+  }
+  {
+    exists (eq (comInvPoss i x1 Rel LockUB)).
+    split. repeat econstructor.
+    split.
+    {
+      intros. subst. exists x1. split. easy.
+      econstructor.
+      {
+        eapply PCommitCall with (i:=i) (m:=Rel) (σ:= comInvPoss i x1 Rel LockUB). cbn.
+        constructor. easy.
+        cbn. rewrite eqb_id. easy.
+        easy. easy.
+      }
+      intros. cbn. rewrite eqb_nid; easy.
+      intros. cbn. easy.
+      constructor.
+    }
+    split.
+    {
+      do 2 eexists.
+      split. easy.
+      split. easy.
+      cbn. rewrite eqb_id.
+      repeat split; try easy.
+      right. easy.
+    }
+    {
+      admit.
+    }
+  }
+}
+{
+
+}
+{
+  unfold sub, subRelt, Posts, Returned. intros. psimpl.
+  psplit.
+  2:{
+    split. 2: easy.
+    intros. psimpl.
+    exists x0. destruct v0. easy.
+  }
+  intros. subst.
+  exists x4. split. easy.
+  apply eq_inj in H, H0, H1. subst.
+  destruct H5; destruct_all.
+  {
+    left. split. rewrite H0. easy.
+    split. 2: easy.
+    rewrite H13. destruct H9; destruct_all.
+    easy.
+    rewrite H5 in H. discriminate.
+  }
+  {
+    right. split. easy.
+    rewrite H13. destruct H9; destruct_all.
+    rewrite H2 in H. discriminate.
+    easy.
+  }
+}
+
 Theorem ticketLockCorrect :
   VerifyImpl VE VF Rely Guar Precs ticketLockImpl Posts.
 constructor.
@@ -891,3 +1097,5 @@ apply init_in_Precs.
 apply Precs_stable.
 apply Posts_stable.
 apply ticketLockImpl_switch_code.
+intros. destruct m; cbn.
+apply acq_correct.

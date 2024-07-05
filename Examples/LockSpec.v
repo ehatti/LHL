@@ -23,8 +23,8 @@ Variant LockStep : LockState -> ThreadEvent LockSig -> LockState -> Prop :=
 | LockRetAcq i : LockStep (LockAcqRan i) (i, RetEv Acq tt) (LockOwned i)
 | LockCallRel i : LockStep (LockOwned i) (i, CallEv Rel) (LockRelRan i)
 | LockRetRel i : LockStep (LockRelRan i) (i, RetEv Rel tt) LockUnowned
-| LockRaceAcq i : LockStep (LockAcqRan i) (i, CallEv Acq) LockUB
-| LockRaceRel i : LockStep (LockRelRan i) (i, CallEv Rel) LockUB
+| LockUBAcq s i : s <> LockUnowned -> LockStep s (i, CallEv Acq) LockUB
+| LockUBRel s i : s <> LockOwned i -> LockStep s (i, CallEv Rel) LockUB
 | LockStepUB e : LockStep LockUB e LockUB.
 
 Program Definition lockSpec : Spec LockSig := {|

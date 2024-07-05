@@ -302,27 +302,27 @@ Definition Xor {E F VE VF} (PL PR : @Relt E F VE VF) : Relt VE VF :=
     PL s ρs t σ /\ ~PR s ρs t σ \/
     ~PL s ρs t σ /\ PR s ρs t σ.
 
-Lemma disjCommit {PL PR} {QL QR : Relt VE VF} {e} :
-  Commit i G PL e QL ->
-  Commit i G PR e QR ->
-  Commit i G (PL \2/ PR) e (QL \4/ QR).
+Lemma disjCommit {PL PR Q : Relt VE VF} {e} :
+  Commit i G PL e Q ->
+  Commit i G PR e Q ->
+  Commit i G (ReltToPrec (PL \4/ PR)) e Q.
 unfold Commit. intros.
-destruct H1.
+unfold ReltToPrec in H1. destruct_all. destruct H1.
 {
   apply H with (t:=t) (ρs:=ρs) in H4.
-  destruct_all. exists x. split. exists x0. easy.
+  destruct_all. exists x1. split. exists x2. easy.
   split. easy.
-  split. left. easy. easy.
-  easy.
+  split. easy. easy.
+  exists x, x0. easy.
   easy.
   easy.
 }
 {
   apply H0 with (t:=t) (ρs:=ρs) in H4.
-  destruct_all. exists x. split. exists x0. easy.
+  destruct_all. exists x1. split. exists x2. easy.
   split. easy.
-  split. right. easy. easy.
-  easy.
+  split. easy. easy.
+  exists x, x0. easy.
   easy.
   easy.
 }
