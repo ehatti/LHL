@@ -33,3 +33,5 @@
 ./Examples/FAISpec.v
 ./Examples/YieldSpec.v
 ./Examples/VarSpec.v
+./Examples/OMemSpec.v
+./Examples/WriteSnapshotSpec.v

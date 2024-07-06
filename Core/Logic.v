@@ -238,8 +238,7 @@ Definition InvokeAny {E F VE VF} impl i : @Relt E F VE VF :=
 Definition Returned {E F VE VF} (i : ThreadName) {A} (m : F A) : @Prec E F VE VF :=
   fun s ρs =>
     forall v, fst s i = Cont m (Return v) ->
-      (exists ρ, ρs ρ) ->
-      exists ρ, ρs ρ /\
+      forall ρ, ρs ρ ->
         ρ.(PRets) i = RetPoss m v /\
         ρ.(PCalls) i = CallDone m.
 
@@ -250,19 +249,22 @@ Definition mapRetPoss {F VF A} i (m : F A) v (ρ σ : @Poss F VF) :=
   Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
   σ.(PState) = ρ.(PState).
 
-Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) : @Relt E F VE VF :=
+Definition TReturn {E F VE VF} (impl : Impl E F) (i : ThreadName) {Ret} (m : F Ret) v : @Relt E F VE VF :=
   fun s ρs t σs =>
-    exists (v : Ret),
-      (exists ρ, ρs ρ /\
+    (forall ρ, ρs ρ ->
+      ρ.(PRets) i = RetPoss m v /\
+      ρ.(PCalls) i = CallDone m) /\
+    InterOStep impl i (fst s) (RetEv m v) (fst t) /\
+    snd s = snd t /\
+    σs = (fun σ =>
+      exists ρ, ρs ρ /\
         ρ.(PRets) i = RetPoss m v /\
-        ρ.(PCalls) i = CallDone m) /\
-      InterOStep impl i (fst s) (RetEv m v) (fst t) /\
-      snd s = snd t /\
-      σs = (fun σ => exists ρ, ρs ρ /\ mapRetPoss i m v ρ σ).
+        ρ.(PCalls) i = CallDone m /\
+        mapRetPoss i m v ρ σ).
 
 Definition ReturnAny {E F VE VF} impl i : @Relt E F VE VF :=
   fun s ρ t σ =>
-    exists Ret (m : F Ret), TReturn impl i m s ρ t σ.
+    exists Ret (m : F Ret) v, TReturn impl i m v s ρ t σ.
 
 Definition VerifyProg {E F VE VF A} i
   (R G : @Relt E F VE VF)
@@ -304,7 +306,7 @@ Record VerifyImpl
   Q_stable : forall i Ret (m : F Ret) v,
     Stable (R i) (Q i Ret m v);
   switch_code : forall i A m1 B m2 v,
-    prComp (P i _ m1) (Q i A m1 v) <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 ==> P i B m2;
+    prComp (P i _ m1) (Q i A m1 v) <<- PrecToRelt (Returned i m1) <<- TReturn impl i m1 v ==> P i B m2;
   all_verified : forall i A m,
     VerifyProg i (R i) (G i)
       (prComp (P i A m) (TInvoke impl i _ m) ->> R i)
