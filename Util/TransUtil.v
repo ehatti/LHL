@@ -2,8 +2,7 @@ From Coq Require Import
   Program.Equality
   Logic.FunctionalExtensionality
   Logic.PropExtensionality
-  Logic.ClassicalChoice
-  Init.Nat.
+  Logic.ClassicalChoice.
 
 From LHL.Util Require Import
   Tactics
@@ -217,24 +216,7 @@ Lemma help10 :
 firstorder.
 Qed.
 
-Lemma eqbT : forall n, eqb n n = true.
-intros.
-induction n; easy.
-Qed.
-
 Axiom excluded_middle : forall P, P \/ ~P.
-
-Lemma eqbF : forall n m, n <> m -> n =? m = false.
-fix rec 1.
-intros.
-destruct n, m.
-congruence.
-reflexivity.
-reflexivity.
-simpl.
-apply rec.
-congruence.
-Qed.
 
 Lemma unprojPointTrace {I A} {ieq : I -> I -> bool} :
   (forall i, ieq i i = true) ->

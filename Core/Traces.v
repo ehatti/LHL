@@ -313,7 +313,7 @@ induction p; cbn; intros.
       cbn. rewrite <- Heqt2. right. repeat econstructor.
     }
     apply IHp in H0.
-    assert (overObjActiveMap t0 = (fun i : nat =>
+    assert (overObjActiveMap t0 = (fun i : ThreadName =>
       if i =? t1 then
       Some
         (existT (fun A0 : Type => F A0) A m)
@@ -363,7 +363,7 @@ induction p; cbn; intros.
       cbn. rewrite <- Heqt2. right. repeat econstructor.
     }
     apply IHp in H0.
-    assert (overObjActiveMap t0 = (fun i : nat =>
+    assert (overObjActiveMap t0 = (fun i : ThreadName =>
       if i =? t1 then
       None
       else match t0 i with

@@ -202,8 +202,7 @@ Arguments SafeProg {E F VE VF} i R G {A} P C Q.
 Definition TIdle {E F VE VF} (i : ThreadName) : @Prec E F VE VF :=
   fun s ρs =>
     fst s i = Idle /\
-    forall ρ,
-      ρs ρ ->
+    forall ρ, ρs ρ ->
       ρ.(PCalls) i = CallIdle /\
       ρ.(PRets) i = RetIdle.
 

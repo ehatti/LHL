@@ -1,5 +1,6 @@
 From Coq Require Import
-  Logic.
+  Logic
+  Classical.
 
 From LHL.Util Require Import
   Tactics.
@@ -63,29 +64,27 @@ Section UPDT_ISTATE.
 
 End UPDT_ISTATE.
 
-Require Import Coq.Arith.PeanoNat.
+Definition eqb {A} (x y : A) : bool :=
+  if classicT (x = y) then
+    true
+  else
+    false.
+Infix "=?" := eqb (at level 70).
 
-Lemma eqb_id : forall n : nat, n =? n = true.
+Lemma eqb_id {A} : forall n : A, n =? n = true.
 intros.
-induction n.
+unfold eqb.
+destruct (classicT (n = n)).
 easy.
-simpl.
-f_equal.
-easy.
+congruence.
 Qed.
 
-Lemma eqb_nid : forall n m : nat, n <> m -> n =? m = false.
-fix rec 1.
+Lemma eqb_nid {A} : forall n m : A, n <> m -> n =? m = false.
 intros.
-destruct n.
-destruct m.
+unfold eqb.
+destruct (classicT (n = m)).
+contradiction.
 easy.
-easy.
-destruct m.
-easy.
-simpl in *.
-apply rec.
-congruence.
 Qed.
 
 Lemma differ_pointwise_trivial {A} (f : nat -> A) i x :
@@ -95,4 +94,44 @@ intros.
 dec_eq_nats i j.
 congruence.
 rewrite eqb_nid; easy.
+Qed.
+
+Definition neqb {A} (x y : A) : bool :=
+  if classicT (x <> y) then
+    true
+  else
+    false.
+Infix "/=?" := neqb (at level 70).
+
+Lemma neqb_inv {A} :
+  forall x y : A,
+  neqb x y = false <-> eqb x y = true.
+unfold neqb, eqb. split; intros.
+destruct (classicT (x <> y)).
+discriminate.
+apply NNPP in n.
+destruct (classicT (x = y)).
+easy.
+contradiction.
+destruct (classicT (x = y)).
+destruct (classicT (x <> y)).
+contradiction.
+easy.
+discriminate.
+Qed.
+
+Lemma eqb_inv {A} :
+  forall x y : A,
+  neqb x y = true <-> eqb x y = false.
+unfold neqb, eqb. split; intros.
+destruct (classicT (x <> y)).
+destruct (classicT (x = y)).
+contradiction.
+easy.
+discriminate.
+destruct (classicT (x = y)).
+discriminate.
+destruct (classicT (x <> y)).
+easy.
+exfalso. apply n0. easy.
 Qed.

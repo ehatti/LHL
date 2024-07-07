@@ -19,9 +19,6 @@ From Coq Require Import
   Logic.PropExtensionality
   Logic.FunctionalExtensionality
   Logic.ClassicalChoice
-  Init.Nat
-  Arith.EqNat
-  Arith.PeanoNat
   Lists.List.
 
 From Paco Require Import
@@ -280,7 +277,7 @@ destruct ev.
 easy.
 destruct (get_nones j p).
 simpl.
-rewrite eqb_nid.
+rewrite eqb_id.
 easy.
 easy.
 easy.
