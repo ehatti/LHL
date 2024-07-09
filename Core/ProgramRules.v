@@ -20,10 +20,11 @@ From Paco Require Import paco.
 Section rules.
 
 Context
-  {i : ThreadName}
+  {T}
+  {i : Name T}
   {E F : ESig}
-  {VE : Spec E}
-  {VF : Spec F}
+  {VE : Spec T E}
+  {VF : Spec T F}
   {R G : Relt VE VF}.
 
 Lemma lemNoOp {A Q} {P : Relt VE VF} {C : Prog E A} :
@@ -63,6 +64,26 @@ intros. specialize (H2 v).
 split. easy.
 econstructor. unfold sub, subRelt. intros.
 easy.
+Qed.
+
+Lemma lemCallSimp {A Q S} {P : Relt VE VF} {m : E A} :
+  Stable R Q ->
+  Stable R S ->
+  Commit i G P (CallEv m) Q ->
+  (forall v, Commit i G (P ->> Q) (RetEv m v) (S v)) ->
+  VerifyProg i R G P (call m) (fun v _ _ => ReltToPrec (S v)).
+intros.
+econstructor. exact H. exact H0.
+unfold Commit, id.
+intros. psimpl.
+apply H1.
+exists x, x0.
+easy. easy. easy. easy.
+intros. specialize (H2 v).
+split. easy.
+econstructor. unfold sub, subRelt. intros.
+psimpl.
+exists x1, x2. easy.
 Qed.
 
 Lemma lemBind {A B P S} {C : Prog E A} {k : A -> Prog E B} :
@@ -199,27 +220,27 @@ intros.
 destruct p; easy.
 Qed.
 
-Definition SomeRet {A E F VE VF} (Q : @Post E F VE VF A) : Post VE VF unit :=
+Definition SomeRet {T A E F VE VF} (Q : @Post T E F VE VF A) : Post VE VF unit :=
   fun _ s ρ t σ => exists v, Q v s ρ t σ.
 
-Definition UnitRet {E F VE VF} (Q : @Relt E F VE VF) : Post VE VF unit :=
+Definition UnitRet {T E F VE VF} (Q : @Relt T E F VE VF) : Post VE VF unit :=
   fun _ => Q.
 
-Lemma lemWhile {P} {T : Post VE VF bool} {B : Prog E bool} {C : Prog E unit} {S : Relt VE VF} :
+Lemma lemWhile {P} {I : Post VE VF bool} {B : Prog E bool} {C : Prog E unit} {S : Relt VE VF} :
   Stable R S ->
-  SilentStep i G T S ->
-  T ->> S ==> P ->
-  VerifyProg i R G P B T ->
-  VerifyProg i R G (T true) C (SomeRet T) ->
-  VerifyProg i R G P (while B C) (UnitRet (T false)).
+  SilentStep i G I S ->
+  I ->> S ==> P ->
+  VerifyProg i R G P B I ->
+  VerifyProg i R G (I true) C (SomeRet I) ->
+  VerifyProg i R G P (while B C) (UnitRet (I false)).
 unfold while, VerifyProg.
 intros S_stable S_step imp.
 repeat rewrite paco_eqv.
 intros.
 cut (
   forall B' P',
-  paco_safe i R G P' B' T ->
-  paco_safe i R G P' (whileAux B C B' C) (UnitRet (T false))
+  paco_safe i R G P' B' I ->
+  paco_safe i R G P' (whileAux B C B' C) (UnitRet (I false))
 ).
 { intros. apply H1 with (P':=P). easy. }
 pcofix rec. intros. punfold H2. dependent destruction H2.
@@ -235,8 +256,8 @@ pcofix rec. intros. punfold H2. dependent destruction H2.
   unfold VerifyProg in H0. rewrite paco_eqv in H0.
   cut (
     forall (P0' : Relt VE VF) C',
-    paco_safe i R G P0' C' (SomeRet T) ->
-    paco2 (paco_safeF i R G (UnitRet (T false))) r P0' (whileAux B C (Return true) C')
+    paco_safe i R G P0' C' (SomeRet I) ->
+    paco2 (paco_safeF i R G (UnitRet (I false))) r P0' (whileAux B C (Return true) C')
   ).
   {
     intros. apply H2. easy.
@@ -296,11 +317,6 @@ pcofix rec. intros. punfold H2. dependent destruction H2.
   right. eapply rec. easy.
 }
 Qed.
-
-Definition Xor {E F VE VF} (PL PR : @Relt E F VE VF) : Relt VE VF :=
-  fun s ρs t σ =>
-    PL s ρs t σ /\ ~PR s ρs t σ \/
-    ~PL s ρs t σ /\ PR s ρs t σ.
 
 Lemma disjCommit {PL PR Q : Relt VE VF} {e} :
   Commit i G PL e Q ->

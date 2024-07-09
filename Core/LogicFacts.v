@@ -57,7 +57,6 @@ repeat lazymatch goal with
 | [ H : exists x, ?P |- _ ] => destruct H
 | [ H : ReltToPrec ?R ?s ?ρ |- _ ] => destruct H
 | [ H : PrecToRelt ?R ?s ?ρ ?t ?σ |- _ ] => destruct H
-| [ H : StReltToRelt ?Q ?s ?ρ ?t ?σ |- _ ] => destruct H
 end;
 simpl in *;
 subst;
@@ -74,7 +73,7 @@ simpl in *. *)
 
 Section lemmas.
 
-Context {E F VE VF} {R : @Relt E F VE VF}.
+Context {T E F VE VF} {R : @Relt T E F VE VF}.
 
 Lemma reltCompIdLeft {Q : Relt VE VF} :
   Q ->> id = Q.
@@ -128,7 +127,7 @@ Qed.
 
 End lemmas.
 
-Lemma rtp_prId {E F} {VE : Spec E} {VF : Spec F} :
+Lemma rtp_prId {T E F} {VE : Spec T E} {VF : Spec T F} :
   forall (P : Prec VE VF) Q S,
   ReltToPrec (prComp P Q ->> S) = P <<- Q <<- S.
 intros.
@@ -146,7 +145,7 @@ exact H1.
 easy.
 Qed.
 
-Lemma precReltCompAssoc {E F VE VF} {P : @Prec E F VE VF} Q S :
+Lemma precReltCompAssoc {T E F VE VF} {P : @Prec T E F VE VF} Q S :
   P <<- (Q ->> S) = P <<- Q <<- S.
 extensionality s.
 extensionality ρ.
@@ -161,7 +160,7 @@ exact H1.
 easy.
 Qed.
 
-Lemma reltCompAssoc {E F} {VE : Spec E} {VF : Spec F} {R1 R2 R3 : Relt VE VF} :
+Lemma reltCompAssoc {T E F} {VE : Spec T E} {VF : Spec T F} {R1 R2 R3 : Relt VE VF} :
   (R1 ->> R2) ->> R3 = R1 ->> R2 ->> R3.
 extensionality s.
 extensionality ρ.
@@ -181,7 +180,7 @@ easy.
 Qed.
 
 
-Lemma precCompAssoc {E F} {VE : Spec E} {VF : Spec F} {P} {R1 R2 : Relt VE VF} :
+Lemma precCompAssoc {T E F} {VE : Spec T E} {VF : Spec T F} {P} {R1 R2 : Relt VE VF} :
   P <<- R1 <<- R2 = P <<- (R1 ->> R2).
 extensionality s. extensionality ρ.
 apply propositional_extensionality.
@@ -197,7 +196,7 @@ exact H0.
 easy.
 Qed.
 
-Lemma rtcTrans {E F VE VF} {R : @Relt E F VE VF} :
+Lemma rtcTrans {T E F VE VF} {R : @Relt T E F VE VF} :
   (RTC R ->> RTC R) ==> RTC R.
 unfold sub, subRelt, ReltCompose.
 intros.
@@ -210,7 +209,7 @@ apply IHRTC.
 easy.
 Qed.
 
-Lemma rtcTransTac {E F VE VF} {R : @Relt E F VE VF} {s ρ t σ r τ} :
+Lemma rtcTransTac {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
   RTC R s ρ t σ ->
   RTC R t σ r τ ->
   RTC R s ρ r τ.
@@ -221,7 +220,7 @@ exact H.
 easy.
 Qed.
 
-Lemma extendRtcLeft {E F VE VF} {R : @Relt E F VE VF} {s ρ t σ r τ} :
+Lemma extendRtcLeft {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
   R s ρ t σ ->
   RTC R t σ r τ ->
   RTC R s ρ r τ.
@@ -231,7 +230,7 @@ exact H.
 easy.
 Qed.
 
-Lemma extendRtcRight {E F VE VF} {R : @Relt E F VE VF} {s ρ t σ r τ} :
+Lemma extendRtcRight {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
   RTC R s ρ t σ ->
   R t σ r τ ->
   RTC R s ρ r τ.
@@ -244,7 +243,7 @@ exact H0.
 constructor.
 Qed.
 
-Lemma weakenCommitPre {E F} {VE : Spec E} {VF : Spec F} {i G Q P' e} :
+Lemma weakenCommitPre {T E F} {VE : Spec T E} {VF : Spec T F} {i G Q P' e} :
   forall P : Relt VE VF,
   P' ==> P ->
   Commit i G P e Q ->
@@ -261,7 +260,7 @@ easy.
 easy.
 Qed.
 
-Lemma weakenCommit {E F} {VE : Spec E} {VF : Spec F} {i G P Q' e} :
+Lemma weakenCommit {T E F} {VE : Spec T E} {VF : Spec T F} {i G P Q' e} :
   forall Q : Relt VE VF,
   Q ==> Q' ->
   Commit i G P e Q ->
@@ -279,9 +278,9 @@ apply H. easy.
 easy.
 Qed.
 
-CoFixpoint weakenSafe {E F VE VF i R G P P' A Q C} :
+CoFixpoint weakenSafe {T E F VE VF i R G P P' A Q C} :
   (P' ==> P) ->
-  SafeProg (E:=E) (F:=F) (VE:=VE) (VF:=VF) (A:=A) i R G P C Q ->
+  SafeProg (T:=T) (E:=E) (F:=F) (VE:=VE) (VF:=VF) (A:=A) i R G P C Q ->
   SafeProg i R G P' C Q.
 intros.
 destruct H0.
@@ -372,7 +371,7 @@ repeat lazymatch goal with
   clear H H0 t σ
 end.
 
-Definition p2m {F} {VF : Spec F} (ρ : Poss VF) : InterState F VF :=
+Definition p2m {T F} {VF : Spec T F} (ρ : Poss VF) : InterState F VF :=
   (
     fun i =>
       match PCalls ρ i with
@@ -387,38 +386,12 @@ Definition p2m {F} {VF : Spec F} (ρ : Poss VF) : InterState F VF :=
     PState ρ
   ).
 
-(* Record LHLState {E F}
-  {VE : Spec E} {VF : Spec F}
+Record LHLState {T E F}
+  {VE : Spec T E} {VF : Spec T F}
   {M : Impl E F}
-  {R G : ThreadName -> Relt VE VF}
-  {Ps : ThreadName -> forall A, F A -> Prec VE VF}
-  {Qs : ThreadName -> forall A, F A -> Post VE VF A}
-  {s : InterState F VE} {ρs : PossSet VF}
-:= MkLHLState {
-  all_safe : forall i, match fst s i with
-  | Idle =>
-    TIdle i s ρs /\
-    forall A (m : F A), Ps i A m s ρs
-  | Cont m p =>
-    exists Is,
-      SafeProg i (R i) (G i) ((prComp (Ps i _ m) (TInvoke M i _ m)) ->> Is) p (fun v => Qs i _ m v ->> PrecToRelt (Returned i m)) /\
-      (Ps i _ m <<- TInvoke M i _ m <<- Is) s ρs /\
-      (Is ->> R i) ==> Is
-  | UCall om um k =>
-    exists Is QR, forall v,
-      Commit i (G i) ((prComp (Ps i _ om) (TInvoke M i _ om)) ->> Is) (RetEv um v) (QR v) /\
-      SafeProg i (R i) (G i) ((prComp (Ps i _ om) (TInvoke M i _ om)) ->> Is ->> QR v) (k v) (fun v => Qs i _ om v ->> PrecToRelt (Returned i om)) /\
-      (Ps i _ om <<- TInvoke M i _ om <<- Is) s ρs /\
-      (QR v ->> R i) ==> QR v /\
-      (Is ->> R i) ==> Is
-  end
-}. *)
-Record LHLState {E F}
-  {VE : Spec E} {VF : Spec F}
-  {M : Impl E F}
-  {R G : ThreadName -> Relt VE VF}
-  {Ps : ThreadName -> forall A, F A -> Prec VE VF}
-  {Qs : ThreadName -> forall A, F A -> Post VE VF A}
+  {R G : Name T -> Relt VE VF}
+  {Ps : Name T -> forall A, F A -> Prec VE VF}
+  {Qs : Name T -> forall A, F A -> Post VE VF A}
   {s : InterState F VE} {ρs : PossSet VF}
 := MkLHLState {
   all_safe : forall i, match fst s i with
@@ -439,7 +412,7 @@ Record LHLState {E F}
       (Is ->> R i) ==> Is
   end
 }.
-Arguments LHLState {E F VE VF} M R G Ps Qs s ρs.
+Arguments LHLState {T E F VE VF} M R G Ps Qs s ρs.
 
 Inductive Lift {A : Type} : Prop :=
 | lift : A -> Lift.
@@ -454,19 +427,19 @@ exists x0, x.
 easy.
 Qed.
 
-Definition invPoss {A F} {VF : Spec F} i (ρ : Poss VF) (m : F A) : Poss VF := {|
+Definition invPoss {T A F} {VF : Spec T F} i (ρ : Poss VF) (m : F A) : Poss VF := {|
   PState := ρ.(PState);
   PCalls j := if i =? j then CallPoss m else PCalls ρ j;
   PRets j := if i =? j then RetIdle else PRets ρ j
 |}.
 
-Definition retPoss {F} {VF : Spec F} i (ρ : Poss VF) : Poss VF := {|
+Definition retPoss {T F} {VF : Spec T F} i (ρ : Poss VF) : Poss VF := {|
   PState := ρ.(PState);
   PCalls j := if i =? j then CallIdle else PCalls ρ j;
   PRets j := if i =? j then RetIdle else PRets ρ j
 |}.
 
-Theorem soundness {E F} (lay : Layer E F) VF R G Ps Qs :
+Theorem soundness {T E F} (lay : Layer T E F) VF R G Ps Qs :
   VerifyImpl lay.(USpec) VF R G Ps lay.(LImpl) Qs ->
   Lin (overObj lay) VF.
 intros.
@@ -541,7 +514,7 @@ clear H2.
     subst. easy.
     intros. apply H.(init_in_P).
   }
-  generalize dependent (@allIdle E F, Init VE).
+  generalize dependent (@allIdle T E F, Init VE).
   generalize dependent (eq (initPoss (VF:=VF))).
   intro ρs. generalize dependent ρs.
   induction x0; simpl; intros; destruct_all.
@@ -1524,7 +1497,7 @@ destruct e.
 }
 Qed.
 
-Definition m2p {F} {VF : Spec F} (s : InterState F VF) : Poss VF := {|
+Definition m2p {T F} {VF : Spec T F} (s : InterState F VF) : Poss VF := {|
   PState := snd s;
   PCalls i := match fst s i with
   | Idle => CallIdle
@@ -1546,10 +1519,10 @@ Definition idImpl_constraint {F} (s : ThreadState F F) :=
   (exists A m, s = UCall (A:=A) m m Return) \/
   (exists A m v, s = Cont (A:=A) m (Return v)).
 
-Lemma help_projOver {E1 E2 E3 F} :
-  forall (p : Trace (ThreadLEvent E1 F)),
-  forall (q : Trace (ThreadLEvent E2 F)),
-  forall (r : Trace (ThreadLEvent E3 F)),
+Lemma help_projOver {T E1 E2 E3 F} :
+  forall (p : Trace (ThreadLEvent T E1 F)),
+  forall (q : Trace (ThreadLEvent T E2 F)),
+  forall (r : Trace (ThreadLEvent T E3 F)),
   forall i e,
   projOver p = projOver q ++ [(i, e)] ++ projOver r ->
   exists q' r',
@@ -1558,14 +1531,14 @@ Lemma help_projOver {E1 E2 E3 F} :
     projOver r = projOver r'.
 Admitted.
 
-Lemma get_idImpl_constraint {F} {VF : Spec F} :
+Lemma get_idImpl_constraint {T F} {VF : Spec T F} :
   forall p st,
   InterSteps idImpl (allIdle, Init VF) p st ->
   forall i, idImpl_constraint (fst st i).
 intros.
-assert (forall i, @idImpl_constraint F (allIdle i)).
+assert (forall i, @idImpl_constraint F (allIdle (T:=T) i)).
 left. easy.
-generalize dependent (@allIdle F F).
+generalize dependent (@allIdle T F F).
 generalize dependent (Init VF).
 induction p; intros.
 dependent destruction H. cbn. easy.
@@ -1614,7 +1587,7 @@ destruct H. destruct_all. dependent destruction H.
 left. easy.
 Qed.
 
-Lemma m2p2m {F} {VF : Spec F} {s : InterState F VF} :
+Lemma m2p2m {T F} {VF : Spec T F} {s : InterState F VF} :
   (forall i, idImpl_constraint (fst s i)) ->
   p2m (m2p s) = s.
 intros.
@@ -1627,7 +1600,7 @@ destruct H. destruct_all. rewrite H. easy.
 destruct_all. rewrite H. easy.
 Qed.
 
-Variant FullPossStep {F} {VF : Spec F} i (ρ σ : Poss VF) : LEvent F F -> Prop :=
+Variant FullPossStep {T F} {VF : Spec T F} i (ρ σ : Poss VF) : LEvent F F -> Prop :=
 | PPendCall A (m : F A) :
   ρ.(PCalls) i = CallIdle ->
   σ.(PCalls) i = CallPoss m ->
@@ -1655,7 +1628,7 @@ Variant FullPossStep {F} {VF : Spec F} i (ρ σ : Poss VF) : LEvent F F -> Prop 
   σ.(PRets) i = RetIdle ->
   FullPossStep i ρ σ (OEvent (RetEv m v)).
 
-Inductive FullPossSteps {F} {VF : Spec F} : Poss VF -> Trace (ThreadLEvent F F) -> Poss VF -> Prop :=
+(* Inductive FullPossSteps {T F} {VF : Spec T F} : Poss VF -> Trace (ThreadLEvent F F) -> Poss VF -> Prop :=
 | PossStepsRefl ρ :
     FullPossSteps ρ [] ρ
 | PossStepsStep i e p ρ σ τ :
@@ -1663,11 +1636,11 @@ Inductive FullPossSteps {F} {VF : Spec F} : Poss VF -> Trace (ThreadLEvent F F) 
     (forall j, i <> j -> PCalls ρ j = PCalls σ j) ->
     (forall j, i <> j -> PRets ρ j = PRets σ j) ->
     FullPossSteps σ p τ ->
-    FullPossSteps ρ ((i, e) :: p) τ.
+    FullPossSteps ρ ((i, e) :: p) τ. *)
 
-Definition comp_inv {E F}
-  (VE : Spec E) (VF : Spec F) (M : Impl E F)
-  : ThreadName -> Prec VE VF :=
+(* Definition comp_inv {T E F}
+  (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
+  : Name T -> Prec VE VF :=
   fun i t σs =>
   exists p,
     InterSteps (spec:=VE) M (allIdle, Init VE) p t /\
@@ -1696,7 +1669,7 @@ Definition comp_guar {E F}
 
 Ltac set_ext x := extensionality x; apply propositional_extensionality.
 
-(* Theorem completeness {E F} (lay : Layer E F) VF :
+Theorem completeness {E F} (lay : Layer E F) VF :
   (forall A (m : F A) v,
     lay.(LImpl) _ m <> Return v) ->
   Lin (overObj lay) VF ->

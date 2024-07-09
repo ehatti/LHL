@@ -4,9 +4,7 @@ From LHL.Core Require Import
   Specs
   Traces
   Tensor
-  TracesFacts
-  Simulates
-  SimulatesFacts.
+  TracesFacts.
 
 From LHL.Util Require Import
   TransUtil
@@ -20,7 +18,7 @@ From Coq Require Import
   Lists.List.
 Import ListNotations.
 
-Fixpoint projLeft {E F} (p : Trace (ThreadEvent (E |+| F))) : Trace (ThreadEvent E) :=
+Fixpoint projLeft {T E F} (p : Trace (ThreadEvent T (E |+| F))) : Trace (ThreadEvent T E) :=
   match p with
   | nil => nil
   | cons (i, CallEv (inl e)) p => cons (i, CallEv e) (projLeft p)
@@ -28,14 +26,14 @@ Fixpoint projLeft {E F} (p : Trace (ThreadEvent (E |+| F))) : Trace (ThreadEvent
   | cons _ p => projLeft p
   end.
 
-Fixpoint liftLeft {E F} (p : Trace (ThreadEvent E)) : Trace (ThreadEvent (E |+| F)) :=
+Fixpoint liftLeft {T E F} (p : Trace (ThreadEvent T E)) : Trace (ThreadEvent T (E |+| F)) :=
   match p with
   | nil => nil
   | cons (i, CallEv e) p => cons (i, CallEv (inl e)) (liftLeft p)
   | cons (i, RetEv e v) p => cons (i, RetEv (inl e) v) (liftLeft p)
   end.
 
-Fixpoint projRight {E F} (p : Trace (ThreadEvent (E |+| F))) : Trace (ThreadEvent F) :=
+Fixpoint projRight {T E F} (p : Trace (ThreadEvent T (E |+| F))) : Trace (ThreadEvent T F) :=
   match p with
   | nil => nil
   | cons (i, CallEv (inr e)) p => cons (i, CallEv e) (projRight p)
@@ -43,7 +41,7 @@ Fixpoint projRight {E F} (p : Trace (ThreadEvent (E |+| F))) : Trace (ThreadEven
   | cons _ p => projRight p
   end.
   
-Fixpoint liftRight {E F} (p : Trace (ThreadEvent F)) : Trace (ThreadEvent (E |+| F)) :=
+Fixpoint liftRight {T E F} (p : Trace (ThreadEvent T F)) : Trace (ThreadEvent T (E |+| F)) :=
   match p with
   | nil => nil
   | cons (i, CallEv e) p => cons (i, CallEv (inr e)) (liftRight p)
@@ -59,9 +57,8 @@ destruct_all.
 eapply H. exact H0.
 Qed.
 
-(* Note to Eashan: This is proven by C4 in Traces_Pair.v, see ConcTraceIncl_pairObject *)
-Theorem tensor_monotonic {E F} :
-  forall (specE specE' : Spec E) (specF specF' : Spec F) ,
+Theorem tensor_monotonic {T E F} :
+  forall (specE specE' : Spec T E) (specF specF' : Spec T F) ,
   specRefines specE specE' ->
   specRefines specF specF' -> 
   specRefines (tensorSpec specE specF) (tensorSpec specE' specF').
@@ -74,7 +71,7 @@ assert (exists st, Steps (Step specE') (Init specE') (projLeft a) st).
 {
   clear H0. apply H. clear H.
   generalize dependent (Init specE). generalize dependent (Init specF).
-  generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
+  generalize dependent (fun _ : Name T => @None {A & (E |+| F) A}).
   induction a.
   {
     cbn. intros. dependent destruction H1.
@@ -105,7 +102,7 @@ assert (exists st, Steps (Step specF') (Init specF') (projRight a) st).
 {
   clear H H2. apply H0. clear H0.
   generalize dependent (Init specE). generalize dependent (Init specF).
-  generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
+  generalize dependent (fun _ : Name T => @None {A & (E |+| F) A}).
   induction a.
   {
     cbn. intros. dependent destruction H1.
@@ -135,7 +132,7 @@ assert (exists st, Steps (Step specF') (Init specF') (projRight a) st).
 clear H H0. destruct_all.
 generalize dependent (Init specE). generalize dependent (Init specF).
 generalize dependent (Init specE'). generalize dependent (Init specF').
-generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
+generalize dependent (fun _ : Name T => @None {A & (E |+| F) A}).
 induction a; cbn in *; intros.
 {
   repeat econstructor.
@@ -187,25 +184,18 @@ induction a; cbn in *; intros.
 }
 Qed.
 
-Check MkTS.
-
-Definition tensorLeftActiveMap {E F} (a : TensorActive E F) : ThreadName -> option {A & E A} :=
+Definition tensorLeftActiveMap {T E F} (a : TensorActive T E F) : Name T -> option {A & E A} :=
   fun i => match a i with
   | Some (existT _ _ (inl m)) => Some (existT _ _ m)
   | _ => None
   end.
 
-Definition tensorNoRight {E F} (a : TensorActive E F) :=
+Definition tensorNoRight {T E F} (a : TensorActive T E F) :=
   forall i,
     ~(exists A (m : F A), a i = Some (existT _ _ (inr m))).
 
-Lemma eq_help {A} :
-  forall x y : A, x = y -> x ~= y.
-intros. rewrite H. easy.
-Qed.
-
-Lemma tensor_liftLeft_trivial {E F} :
-  forall (specE : Spec E) (specF : Spec F),
+Lemma tensor_liftLeft_trivial {T E F} :
+  forall (specE : Spec T E) (specF : Spec T F),
   forall s t c p a,
   SeqConsistent (tensorLeftActiveMap a) p ->
   tensorNoRight a ->
@@ -355,18 +345,18 @@ split; intros.
 }
 Qed.
 
-Definition tensorRightActiveMap {E F} (a : TensorActive E F) : ThreadName -> option {A & F A} :=
+Definition tensorRightActiveMap {T E F} (a : TensorActive T E F) : Name T -> option {A & F A} :=
   fun i => match a i with
   | Some (existT _ _ (inr m)) => Some (existT _ _ m)
   | _ => None
   end.
 
-Definition tensorNoLeft {E F} (a : TensorActive E F) :=
+Definition tensorNoLeft {T E F} (a : TensorActive T E F) :=
   forall i,
     ~(exists A (m : E A), a i = Some (existT _ _ (inl m))).
 
-Lemma tensor_liftRight_trivial {E F} :
-  forall (specE : Spec E) (specF : Spec F),
+Lemma tensor_liftRight_trivial {T E F} :
+  forall (specE : Spec T E) (specF : Spec T F),
   forall s t c p a,
   SeqConsistent (tensorRightActiveMap a) p ->
   tensorNoLeft a ->
@@ -516,8 +506,8 @@ split; intros.
 }
 Qed.
 
-Lemma tensor_liftLeft_const {E F} :
-  forall (specE : Spec E) (specF : Spec F),
+Lemma tensor_liftLeft_const {T E F} :
+  forall (specE : Spec T E) (specF : Spec T F),
   forall s t c c' a a' p,
   Steps (TensorStep specE specF) (MkTS a s c) (liftLeft p) (MkTS a' t c') ->
   c = c'.
@@ -534,8 +524,8 @@ induction p; cbn; intros.
 }
 Qed.
 
-Lemma tensor_liftRight_const {E F} :
-  forall (specE : Spec E) (specF : Spec F),
+Lemma tensor_liftRight_const {T E F} :
+  forall (specE : Spec T E) (specF : Spec T F),
   forall s t c c' a a' p,
   Steps (TensorStep specE specF) (MkTS a c s) (liftRight p) (MkTS a' c' t) ->
   c = c'.
@@ -553,8 +543,8 @@ induction p; cbn; intros.
 Qed.
 
 (* Note to Eashan: This is also seems to be proven by C4 in Traces_Pair.v *)
-Theorem tensor_monotonic_inv {E F} : 
-  forall (specE specE' : Spec E) (specF specF' : Spec F), 
+Theorem tensor_monotonic_inv {T E F} : 
+  forall (specE specE' : Spec T E) (specF specF' : Spec T F), 
     specRefines (tensorSpec specE specF) (tensorSpec specE' specF') ->
     specRefines specE specE' /\ specRefines specF specF'.
 unfold specRefines, Incl, IsTraceOfSpec. intros.
@@ -674,8 +664,8 @@ Definition tensorTS {E E' F F'} (s : ThreadState E E') (t : ThreadState F F') : 
   | UCall om um k => UCall (inl om) (inl um) (fun x => mapProg (fun _ => inl) (k x))
   end.
 
-Lemma split_tensor_steps {E F} :
-  forall (specE : Spec E) (specF : Spec F),
+Lemma split_tensor_steps {T E F} :
+  forall (specE : Spec T E) (specF : Spec T F),
   forall p tL tR sL sR a a',
   Steps (TensorStep specE specF) (MkTS a sL sR) p (MkTS a' tL tR) ->
   Steps (Step specE) sL (projLeft p) tL /\
@@ -727,7 +717,7 @@ match goal with
 | [ s : InterState ?F ?spec |- _] => destruct s
 end).
 
-Lemma over_call_states {E F} {V : Spec E} {M : Impl E F} :
+Lemma over_call_states {T E F} {V : Spec T E} {M : Impl E F} :
   forall i A (m : F A) s t,
   InterStep (spec:=V) M s (i, OEvent (CallEv m)) t ->
   fst t i <> Idle.
@@ -736,7 +726,7 @@ dependent destruction H. cbn in *. dependent destruction H.
 rewrite <- x. easy.
 Qed.
 
-Lemma step_no_diff {E F} {V : Spec E} {M : Impl E F} :
+Lemma step_no_diff {T E F} {V : Spec T E} {M : Impl E F} :
   forall i e s t,
   InterStep (spec:=V) M s (i, e) t ->
   forall j, j <> i -> fst s j = fst t j.
@@ -745,20 +735,20 @@ dependent destruction H. cbn in *.
 rewrite H0; easy.
 Qed.
 
-Definition tensorActiveUnder {E F} (s : ThreadsSt E F) : ActiveMap E :=
+Definition tensorActiveUnder {T E F} (s : ThreadsSt T E F) : ActiveMap T E :=
   fun i => match s i with
   | UCall om um k => Some (existT _ _ um)
   | _ => None
   end.
 
-Definition tensorActiveOver {E F} (s : ThreadsSt E F) : ActiveMap F :=
+Definition tensorActiveOver {T E F} (s : ThreadsSt T E F) : ActiveMap T F :=
   fun i => match s i with
   | Cont m _ => Some (existT _ _ m)
   | UCall m _ k => Some (existT _ _ m)
   | Idle => None
   end.
 
-Inductive tensor_system {E E' F F'} : ActiveMap (E |+| F) -> ActiveMap (E' |+| F') -> Trace (ThreadLEvent E E') -> Trace (ThreadLEvent F F') -> Trace (ThreadEvent (E' |+| F')) -> Prop :=
+Inductive tensor_system {T E E' F F'} : ActiveMap T (E |+| F) -> ActiveMap T (E' |+| F') -> Trace (ThreadLEvent T E E') -> Trace (ThreadLEvent T F F') -> Trace (ThreadEvent T (E' |+| F')) -> Prop :=
 | TSNil ua oa :
     tensor_system ua oa nil nil nil
 | TSLeftOverCall ua oa oa' p q i A (om : E' A) r :
@@ -838,7 +828,7 @@ Inductive over_rel {E E' F F'} : option {A & (E' |+| F') A} -> ThreadState E E' 
 | ORRightUCall A (om : F' A) B (um : F B) k :
     over_rel (Some (existT _ _ (inr om))) Idle (UCall om um k).
 
-Inductive inter_system {E F} : ActiveMap E -> ActiveMap F -> Trace (ThreadLEvent E F) -> Prop :=
+Inductive inter_system {T E F} : ActiveMap T E -> ActiveMap T F -> Trace (ThreadLEvent T E F) -> Prop :=
 | ISNil ua oa :
     inter_system ua oa nil
 | ISOverCall ua oa oa' p i A (om : F A) :
@@ -874,7 +864,7 @@ Inductive inter_system {E F} : ActiveMap E -> ActiveMap F -> Trace (ThreadLEvent
     oa i = Some (existT _ _ om) ->
     inter_system ua oa ((i, UEvent None) :: p).
 
-Lemma InterSteps_system {E F} {V : Spec E} {M : Impl E F} :
+Lemma InterSteps_system {T E F} {V : Spec T E} {M : Impl E F} :
   forall t p s,
   InterSteps (spec:=V) M s p t ->
   inter_system (tensorActiveUnder (fst s)) (tensorActiveOver (fst s)) p.
@@ -990,13 +980,13 @@ induction p; cbn; intros; destruct_steps.
 }
 Qed.
 
-Lemma funct_l_help {E F E' F'} {specE : Spec E} {specF : Spec F} {M : Impl E E'} {N : Impl F F'} {LState : InterState E' specE} {RState : InterState F' specF} {x0 : list (ThreadLEvent E E')} {x : list (ThreadLEvent F F')} {o : ThreadName -> option {A : Type & (E' |+| F') A}} {o0 : ThreadName -> option {A : Type & (E |+| F) A}} {a : Trace (ThreadEvent (E' |+| F'))} :
+Lemma funct_l_help {T E F E' F'} {specE : Spec T E} {specF : Spec T F} {M : Impl E E'} {N : Impl F F'} {LState : InterState E' specE} {RState : InterState F' specF} {x0 : list (ThreadLEvent T E E')} {x : list (ThreadLEvent T F F')} {o : Name T -> option {A : Type & (E' |+| F') A}} {o0 : Name T -> option {A : Type & (E |+| F) A}} {a : Trace (ThreadEvent T (E' |+| F'))} :
   tensor_system o0 o x0 x a ->
-  forall (s : State specF) (s0 : State specE) (t0 : ThreadsSt E E'),
+  forall (s : State specF) (s0 : State specE) (t0 : ThreadsSt T E E'),
   InterSteps M (t0, s0) x0 LState ->
-  forall t : ThreadsSt F F',
+  forall t : ThreadsSt T F F',
   InterSteps N (t, s) x RState ->
-  (forall i : ThreadName, over_rel (o i) (t0 i) (t i)) ->
+  (forall i, over_rel (o i) (t0 i) (t i)) ->
   exists st q,
     a = projOver q /\
   InterSteps (spec:= tensorSpec specE specF) (tensorImpl M N) (fun i => tensorTS (t0 i) (t i), {| TActive := o0; LState := s0; RState := s |}) q st.
@@ -1288,12 +1278,12 @@ Inductive active_square {E E' F F'} : Status (E |+| F) -> Status E -> Status F -
 | ASRightUnder A (om : F' A) B (um : F B) :
     active_square (Some (existT _ _ (inr um))) None (Some (existT _ _ um)) None (Some (existT _ _ om)) (Some (existT _ _ (inr om))).
 
-Definition all_active_square {E E' F F'} : ActiveMap (E |+| F) -> ActiveMap E -> ActiveMap F -> ActiveMap E' -> ActiveMap F' -> ActiveMap (E' |+| F') -> Prop :=
+Definition all_active_square {T E E' F F'} : ActiveMap T (E |+| F) -> ActiveMap T E -> ActiveMap T F -> ActiveMap T E' -> ActiveMap T F' -> ActiveMap T (E' |+| F') -> Prop :=
   fun a b c d e f =>
     forall i, active_square (a i) (b i) (c i) (d i) (e i) (f i). 
 
-Lemma proj_dirs_nil {E F} :
-  forall p : Trace (ThreadEvent (E |+| F)),
+Lemma proj_dirs_nil {T E F} :
+  forall p : Trace (ThreadEvent T (E |+| F)),
   projLeft p = nil ->
   projRight p = nil ->
   p = nil.
@@ -1309,7 +1299,7 @@ repeat match goal with
 | [ H : ?x = ?f ?y |- _] => (repeat rewrite <- H in * || clear H)
 end.
 
-Inductive tensor_trace_square {E E' F F'} : Trace (ThreadLEvent E E') -> Trace (ThreadLEvent F F') -> Trace (ThreadEvent (E' |+| F')) -> Prop :=
+Inductive tensor_trace_square {T E E' F F'} : Trace (ThreadLEvent T E E') -> Trace (ThreadLEvent T F F') -> Trace (ThreadEvent T (E' |+| F')) -> Prop :=
 | TTSNil :
     tensor_trace_square nil nil nil
 | TTSLeftOverCall p q r i A (m : E' A) :
@@ -1343,8 +1333,8 @@ Inductive tensor_trace_square {E E' F F'} : Trace (ThreadLEvent E E') -> Trace (
     tensor_trace_square p q r ->
     tensor_trace_square p ((i, UEvent None) :: q) r.
 
-Program Fixpoint get_tensor_trace_square {E E' F F'} {x0 : Trace (ThreadLEvent E E')} {x : Trace (ThreadLEvent F F')} {measure (length x0 + length x)} :
-  forall a : Trace (ThreadEvent (E' |+| F')),
+Program Fixpoint get_tensor_trace_square {T E E' F F'} {x0 : Trace (ThreadLEvent T E E')} {x : Trace (ThreadLEvent T F F')} {measure (length x0 + length x)} :
+  forall a : Trace (ThreadEvent T (E' |+| F')),
   projLeft a = projOver x0 ->
   projRight a = projOver x ->
   tensor_trace_square x0 x a := _.

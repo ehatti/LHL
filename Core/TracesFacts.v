@@ -19,15 +19,15 @@ From LHL.Core Require Import
 
 (* Basic Trace Properties *)
 
-Lemma nil_IsTraceOfSpec {E} :  
-    forall (spec : Spec E),
+Lemma nil_IsTraceOfSpec {T E} :  
+    forall (spec : Spec T E),
     IsTraceOfSpec nil spec.
 Proof.
     intros. exists spec.(Init). apply TransUtil.StepsNone.
 Qed.
 
-Lemma IsTraceOf_iso {E} t spec :
-  IsTraceOfSpec (E:=E) t spec ->
+Lemma IsTraceOf_iso {T E} t spec :
+  IsTraceOfSpec (T:=T) (E:=E) t spec ->
   IsTraceOfSpecBwd (to_bwd t) spec.
 intros.
 destruct H.
@@ -36,8 +36,8 @@ apply Steps_iso.
 easy.
 Qed.
 
-Lemma BwdIsTraceOf_iso {E} t spec :
-  IsTraceOfSpecBwd (E:=E) (to_bwd t) spec ->
+Lemma BwdIsTraceOf_iso {T E} t spec :
+  IsTraceOfSpecBwd (T:=T) (E:=E) (to_bwd t) spec ->
   IsTraceOfSpec t spec.
 intros.
 destruct H.
@@ -52,7 +52,7 @@ Qed.
 
 (* overObj and InterStep Properties *)
 
-Lemma decompUnderSteps {E F : ESig} {spec : Spec E} :
+Lemma decompUnderSteps {T E F} {spec : Spec T E} :
   InterUSteps F spec =
   fun s p t =>
     Steps (Step spec) (snd s) (projSilent p) (snd t) /\
@@ -125,13 +125,13 @@ split.
 }
 Qed.
 
-Fixpoint decompOverObjLift {E F} (p : Trace (ThreadName * option (Event E))) : Trace (ThreadLEvent E F) :=
+Fixpoint decompOverObjLift {T E F} (p : Trace (Name T * option (Event E))) : Trace (ThreadLEvent T E F) :=
   match p with
   | nil => nil
   | cons (i, e) p => cons (i, UEvent e) (decompOverObjLift p)
   end.
 
-Lemma projUnderThr_app {E F} {p q : Trace (ThreadLEvent E F)} :
+Lemma projUnderThr_app {T E F} {p q : Trace (ThreadLEvent T E F)} :
   projUnderThr (p ++ q)%list = (projUnderThr p ++ projUnderThr q)%list.
 induction p.
 easy.
@@ -146,7 +146,7 @@ simpl.
 easy.
 Qed.
 
-Lemma projOver_app {E F} {p q : Trace (ThreadLEvent E F)} :
+Lemma projOver_app {T E F} {p q : Trace (ThreadLEvent T E F)} :
   projOver (p ++ q)%list = (projOver p ++ projOver q)%list.
 induction p.
 easy.
@@ -158,7 +158,7 @@ f_equal.
 easy.
 Qed.
 
-Lemma projSilent_help {E F} {p : Trace (ThreadName * option (Event E))} :
+Lemma projSilent_help {T E F} {p : Trace (Name T * option (Event E))} :
   projUnderThr (F:=F) (decompOverObjLift p) = projSilent p.
 induction p.
 easy.
@@ -170,21 +170,21 @@ simpl.
 easy.
 Qed.
 
-Inductive IsUnderTrace {E F} : Trace (ThreadLEvent E F) -> Prop :=
+Inductive IsUnderTrace {T E F} : Trace (ThreadLEvent T E F) -> Prop :=
 | NilUnder :
     IsUnderTrace nil
 | ConsUnder i e p :
     IsUnderTrace p ->
     IsUnderTrace (cons (i, UEvent e) p).
 
-Lemma projOverUnder {E F} {p : Trace (ThreadLEvent E F)} :
+Lemma projOverUnder {T E F} {p : Trace (ThreadLEvent T E F)} :
   IsUnderTrace p ->
   projOver p = nil.
 intros.
 induction H; easy.
 Qed.
 
-Definition IsOverObjTrace {E F} (p : Trace (ThreadLEvent E F)) :=
+Definition IsOverObjTrace {T E F} (p : Trace (ThreadLEvent T E F)) :=
   p = nil \/ exists i ev p', p = (i, OEvent ev) :: p'.
 
 Lemma projPoint_app {I A} (xs ys : list (I * A)) (eqb : I -> I -> bool) :
@@ -202,16 +202,16 @@ easy.
 easy.
 Qed.
 
-Inductive overObj_view {E F} : Trace (ThreadLEvent E F) -> Prop :=
+Inductive overObj_view {T E F} : Trace (ThreadLEvent T E F) -> Prop :=
 | OverObjNil : overObj_view nil
 | OverObjCons i e p q :
     IsUnderTrace p ->
     overObj_view q ->
     overObj_view ((i, OEvent e) :: p ++ q).
 
-Lemma get_overObj_view {E F} :
+Lemma get_overObj_view {T E F} :
   forall p,
-  @IsOverObjTrace E F p ->
+  @IsOverObjTrace T E F p ->
   overObj_view p.
 intros.
 destruct H.
@@ -229,10 +229,10 @@ repeat constructor; easy.
 apply OverObjCons with (p:=nil); repeat constructor; easy.
 Qed.
 
-Lemma decompOverObj {E F} {lay : Layer E F} :
+Lemma decompOverObj {T E F} {lay : Layer T E F} :
   Steps (Step (overObj lay)) =
   fun s p t =>
-    exists (q : Trace (ThreadLEvent E F)),
+    exists (q : Trace (ThreadLEvent T E F)),
       p = projOver q /\
       Steps (Step lay.(USpec)) (snd s) (projUnderThr q) (snd t) /\
       Steps (ThreadsStep lay.(LImpl)) (fst s) q (fst t) /\
@@ -439,9 +439,9 @@ split; intros.
 }
 Qed.
 
-Lemma exProjOver E {F} :
-  forall (p : Trace (ThreadEvent F)),
-  exists (q : Trace (ThreadLEvent E F)),
+Lemma exProjOver E {T F} :
+  forall (p : Trace (ThreadEvent T F)),
+  exists (q : Trace (ThreadLEvent T E F)),
   p = projOver q.
 intros.
 induction p.
@@ -450,12 +450,12 @@ easy.
 destruct_all.
 subst.
 destruct a.
-eexists (cons (t, OEvent e) x).
+eexists (cons (n, OEvent e) x).
 simpl.
 easy.
 Qed.
 
-Lemma projInterSteps {E F} {lay : Layer E F} :
+Lemma projInterSteps {T E F} {lay : Layer T E F} :
   Steps (Step (overObj lay)) =
   fun s p t =>
     exists q,
@@ -651,7 +651,7 @@ apply IHp.
 easy.
 Qed.
 
-Lemma other_inter {E F} {spec : Spec E} {impl : Impl E F} :
+Lemma other_inter {T E F} {spec : Spec T E} {impl : Impl E F} :
   forall p t i s,
   OtherSteps (spec:=spec) i impl s p t ->
   InterSteps impl s p t.
@@ -675,57 +675,10 @@ Inductive euttTS_ {E F : ESig} :
     (forall (x : A), eutt (k x) (k' x)) ->
     euttTS_ (UCall om um k) (UCall om um k').
 
-Definition euttTS {E F : ESig} :
-    ThreadsSt E F -> ThreadsSt E F -> Prop :=
-    fun ths ths' => forall (i : ThreadName), euttTS_ (ths i) (ths' i).
+Definition euttTS {T E F} :
+    ThreadsSt T E F -> ThreadsSt T E F -> Prop :=
+    fun ths ths' => forall (i : Name T), euttTS_ (ths i) (ths' i).
 
-Definition euttIS {A E F} :
-    ThreadsSt E F * A -> ThreadsSt E F * A -> Prop :=
+Definition euttIS {T A E F} :
+    ThreadsSt T E F * A -> ThreadsSt T E F * A -> Prop :=
         fun ost ost' => euttTS (fst ost) (fst ost') /\ (snd ost = snd ost').
-        
-(* Lemma eutt_InterStep {E F} (RR : IRel E E) (spec : Spec E) (impl : Impl E F) (impl' : Impl E F): 
-    euttImpl RR impl impl' ->
-    forall i ist0 ev ist1 ist0',
-        euttIS (A := spec.(State)) RR ist0 ist0' ->
-        InterStep (impl := impl) i ist0 ev ist1 ->
-        exists ist1' ev',
-            (ev' = ev  /\ InterStep (impl := impl') i ist0' ev' ist1' /\ euttIS RR ist1 ist1')
-        \/  (ev' = (i, Silent) /\ InterStep (impl := impl') i ist0' ev' ist1' /\ euttIS RR ist0 ist1').
-Proof.
-    intros. remember H1. destruct H1.
-    - (* OCall *) 
-      unfold euttIS, euttTS in H0. destruct H0.
-      pose (EUTTSI := (H0 i)).
-      inversion EUTTSI. 
-      pose (thst1' := (updt_thst (fst ist0') i (Cont m (impl' R m)))).
-      pose (ist1' := (thst1', st)).
-      exists ist1'. exists (i, OCallEv m).
-      left; repeat split.
-      + (* InterStep *)
-        symmetry in H4.
-        assert (thst1' i = Cont m (impl' R m)) by eapply updt_istate_i_eq_st.
-        assert (differ_pointwise (fst ist0') thst1' i) by eapply updt_istate_pointwise.
-        assert (ist0' = (fst ist0', st)) by (destruct ist0'; simpl in H1; rewrite H1; simpl; reflexivity).
-        rewrite H6. pose (step' := IOCall (st := st) H4 H2 H5). apply step'.
-      + (* Still eutt *)
-        unfold euttTS. intro j. simpl.
-        pose (Nat.eq_dec j i).
-        destruct s.
-        (* i = j *)
-        assert (thst1' i = Cont m (impl' R m)) by eapply updt_istate_i_eq_st.
-        subst. rewrite e0. rewrite H2.
-        constructor. unfold euttImpl in H. apply H.
-        (* i <> j *)
-        pose (H0 j). simpl in e1. 
-        assert (differ_pointwise (fst ist0') thst1' i) by eapply updt_istate_pointwise.
-        rewrite (H2 j n). rewrite (d j n). assumption.   
-Admitted.
-
-Lemma euttTS_isPathOf {E F} (spec : Spec E) : 
-    forall (impl : Impl E F) (impl' : Impl E F),
-    forall t thst0 thst1 thst0', 
-        euttIS ieq thst0 thst0' ->
-        IsPathOf thst0 t thst1 (Steps (overObj (spec :> impl)).(Step)) ->
-        exists thst1',  
-            IsPathOf thst0' t thst1' (Steps (overObj (spec :> impl')).(Step)).
-Admitted. *)

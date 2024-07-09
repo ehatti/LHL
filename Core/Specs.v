@@ -8,35 +8,35 @@ From LHL.Util Require Import
   TransUtil
   Util.
 
-Definition ThreadName := nat.
+Definition Name T := {i | i < T}.
 
 Variant Event {E : ESig} :=
 | CallEv {A} (m : E A)
 | RetEv {A} (m : E A) (n : A).
 Arguments Event : clear implicits.
 
-Definition ThreadEvent (E : ESig) : Type := ThreadName * Event E.
+Definition ThreadEvent T (E : ESig) : Type := Name T * Event E.
 
-Definition ActiveMap (E : ESig) := ThreadName -> option {A & E A}.
+Definition ActiveMap T (E : ESig) := Name T -> option {A & E A}.
 
-Inductive SeqConsistent {E} : ActiveMap E -> list (ThreadEvent E) -> Prop :=
+Inductive SeqConsistent {T E} : ActiveMap T E -> list (ThreadEvent T E) -> Prop :=
 | SCNil a : SeqConsistent a nil
-| SCCall (a a' : ActiveMap E) i A (m : E A) p :
+| SCCall (a a' : ActiveMap T E) i A (m : E A) p :
     a i = None ->
     a' i = Some (existT _ _ m) ->
     differ_pointwise a a' i ->
     SeqConsistent a' p ->
     SeqConsistent a ((i, CallEv m) :: p)
-| SCRet (a a' : ActiveMap E) i A (m : E A) v p :
+| SCRet (a a' : ActiveMap T E) i A (m : E A) v p :
     a i = Some (existT _ _ m) ->
     a' i = None ->
     differ_pointwise a a' i ->
     SeqConsistent a' p ->
     SeqConsistent a ((i, RetEv m v) :: p).
 
-Record Spec {E} : Type := {
+Record Spec {T E} : Type := {
   State : Type;
-  Step : State -> ThreadEvent E -> State -> Prop;
+  Step : State -> ThreadEvent T E -> State -> Prop;
   Init : State;
   seq_cons : forall p s,
     Steps Step Init p s ->
@@ -44,15 +44,15 @@ Record Spec {E} : Type := {
 }.
 Arguments Spec : clear implicits.
 
-Record Layer {E F : ESig} : Type := mkLayer {
-  USpec : Spec E;
+Record Layer {T} {E F : ESig} : Type := mkLayer {
+  USpec : Spec T E;
   LImpl : Impl E F; 
 }.
 Arguments Layer : clear implicits.
-Arguments mkLayer {E F} USpec LImpl.
+Arguments mkLayer {T E F} USpec LImpl.
 Notation "x :> y" := (mkLayer x y) (at level 80, right associativity).
 
-Definition idLayer {E : ESig} (spec : Spec E) :=
+Definition idLayer {T E} (spec : Spec T E) :=
   {|
     USpec := spec;
     LImpl := idImpl
@@ -68,11 +68,11 @@ Arguments LEvent : clear implicits.
 
 Definition Silent {E} : option (Event E) := None.
 
-Definition ThreadLEvent E F : Type := nat * LEvent E F.
+Definition ThreadLEvent T E F : Type := Name T * LEvent E F.
 
 (* Layer Composition *)
 
-Definition layVComp {E F G} (lay : Layer E F) (impl : Impl F G) : Layer E G :=
+Definition layVComp {T E F G} (lay : Layer T E F) (impl : Impl F G) : Layer T E G :=
   {|
     USpec := lay.(USpec);
     LImpl := implVComp lay.(LImpl) impl

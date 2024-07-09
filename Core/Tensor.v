@@ -10,22 +10,22 @@ From LHL.Util Require Import
 From Coq Require Import
   Program.Equality.
 
-Definition TensorActive EL ER := ThreadName -> option ({A & (EL |+| ER) A}).
+Definition TensorActive T EL ER := Name T -> option ({A & (EL |+| ER) A}).
 
-Record TensorState {EL ER} {specL : Spec EL} {specR : Spec ER} := MkTS {
-  TActive : TensorActive EL ER;
+Record TensorState {T EL ER} {specL : Spec T EL} {specR : Spec T ER} := MkTS {
+  TActive : TensorActive T EL ER;
   LState : specL.(State);
   RState : specR.(State)
 }.
-Arguments TensorState {EL ER} specL specR.
+Arguments TensorState {T EL ER} specL specR.
 
 Section Tensor.
 
-Context {EL ER}
-        (specL : Spec EL)
-        (specR : Spec ER).
+Context {T EL ER}
+        (specL : Spec T EL)
+        (specR : Spec T ER).
 
-Definition TensorStep st (ev : ThreadEvent (EL |+| ER)) st' :=
+Definition TensorStep st (ev : ThreadEvent T (EL |+| ER)) st' :=
   match ev with
     | (i, CallEv m) => 
         match m with
@@ -55,7 +55,7 @@ Definition TensorStep st (ev : ThreadEvent (EL |+| ER)) st' :=
         end
   end.
 
-Program Definition tensorSpec : Spec (EL |+| ER) :=
+Program Definition tensorSpec : Spec T (EL |+| ER) :=
   {|
     State := TensorState specL specR;
     Step := TensorStep;
@@ -67,7 +67,7 @@ Program Definition tensorSpec : Spec (EL |+| ER) :=
   |}.
 
 Next Obligation.
-generalize dependent (fun _ : ThreadName => @None {A : Type & (EL |+| ER) A}).
+generalize dependent (fun _ : Name T => @None {A : Type & (EL |+| ER) A}).
 generalize dependent (Init specL). generalize dependent (Init specR).
 induction p; cbn; intros.
 {
@@ -86,7 +86,7 @@ Qed.
 
 End Tensor.
 
-Arguments MkTS {EL ER specL specR}.
+Arguments MkTS {T EL ER specL specR}.
 
 Definition tensorImpl 
   {EL FL} (ML : Impl EL FL) {ER FR} (MR : Impl ER FR) : Impl (EL |+| ER) (FL |+| FR) :=
@@ -96,10 +96,10 @@ Definition tensorImpl
       | inr mR => mapProg (fun _ => inr) (MR Ret mR)
     end.
 
-Definition tensorLayer
-          {EL FL} (layL : Layer EL FL)
-          {ER FR} (layR : Layer ER FR) :
-  Layer (EL |+| ER) (FL |+| FR) :=
+Definition tensorLayer {T}
+          {EL FL} (layL : Layer T EL FL)
+          {ER FR} (layR : Layer T ER FR) :
+  Layer T (EL |+| ER) (FL |+| FR) :=
   {|
     USpec := tensorSpec layL.(USpec) layR.(USpec);
     LImpl := tensorImpl layL.(LImpl) layR.(LImpl)

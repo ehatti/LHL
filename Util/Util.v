@@ -87,7 +87,7 @@ contradiction.
 easy.
 Qed.
 
-Lemma differ_pointwise_trivial {A} (f : nat -> A) i x :
+Lemma differ_pointwise_trivial {A B} (f : A -> B) i x :
   differ_pointwise f (fun j => if i =? j then x else f j) i.
 unfold differ_pointwise.
 intros.
@@ -135,3 +135,13 @@ destruct (classicT (x <> y)).
 easy.
 exfalso. apply n0. easy.
 Qed.
+
+Parameter set : Type -> Type.
+Parameter emp : forall {A}, set A.
+Parameter insert : forall {A}, A -> set A -> set A.
+
+Axiom insert_perm : forall {A} (s : set A) x y, insert x (insert y s) = insert y (insert x s).
+Axiom insert_unique : forall {A} (s : set A) x, insert x (insert x s) = insert x s.
+Axiom insert_cong : forall {A} (s1 s2 : set A) x y, insert x s1 = insert y s2 -> x = y /\ s1 = s2.
+
+Axiom disj_cons : forall {A} (s : set A) x, insert x s <> emp.

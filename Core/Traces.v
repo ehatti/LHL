@@ -23,32 +23,32 @@ Definition Trace (T : Type) : Type := list T.
 Definition PrefixOf {T} (ρ σ : Trace T) : Prop :=
   exists τ, σ = app ρ τ.
 
-Definition projAgentEv {A} i (ev : nat * A) : option (nat * A) :=
+Definition projAgentEv {T A} i (ev : Name T * A) : option (Name T * A) :=
   if eqb (fst ev) i then
     Some ev
   else
     None.
 
-Definition projOverEv {E F : ESig} (ev : @ThreadLEvent E F) : option (ThreadEvent F) := 
+Definition projOverEv {T E F} (ev : ThreadLEvent T E F) : option (ThreadEvent T F) := 
   match ev with
   | (i, OEvent ev) => Some (i, ev)
   | _ => None
   end.
 
-Definition projUnderEv {E F : ESig} (ev : @ThreadLEvent E F) : option (nat * option (Event E)) := 
+Definition projUnderEv {T E F} (ev : ThreadLEvent T E F) : option (Name T * option (Event E)) := 
   match ev with
   | (i, UEvent ev) => Some (i, ev)
   | _ => None
   end.
 
-Fixpoint projUnderThr {E F} (p : Trace (ThreadLEvent E F)) : Trace (ThreadEvent E) :=
+Fixpoint projUnderThr {T E F} (p : Trace (ThreadLEvent T E F)) : Trace (ThreadEvent T E) :=
   match p with
   | nil => nil
   | cons (i, UEvent (Some ev)) q => cons (i, ev) (projUnderThr q)
   | cons _ q => projUnderThr q
   end.
 
-Fixpoint projSilent {E} (p : Trace (ThreadName * option (Event E))) : Trace (ThreadEvent E) :=
+Fixpoint projSilent {T E} (p : Trace (Name T * option (Event E))) : Trace (ThreadEvent T E) :=
   match p with
   | nil => nil
   | cons (i, None) q => projSilent q
@@ -63,8 +63,8 @@ Definition liftOEv {E F} (ev : @Event F) : @LEvent E F :=
 
 Notation projOver := (mapfilter projOverEv).
 Notation projUnder := (mapfilter projUnderEv).
-Definition projAgent {A} i : 
-  Trace (ThreadName * A) -> Trace (ThreadName * A) := 
+Definition projAgent {T A} i : 
+  Trace (Name T * A) -> Trace (Name T * A) := 
     (mapfilter (projAgentEv i)).
 Notation liftU := (map liftUEv).
 Notation liftO := (map liftOEv).
@@ -77,12 +77,12 @@ Inductive ThreadState {E F : ESig} : Type :=
 | UCall {A B} (om : F B) (um : E A) (k : A -> Prog E B).
 Arguments ThreadState : clear implicits.
 
-Definition ThreadsSt (E F : ESig) : Type := ThreadName -> ThreadState E F.
+Definition ThreadsSt T E F : Type := Name T -> ThreadState E F.
 
-Definition updt_thst (E F : ESig) := 
-  @updt_istate ThreadName (ThreadState E F) eqb.
+Definition updt_thst {T E F} := 
+  @updt_istate (Name T) (ThreadState E F) eqb.
 
-Definition allIdle {E F : ESig} : ThreadsSt E F := fun n => Idle.
+Definition allIdle {T E F} : ThreadsSt T E F := fun n => Idle.
 
 Variant OverThreadStep {E F : ESig} (M : Impl E F) :
   ThreadState E F -> Event F -> ThreadState E F -> Prop :=
@@ -116,52 +116,52 @@ Definition ThreadStep {E F : ESig} (M : Impl E F) (s : ThreadState E F) (e : LEv
   | OEvent e => OverThreadStep M s e t
   end.
 
-Definition ThreadsStep {E F} (M : Impl E F)
-  : ThreadsSt E F -> ThreadLEvent E F -> ThreadsSt E F -> Prop :=
+Definition ThreadsStep {T E F} (M : Impl E F)
+  : ThreadsSt T E F -> ThreadLEvent T E F -> ThreadsSt T E F -> Prop :=
   PointStep (ThreadStep (E := E) M).
 
 (* Trace Semantics *)
 
-Definition IsTraceOfImpl {E F : ESig} (t : Trace (ThreadLEvent E F)) (M : Impl E F) : Prop :=
+Definition IsTraceOfImpl {T E F} (t : Trace (ThreadLEvent T E F)) (M : Impl E F) : Prop :=
   exists thst, Steps (ThreadsStep M) allIdle t thst.
   
-Definition IsTraceOfSpec {E : ESig} (t : Trace (ThreadEvent E)) (spec : Spec E) : Prop := 
+Definition IsTraceOfSpec {T E} (t : Trace (ThreadEvent T E)) (spec : Spec T E) : Prop := 
   exists st, Steps spec.(Step) spec.(Init) t st.
 
-Definition IsTraceOfSpecBwd {E : ESig} (t : bwd_list (ThreadEvent E)) (spec : Spec E) : Prop :=
+Definition IsTraceOfSpecBwd {T E} (t : bwd_list (ThreadEvent T E)) (spec : Spec T E) : Prop :=
   exists st, BwdSteps spec.(Step) spec.(Init) t st.
 
 (* Interactions *)
 
-Definition InterState {E : ESig} F (spec : Spec E) : Type :=
-  ThreadsSt E F * spec.(State).
+Definition InterState {T E} F (spec : Spec T E) : Type :=
+  ThreadsSt T E F * spec.(State).
 
-Definition StateStep {E F : ESig} {spec : Spec E} (s : State spec) (ev : ThreadLEvent E F) (t : State spec) :=
+Definition StateStep {T E F} {spec : Spec T E} (s : State spec) (ev : ThreadLEvent T E F) (t : State spec) :=
   match snd ev with
   | UEvent (Some e) => spec.(Step) s (fst ev, e) t
   | _ => s = t
   end.
 
-Definition InterStep {E F : ESig} {spec : Spec E} (impl : Impl E F)
+Definition InterStep {T E F} {spec : Spec T E} (impl : Impl E F)
   (s : InterState F spec)
-  (ev : ThreadLEvent E F)
+  (ev : ThreadLEvent T E F)
   (t : InterState F spec) :=
   ThreadsStep impl (fst s) ev (fst t) /\
   StateStep (snd s) ev (snd t).
 
-Definition SelfSteps {E F : ESig} {spec : Spec E} i (impl : Impl E F)
+Definition SelfSteps {T E F} {spec : Spec T E} i (impl : Impl E F)
   (s : InterState F spec)
   (p : Trace (LEvent E F))
   (t : InterState F spec) :=
   Steps (fun s ev t => InterStep impl s (i, ev) t) s p t.
 
-Definition OtherSteps {E F : ESig} {spec : Spec E} i (impl : Impl E F)
+Definition OtherSteps {T E F} {spec : Spec T E} i (impl : Impl E F)
   (s : InterState F spec)
-  (p : Trace (ThreadLEvent E F))
+  (p : Trace (ThreadLEvent T E F))
   (t : InterState F spec) :=
   Steps (fun s ev t => fst ev <> i /\ InterStep impl s ev t) s p t.
 
-Definition InterUStep {E F : ESig} {spec : Spec E} (i : ThreadName)
+Definition InterUStep {T E F} {spec : Spec T E} (i : Name T)
   (s : InterState F spec)
   (ev : option (Event E))
   (t : InterState F spec) :=
@@ -171,24 +171,24 @@ Definition InterUStep {E F : ESig} {spec : Spec E} (i : ThreadName)
   | None => snd s = snd t
   end.
 
-Definition InterOStep {E F : ESig} (impl : Impl E F) (i : ThreadName)
-  (s : ThreadsSt E F)
+Definition InterOStep {T E F} (impl : Impl E F) (i : Name T)
+  (s : ThreadsSt T E F)
   (ev : Event F)
-  (t : ThreadsSt E F) :=
+  (t : ThreadsSt T E F) :=
   PointStep (OverThreadStep impl) s (i, ev) t.
 
-Definition InterUSteps {E : ESig} F (spec : Spec E) :
-  InterState F spec -> Trace (ThreadName * option (Event E)) -> InterState F spec -> Prop := 
+Definition InterUSteps {T E} F (spec : Spec T E) :
+  InterState F spec -> Trace (Name T * option (Event E)) -> InterState F spec -> Prop := 
   Steps (fun s ev t => InterUStep (fst ev) s (snd ev) t).
 
-Definition InterOSteps {E : ESig} F (impl : Impl E F) : 
-  ThreadsSt E F -> Trace (ThreadEvent F) -> ThreadsSt E F -> Prop := 
+Definition InterOSteps {T E} F (impl : Impl E F) : 
+  ThreadsSt T E F -> Trace (ThreadEvent T F) -> ThreadsSt T E F -> Prop := 
   Steps (fun s ev t => InterOStep impl (fst ev) s (snd ev) t).
 
-Definition InterSteps {E F : ESig} {spec : Spec E} (impl : Impl E F) :=
+Definition InterSteps {T E F} {spec : Spec T E} (impl : Impl E F) :=
   Steps (InterStep (spec:=spec) impl).
 
-Lemma InterUSteps_pres {E F} {spec : Spec E} :
+Lemma InterUSteps_pres {T E F} {spec : Spec T E} :
   forall t i A (m : F A) p s,
   InterUSteps F spec s p t ->
   ((exists p, fst s i = Cont m p) \/
@@ -205,7 +205,7 @@ induction p; cbn; intros.
   destruct H. destruct o; cbn in *. destruct e; cbn in *;
   dependent destruction H; dependent destruction H;
   cbn in *.
-  dec_eq_nats i t0.
+  dec_eq_nats i n.
   {
     rewrite <- x0 in H3. rewrite <- x.
     destruct H3; destruct_all; dependent destruction H.
@@ -214,7 +214,7 @@ induction p; cbn; intros.
   {
     rewrite H0 in H3; easy.
   }
-  dec_eq_nats i t0.
+  dec_eq_nats i n.
   {
     rewrite <- x0 in H3. rewrite <- x.
     destruct H3; destruct_all; dependent destruction H.
@@ -224,7 +224,7 @@ induction p; cbn; intros.
     rewrite H0 in H3; easy.
   }
   do 2 dependent destruction H. cbn in *.
-  dec_eq_nats i t0.
+  dec_eq_nats i n.
   {
     rewrite <- x0 in H3. rewrite <- x.
     destruct H3; destruct_all; dependent destruction H.
@@ -236,7 +236,7 @@ induction p; cbn; intros.
 }
 Qed.
 
-Lemma InterUSteps_pres_idle {E F} {spec : Spec E} :
+Lemma InterUSteps_pres_idle {T E F} {spec : Spec T E} :
   forall i t p s,
   InterUSteps F spec s p t ->
   fst s i = Idle ->
@@ -253,13 +253,13 @@ generalize dependent s. induction p; cbn; intros.
   apply IHp in H1. easy.
   destruct st''. cbn in *.
   dependent destruction H.
-  dec_eq_nats i t1. congruence. rewrite <- H0; easy.
-  dec_eq_nats i t1. congruence. rewrite <- H0; easy.
-  dec_eq_nats i t1. congruence. rewrite <- H0; easy.
+  dec_eq_nats i n. congruence. rewrite <- H0; easy.
+  dec_eq_nats i n. congruence. rewrite <- H0; easy.
+  dec_eq_nats i n. congruence. rewrite <- H0; easy.
 }
 Qed.
 
-Program Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F := 
+Program Definition overObj {T E F} (lay : Layer T E F) : Spec T F := 
   {|
     State := InterState F lay.(USpec);
     Step thst ev thst'' :=
@@ -270,7 +270,7 @@ Program Definition overObj {E F : ESig} (lay : @Layer E F) : Spec F :=
     Init := (allIdle, lay.(USpec).(Init))
   |}.
 
-Definition overObjActiveMap {E F} (s : ThreadsSt E F) : ActiveMap F :=
+Definition overObjActiveMap {T E F} (s : ThreadsSt T E F) : ActiveMap T F :=
   fun i => match s i with
   | Idle => None
   | Cont m _ => Some (existT _ _ m)
@@ -278,9 +278,9 @@ Definition overObjActiveMap {E F} (s : ThreadsSt E F) : ActiveMap F :=
   end.
 
 Next Obligation.
-change (fun _ : ThreadName => @None {A & F A})
-with (overObjActiveMap (@allIdle E F)).
-generalize dependent (@allIdle E F).
+change (fun _ : Name T => @None {A & F A})
+with (overObjActiveMap (@allIdle T E F)).
+generalize dependent (@allIdle T E F).
 generalize dependent (Init (USpec lay)).
 induction p; cbn; intros.
 {
@@ -290,13 +290,13 @@ induction p; cbn; intros.
   dependent destruction H. destruct_all.
   destruct st'', H, a, e. cbn in *; dependent destruction H.
   {
-    eapply SCCall with (a':=fun i => if i =? t1 then Some (existT _ _ m) else overObjActiveMap t0 i); unfold overObjActiveMap.
+    eapply SCCall with (a':=fun i => if i =? n then Some (existT _ _ m) else overObjActiveMap t0 i); unfold overObjActiveMap.
     rewrite <- x1. easy.
     rewrite eqb_id. easy.
     {
       unfold differ_pointwise. intros.
       rewrite eqb_nid, H2; try easy.
-      remember (x0 j). destruct t2.
+      remember (x0 j). destruct t1.
       eapply InterUSteps_pres_idle with (i:=j) in H1.
       cbn in *. rewrite H1. easy.
       easy.
@@ -305,16 +305,16 @@ induction p; cbn; intros.
       destruct H1; destruct_all; cbn in *.
       rewrite H1. easy.
       rewrite H1. easy.
-      cbn. rewrite <- Heqt2. left. repeat econstructor.
+      cbn. rewrite <- Heqt1. left. repeat econstructor.
       eapply InterUSteps_pres with (m:=om) (i:=j) in H1.
       destruct H1; destruct_all; cbn in *.
       rewrite H1. easy.
       rewrite H1. easy.
-      cbn. rewrite <- Heqt2. right. repeat econstructor.
+      cbn. rewrite <- Heqt1. right. repeat econstructor.
     }
     apply IHp in H0.
-    assert (overObjActiveMap t0 = (fun i : ThreadName =>
-      if i =? t1 then
+    assert (overObjActiveMap t0 = (fun i : Name T =>
+      if i =? n then
       Some
         (existT (fun A0 : Type => F A0) A m)
       else match t0 i with
@@ -324,10 +324,10 @@ induction p; cbn; intros.
       | @UCall _ _ _ B m0 _ _ =>
           Some (existT (fun A1 : Type => F A1) B m0)
       end)).
-    unfold overObjActiveMap. extensionality i. dec_eq_nats i t1.
+    unfold overObjActiveMap. extensionality i. dec_eq_nats i n.
     {
       rewrite eqb_id.
-      eapply InterUSteps_pres with (A:=A) (i:=t1) (m:=m) in H1.
+      eapply InterUSteps_pres with (A:=A) (i:=n) (m:=m) in H1.
       destruct H1; destruct_all; cbn in *.
       rewrite H. easy.
       rewrite H. easy.
@@ -340,13 +340,13 @@ induction p; cbn; intros.
   }
   {
     cbn in *. dependent destruction H.
-    eapply SCRet with (a':=fun i => if i =? t1 then None else overObjActiveMap t0 i); unfold overObjActiveMap.
+    eapply SCRet with (a':=fun i => if i =? n then None else overObjActiveMap t0 i); unfold overObjActiveMap.
     rewrite <- x1. easy.
     rewrite eqb_id. easy.
     {
       unfold differ_pointwise. intros.
       rewrite eqb_nid, H2; try easy.
-      remember (x0 j). destruct t2.
+      remember (x0 j). destruct t1.
       eapply InterUSteps_pres_idle with (i:=j) in H1.
       cbn in *. rewrite H1. easy.
       easy.
@@ -355,16 +355,16 @@ induction p; cbn; intros.
       destruct H1; destruct_all; cbn in *.
       rewrite H1. easy.
       rewrite H1. easy.
-      cbn. rewrite <- Heqt2. left. repeat econstructor.
+      cbn. rewrite <- Heqt1. left. repeat econstructor.
       eapply InterUSteps_pres with (m:=om) (i:=j) in H1.
       destruct H1; destruct_all; cbn in *.
       rewrite H1. easy.
       rewrite H1. easy.
-      cbn. rewrite <- Heqt2. right. repeat econstructor.
+      cbn. rewrite <- Heqt1. right. repeat econstructor.
     }
     apply IHp in H0.
-    assert (overObjActiveMap t0 = (fun i : ThreadName =>
-      if i =? t1 then
+    assert (overObjActiveMap t0 = (fun i : Name T =>
+      if i =? n then
       None
       else match t0 i with
       | Idle => None
@@ -373,10 +373,10 @@ induction p; cbn; intros.
       | @UCall _ _ _ B m0 _ _ =>
           Some (existT (fun A1 : Type => F A1) B m0)
       end)).
-    unfold overObjActiveMap. extensionality i. dec_eq_nats i t1.
+    unfold overObjActiveMap. extensionality i. dec_eq_nats i n.
     {
       rewrite eqb_id.
-      eapply InterUSteps_pres_idle with (i:=t1) in H1.
+      eapply InterUSteps_pres_idle with (i:=n) in H1.
       cbn in *. rewrite H1. easy. easy.
     }
     {
@@ -389,10 +389,10 @@ Qed.
 
 (* Refinement *)
 
-Definition specRefines {E : ESig} (spec : Spec E) (spec': Spec E) : Prop := 
+Definition specRefines {T E} (spec spec' : Spec T E) : Prop := 
   Incl (fun t => IsTraceOfSpec t spec) (fun t => IsTraceOfSpec t spec'). 
 
-Definition layerRefines {E E' F} (lay : @Layer E F) (lay': @Layer E' F)  := 
+Definition layerRefines {T E E' F} (lay : Layer T E F) (lay': Layer T E' F)  := 
   specRefines (overObj lay) (overObj lay').
 
 (* Extra projections *)

@@ -4,23 +4,20 @@
 ./Util/Util.v
 ./Util/ListUtil.v
 ./Util/TransUtil.v
-./Util/AtomicUtil.v
 
 ./Core/Program.v
 ./Core/Specs.v
 ./Core/Traces.v
 ./Core/TracesFacts.v
 ./Core/Linearizability.v
-./Core/Simulates.v
 ./Core/Logic.v
 ./Core/LogicPaco.v
 ./Core/LogicFacts.v
 ./Core/Tensor.v
-./Core/TensorFacts.v
+# ./Core/TensorFacts.v
 ./Core/ProgramRules.v
 
 ./Core/ProgramFacts.v
-./Core/SimulatesFacts.v
 # ./Core/EuttRefinesSetup.v
 # ./Core/RefinesFacts.v
 ./Core/VCompFacts.v
@@ -28,10 +25,14 @@
 # Requires Paco
 ./Core/Eutt.v
 
-./Examples/LockSpec.v
-./Examples/CounterSpec.v
-./Examples/FAISpec.v
-./Examples/YieldSpec.v
-./Examples/CellSpec.v
+# ./Examples/LockSpec.v
+# ./Examples/CounterSpec.v
+# ./Examples/FAISpec.v
+# ./Examples/YieldSpec.v
+./Examples/MRSWCellSpec.v
+./Examples/LocalVarSpec.v
 ./Examples/SnapshotSpec.v
 ./Examples/ThreadLocal.v
+./Examples/NameSpec.v
+./Examples/CASSpec.v
+./Examples/ExchangerSpec.v

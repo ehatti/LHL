@@ -99,8 +99,8 @@ Proof.
   apply substProg_assoc.
 Qed.
 
-Theorem obj_VComp_assoc {E F G} :
-  forall (spec : Spec E) (impl : Impl E F) (impl' : Impl F G),
+Theorem obj_VComp_assoc {T E F G} :
+  forall (spec : Spec T E) (impl : Impl E F) (impl' : Impl F G),
   ((spec :> impl) :|> impl') = (spec :> impl |> impl').
 Proof.
     auto.

@@ -8,10 +8,6 @@ From LHL.Core Require Import
   Traces
   Linearizability.
 
-From LHL.Examples Require Import
-  OMemSpec
-  WriteSnapshotSpec.
-
 From LHL.Util Require Import
   Tactics
   TransUtil
@@ -23,33 +19,35 @@ Fixpoint ESigN n E : ESig :=
   | S n => E |+| ESigN n E
   end.
 
-Fixpoint tensorNSpec {E} n (V : Spec E) : Spec (ESigN n E) :=
+Fixpoint tensorNSpec {T E} n (V : Spec T E) : Spec T (ESigN n E) :=
   match n with
   | 0 => V
   | S n => tensorSpec V (tensorNSpec n V)
   end.
 
-Variant LocalSig {E : ESig} : ESig :=
-| At {A} (i : ThreadName) (m : E A) : LocalSig A.
+Variant LocalSig {E} : ESig :=
+| At {A} (i : nat) (m : E A) : LocalSig A.
 Arguments LocalSig : clear implicits.
 
-Variant LocalStep {E} {V : Spec E} : (ThreadName -> State V) -> ThreadEvent (LocalSig E) -> (ThreadName -> State V) -> Prop :=
+Variant LocalStep {T E} {V : Spec T E} : (nat -> State V) -> ThreadEvent T (LocalSig E) -> (nat -> State V) -> Prop :=
 | LocalCall i A (m : E A) s x t y :
+    forall p : i < T,
     s i = x ->
     t i = y ->
     differ_pointwise s t i ->
-    V.(Step) x (i, CallEv m) y ->
-    LocalStep s (i, CallEv (At i m)) t
+    V.(Step) x (exist _ i p, CallEv m) y ->
+    LocalStep s (exist _ i p, CallEv (At i m)) t
 | LocalRet i A (m : E A) v s x t y :
+    forall p : i < T,
     s i = x ->
     t i = y ->
     differ_pointwise s t i ->
-    V.(Step) x (i, RetEv m v) y ->
-    LocalStep s (i, RetEv (At i m) v) t.
-Arguments LocalStep {E} V.
+    V.(Step) x (exist _ i p, RetEv m v) y ->
+    LocalStep s (exist _ i p, RetEv (At i m) v) t.
+Arguments LocalStep {T E} V.
 
-Program Definition localSpec {E} (V : Spec E) : Spec (LocalSig E) := {|
-  State := ThreadName -> State V;
+Program Definition localSpec {T E} (V : Spec T E) : Spec T (LocalSig E) := {|
+  State := Name T -> State V;
   Step := LocalStep V;
   Init _ := Init V
 |}.
