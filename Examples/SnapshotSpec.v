@@ -11,25 +11,29 @@ Variant SnapshotSig {A} : ESig :=
 Arguments SnapshotSig : clear implicits.
 
 Variant SnapshotState {T A} :=
-| SnapDef (vs : set A) (m : Name T -> option {B & SnapshotSig A B}).
+| SnapUB
+| SnapDef (vs : set A) (m : Name T -> bool).
 Arguments SnapshotState : clear implicits.
 
 Variant SnapshotStep {T A} : SnapshotState T A -> ThreadEvent T (SnapshotSig A) -> SnapshotState T A -> Prop :=
 | SnapCallUpdate i v vs m m' :
-    m i = None ->
-    m' i = Some (existT _ _ (Update v)) ->
+    m i = false ->
+    m' i = true ->
     differ_pointwise m m' i ->
     SnapshotStep (SnapDef vs m) (i, CallEv (Update v)) (SnapDef (insert v vs) m')
-| SnapRetUpdate i v vs m m' :
-    m i = Some (existT _ _ (Update v)) ->
-    m' i = None ->
-    differ_pointwise m m' i ->
-    SnapshotStep (SnapDef vs m) (i, RetEv (Update v) vs) (SnapDef vs m').
+| SnapRetUpdate i v vs m :
+    m i = true ->
+    SnapshotStep (SnapDef vs m) (i, RetEv (Update v) vs) (SnapDef vs m)
+| SnapDoubleWrite i v vs m :
+    m i = true ->
+    SnapshotStep (SnapDef vs m) (i, CallEv (Update v)) SnapUB
+| SnapStepUB e :
+    SnapshotStep SnapUB e SnapUB.
 
 Program Definition snapshotSpec {T A} : Spec T (SnapshotSig A) := {|
   State := SnapshotState T A;
   Step := SnapshotStep;
-  Init := SnapDef emp (fun _ => None)
+  Init := SnapDef emp (fun _ => false)
 |}.
 
 Admit Obligations.

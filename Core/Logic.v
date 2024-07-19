@@ -113,7 +113,7 @@ Definition rtop {T E F VE VF} : @Relt T E F VE VF :=
 Variant PossStep {T F} {VF : Spec T F} i (ρ σ : Poss VF) : Prop :=
 | PCommitCall A (m : F A) :
   VF.(Step) ρ.(PState) (i, CallEv m) σ.(PState) ->
-  ρ.(PCalls) i = CallPoss m /\
+  ρ.(PCalls) i = CallPoss m ->
   σ.(PCalls) i = CallDone m ->
   ρ.(PRets) i = RetIdle ->
   σ.(PRets) i = RetIdle ->
@@ -226,7 +226,7 @@ Definition InvokeAny {T E F VE VF} impl i : @Relt T E F VE VF :=
 Definition Returned {T E F VE VF} (i : Name T) {A} (m : F A) : @Prec T E F VE VF :=
   fun s ρs =>
     forall v, fst s i = Cont m (Return v) ->
-      forall ρ, ρs ρ ->
+      exists ρ, ρs ρ /\
         ρ.(PRets) i = RetPoss m v /\
         ρ.(PCalls) i = CallDone m.
 
@@ -239,9 +239,6 @@ Definition mapRetPoss {T F VF A} i (m : F A) v (ρ σ : @Poss T F VF) :=
 
 Definition TReturn {T E F VE VF} (impl : Impl E F) (i : Name T) {Ret} (m : F Ret) v : @Relt T E F VE VF :=
   fun s ρs t σs =>
-    (forall ρ, ρs ρ ->
-      ρ.(PRets) i = RetPoss m v /\
-      ρ.(PCalls) i = CallDone m) /\
     InterOStep impl i (fst s) (RetEv m v) (fst t) /\
     snd s = snd t /\
     σs = (fun σ =>

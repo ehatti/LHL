@@ -93,19 +93,22 @@ Definition SPrecToPrec {T A} (P : SPrec T A) : Prec T A :=
 
 Definition CCleared {A T} : SPrec T A :=
   fun s ρ =>
-    snd s = CASDef None None /\
-    PState ρ = ExchDef {} {}.
+    exists m,
+      snd s = CASDef None m /\
+      PState ρ = ExchDef {} {}.
 
 Definition COffered {A T} (i : Name T) (v : A) : SPrec T A :=
   fun s ρ =>
-    snd s = CASDef (OFFERED v) None /\
-    PState ρ = ExchDef {i => v} {}.
+    exists m,
+      snd s = CASDef (OFFERED v) m /\
+      PState ρ = ExchDef {i => v} {}.
 
 Definition CAccepted {A T} (i j : Name T) (v w : A) : SPrec T A :=
   fun s ρ =>
-    i <> j /\
-    snd s = CASDef (ACCEPTED v) None /\
-    PState ρ = ExchDef {j => w} {i => v}.
+    exists m,
+      i <> j /\
+      snd s = CASDef (ACCEPTED v) m /\
+      PState ρ = ExchDef {j => w} {i => v}.
 
 Definition Precs {A T} R (m : ExchSig A R) : Prec T A :=
   fun s ρs => exists ρ, ρs = eq ρ /\ (
@@ -137,6 +140,12 @@ Definition Guar {T A} (i : Name T) : Relt T A :=
         COffered j w s ρ /\
         exists v,
           CAccepted j i w v t σ
+    ) \/
+    (
+      ρ = σ /\
+      exists a m,
+        snd s = CASDef a None /\
+        snd t = CASDef a (Some m)
     )
   ).
 
@@ -152,6 +161,19 @@ Definition Rely {T A} (i : Name T) : Relt T A :=
       Guar j s ρs t σs \/
       InvokeAny (exchImpl A) j s ρs t σs \/
       ReturnAny (exchImpl A) j s ρs t σs)).
+
+Definition comInvPoss {T F} {VF : Spec T F} i (ρ : Poss VF) {A} (m : F A) (s : State VF) : Poss VF := {|
+  PState := s;
+  PCalls j := if i =? j then CallDone m else PCalls ρ j;
+  PRets j := PRets ρ j
+|}.
+
+Definition comRetPoss {T F} {VF : Spec T F} i (ρ : Poss VF) {A} (m : F A) (s : State VF) v : Poss VF := {|
+  PState := s;
+  PCalls := PCalls ρ;
+  PRets j := if i =? j then RetPoss m v else PRets ρ j
+|}.
+
 
 (* Tactics *)
 
@@ -257,6 +279,7 @@ Lemma Rely_pres_single {T A} :
   forall i s ρ t σs,
   Rely (T:=T) (A:=A) i s (eq ρ) t σs ->
   exists σ, σs = eq σ.
+admit.
 Admitted.
 
 Lemma Rely_pres_self {T A} :
@@ -264,6 +287,7 @@ Lemma Rely_pres_self {T A} :
   Rely (T:=T) (A:=A) i s (eq ρ) t (eq σ) ->
   PCalls ρ i = PCalls σ i /\
   PRets ρ i = PRets σ i.
+admit.
 Admitted.
 
 Lemma eq_inj {A} :
@@ -362,6 +386,7 @@ elim_disj.
   destruct H1; destruct_all.
   2: destruct H; destruct_all.
   3: destruct H; destruct_all.
+  4: destruct H; destruct_all.
   right. left. exists x, x2. easy.
   left. easy.
   left. easy.
@@ -374,9 +399,29 @@ elim_disj.
     {
       rewrite H2 in H. clear H2. ddestruct H.
       rewrite H6 in H5. clear H6. ddestruct H5.
-      apply insert_cong in x. psimpl. clear H2.
+      apply insert_cong in x. psimpl.
       ddestruct H. rewrite H3, H4. clear H3 H4.
-      exists x2, x4, x3, x6. easy.
+      exists x2, x4, x3, x5, x8. easy.
+    }
+  }
+  {
+    subst.
+    unfold CCleared, CAccepted, COffered in *. destruct_all.
+    elim_disj; destruct_all.
+    {
+      left.
+      rewrite H in H1 at 1. ddestruct H1.
+      exists (Some x3). easy.
+    }
+    {
+      right. left.
+      rewrite H in H1 at 1. ddestruct H1.
+      exists x0, x4, (Some x3). easy.
+    }
+    {
+      right. right.
+      rewrite H2 in H1 at 1. clear H2. ddestruct H1.
+      exists x0, x4, x5, x6, (Some x3). easy.
     }
   }
 }
@@ -389,85 +434,86 @@ Definition PossSetSteps {T F} {VF : Spec T F} (ρs σs : PossSet VF) :=
 
 Lemma lemCAS {T A} {i : Name T} :
   forall e n (P : Relt T A),
-  forall (PS PF : Poss (VF T A) -> Poss (VF T A) -> Prop),
-  (forall s ρ σ,
-    ReltToPrec P s (eq ρ) ->
+  forall (PS PF : PossSet (VF T A) -> PossSet (VF T A) -> Prop),
+  (forall s ρs σs,
+    ReltToPrec P s ρs ->
     snd s = CASDef e None ->
-    PState ρ = PState σ ->
-    PCalls ρ i = PCalls σ i ->
-    PRets ρ i = PRets σ i ->
-    exists τ,
-      PossSteps σ τ /\
-      PS σ τ) ->
-  (forall s ρ σ,
-    ReltToPrec P s (eq ρ) ->
+    σs = (fun σ =>
+      exists ρ, ρs ρ /\
+        σ.(PState) = ρ.(PState) /\
+        σ.(PCalls) i = ρ.(PCalls) i /\
+        σ.(PRets) i = ρ.(PRets) i) ->
+    exists τs,
+      PossSetSteps σs τs /\
+      PS σs τs) ->
+  (forall s ρs σs,
+    ReltToPrec P s ρs ->
     (exists a,
       a <> e /\
       snd s = CASDef a None) ->
-    PState ρ = PState σ ->
-    PCalls ρ i = PCalls σ i ->
-    PRets ρ i = PRets σ i ->
-    exists τ,
-      PossSteps σ τ /\
-      PF σ τ) ->
+    σs = (fun σ =>
+      exists ρ, ρs ρ /\
+        σ.(PState) = ρ.(PState) /\
+        σ.(PCalls) i = ρ.(PCalls) i /\
+        σ.(PRets) i = ρ.(PRets) i) ->
+    exists τs,
+      PossSetSteps σs τs /\
+      PF σs τs) ->
   (forall s ρs,
     ReltToPrec P s ρs ->
-    exists ρ,
-      ρs = eq ρ) ->
+    exists a,
+      snd s = CASDef a None) ->
+  (forall s ρs t σs,
+    snd s = CASDef e (Some (MkCASPend i (CAS e n))) ->
+    snd t = CASDef n None ->
+    PS ρs σs ->
+    Guar i s ρs t σs) ->
+  (forall a s ρs t σs,
+    a <> e ->
+    snd s = CASDef a (Some (MkCASPend i (CAS e n))) ->
+    snd t = CASDef a None ->
+    PF ρs σs ->
+    Guar i s ρs t σs) ->
   VerifyProg i (Rely i) (Guar i)
     P
     (call (CAS e n))
-    (fun v s ρs r τs =>
-      exists ρ, ρs = eq ρ /\
-      exists τ, τs = eq τ /\
-      exists t σ,
-        PState ρ = PState σ /\
-        PCalls ρ i = PCalls σ i /\
-        PRets ρ i = PRets σ i /\
+    (fun v _ _ r τs =>
+      exists (t : InterState (F A) (VE T A)) (ρs σs : PossSet (VF T A)),
         ((v = true /\
-          snd s = CASDef e None /\
           snd t = CASDef n None /\
-          PS σ τ /\
-          Rely i t (eq σ) r (eq τ)) \/
+          PS ρs σs /\
+          Rely i t σs r τs) \/
         (v = false /\
           (exists a,
             a <> e /\
-            snd s = CASDef a None) /\
-          snd t = CASDef n None /\
-          PF σ τ /\
-          Rely i t (eq σ) r (eq τ)))).
+            snd t = CASDef a None) /\
+          PF ρs σs /\
+          Rely i t σs r τs))).
 intros.
 eapply weakenPost.
-{
-  eapply (lemCall
-    (Q:=fun (s : InterState (F A) (VE T A)) ρs t σs =>
-      (exists ρ, ρs = eq ρ /\ exists σ, σs = eq σ /\
-        PState ρ = PState σ /\
-        PCalls ρ i = PCalls σ i /\
-        PRets ρ i = PRets σ i) /\
+eapply (lemCall
+  (Q:=fun (s : InterState (F A) (VE T A)) ρs t σs =>
+    σs = (fun σ =>
+    exists ρ, ρs ρ /\
+      σ.(PState) = ρ.(PState) /\
+      σ.(PCalls) i = ρ.(PCalls) i /\
+      σ.(PRets) i = ρ.(PRets) i) /\
+    (exists a,
+      snd s = CASDef a None /\
+      snd t = CASDef a (Some (MkCASPend i (CAS e n)))))
+  (S:=fun v s ρs r τs =>
+    exists t σs,
+    ((v = true /\
+      PS ρs σs /\
+      snd t = CASDef n None /\
+      Rely i t σs r τs) \/
+    (v = false /\
+      PF ρs σs /\
       (exists a,
-        snd s = CASDef a None /\
-        snd t = CASDef a (Some (MkCASPend i (CAS e n)))))
-    (S:=fun v t σs r τs =>
-      exists σ, σs = eq σ /\
-      exists τ, τs = eq τ /\
-      (v = true /\
-        PS σ τ /\
-        Rely i t (eq σ) r (eq τ)) \/
-      (v = false /\
-        PF σ τ /\
-        Rely i t (eq σ) r (eq τ)))).
-  {
-    admit.
-  }
-  {
-    admit.
-  }
-  {
-    unfold Commit. intros. psimpl.
-    
-  }
-}
+        a <> e /\
+        snd t = CASDef a None) /\
+      Rely i t σs r τs)))).
+Admitted.
 
 Lemma exch_correct {T A} {i : Name T} :
   forall v,
@@ -478,9 +524,129 @@ Lemma exch_correct {T A} {i : Name T} :
 unfold exch. intros.
 eapply lemBind.
 {
-  
+  eapply lemCAS with
+    (PS:=fun (ρs σs : PossSet (VF T A)) =>
+      exists ρ, ρs = eq ρ /\ exists σ, σs = eq σ /\
+      PState ρ = ExchDef {} {} /\
+      (PState σ = ExchDef {i => v} {} \/
+       exists j w,
+        i <> j /\
+        PState σ = ExchDef {j => w} {i => v})).
+  {
+    unfold Precs, CCleared, COffered, CAccepted.
+    intros. psimpl. elim_disj; destruct_all.
+    {
+      admit.
+    }
+    {
+      admit.
+    }
+    {
+      admit.
+    }
+  }
+  {
+    admit.
+  }
+  {
+    admit.
+  }
+  {
+    admit.
+  }
+  {
+    admit.
+  }
 }
+intros. destruct v0.
+{
+  eapply lemBind.
+  {
+    eapply lemCAS with
+      (PS:=fun s ρs => _)
+      (PF:=fun s ρs => _).
+    admit.
+    admit.
+    admit.
+    admit.
+    admit.
+  }
+  intros. destruct v0.
+  {
+    eapply lemRet.
+    admit.
+  }
+  {
+    eapply lemBind.
+    {
+      eapply lemCall.
+      admit.
+      admit.
+      admit.
+      admit.
+    }
+    intros. destruct v0.
+    {
+      destruct o.
+      eapply lemBind.
+      {
+        eapply lemCAS.
+        admit.
+        admit.
+        admit.
+        admit.
+        admit.
+      }
+      {
+        intros.
+        eapply lemRet.
+        admit.
+      }
+    }
+    {
+      eapply lemRet.
+      admit.
+    }
+  }
+}
+{
+  eapply lemBind.
+  {
+    eapply lemCall.
+    admit.
+    admit.
+    admit.
+    admit.
+  }
+  {
+    intros. destruct v0. destruct o.
+    {
+      eapply lemBind.
+      {
+        eapply lemCAS.
+        admit.
+        admit.
+        admit.
+        admit.
+        admit.
+      }
+      {
+        intros. destruct v0.
+        {
+          eapply lemRet.
+          admit.
+        }
+        {
+          eapply lemRet.
+          admit.
+        }
+      }
+    }
+    {
 
+    }
+  }
+}
 
 (* Result *)
 
@@ -510,7 +676,7 @@ constructor.
   exists i. split. easy. right. right. easy.
 }
 {
-  exists initPoss. split. easy. left. easy.
+  exists initPoss. split. easy. left. exists None. easy.
 }
 {
   apply Precs_stable.
@@ -531,18 +697,18 @@ constructor.
   rewrite <- H. clear H4.
   elim_disj.
   {
-    left.
+    left. psimpl. exists x4.
     rewrite <- H0 at 1. easy.
   }
   {
     right. left. destruct_all.
     rewrite H0 in H2 at 1.
-    exists x4, x5. easy.
+    exists x4, x5, x6. easy.
   }
   {
     right. right. destruct_all.
     rewrite H0 in H3 at 1.
-    exists x4, x5, x6, x7. easy.
+    exists x4, x5, x6, x7, x8. easy.
   }
 }
 {

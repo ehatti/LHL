@@ -9,7 +9,7 @@ From LHL.Core Require Import
   Linearizability.
 
 From LHL.Examples Require Import
-  MRSWCellSpec
+  OMemSpec
   LocalVarSpec
   ThreadLocal
   NameSpec
@@ -21,14 +21,14 @@ From LHL.Util Require Import
   Util.
 
 Definition E T A :=
-  LocalSig (CellSig A) |+|
+  LocalSig (OMemSig A) |+|
   LocalSig (VarSig (set A * set A)) |+|
   LocalSig (VarSig nat) |+|
   NameSig T.
 
 Definition VE T A : Spec T (E T A) :=
   tensorSpec
-    (localSpec cellSpec)
+    (localSpec omemSpec)
     (tensorSpec
       (localSpec varSpec)
       (tensorSpec
@@ -41,7 +41,7 @@ Definition VF T A := @snapshotSpec T A.
 Definition bool_prop (P : Prop) : bool :=
   if classicT P then true else false.
 
-Definition cellsState {T A} (s : InterState (F A) (VE T A)) : Name T -> State cellSpec :=
+Definition cellsState {T A} (s : InterState (F A) (VE T A)) : Name T -> State omemSpec :=
   LState (snd s).
 
 Definition setsState {T A} (s : InterState (F A) (VE T A)) : Name T -> State varSpec :=
@@ -60,21 +60,30 @@ Definition update {T A} (v : A) : Prog (E T A) (set A) :=
   call (At self (Write v));;
   call (At self (Put (emp, insert v emp)));;
   while (
-    old_new <- call (At self Get);
-    ret (bool_prop (fst old_new <> snd old_new))
+    sets <- call (At self Get);
+    ret (bool_prop (fst sets <> snd sets))
   ) (
     call (At self (Put 0));;
-    old_new <- call (At self Get);
-    call (At self (Put (snd old_new, emp)));;
+    (* get old *)
     while (
       i <- call (At self Get);
       ret (bool_prop (i < T))
     ) (
       i <- call (At self Get);
       v <- call (At i Read);
-      old_new <- call (At self Get);
-      call (At self (Put (fst old_new, insert v (snd old_new))));;
-      call (At self (Put (i + 1)))
+      sets <- call (At self Get);
+      call (At self (Put (insert v (fst sets), snd sets)))
+    );;
+    call (At self (Put 0));;
+    (* get new *)
+    while (
+      i <- call (At self Get);
+      ret (bool_prop (i < T))
+    ) (
+      i <- call (At self Get);
+      v <- call (At i Read);
+      sets <- call (At self Get);
+      call (At self (Put (fst sets, insert v (snd sets))))
     )
   );;
   old_new <- call (At self Get);
@@ -89,10 +98,16 @@ Definition Relt T A := Relt (VE T A) (VF T A).
 Definition Prec T A := Prec (VE T A) (VF T A).
 Definition Post T A := Post (VE T A) (VF T A).
 
-Definition Inv {T A}
-  (sm : VarPend T (set A * set A))
-  (am : VarPend T nat)
-  (cm : CellPend T A)
-  : Name T -> Prec T A :=
-  fun i s ρs =>
-    True.
+Definition Inv {T A} : Prec T A :=
+  fun s ρs => exists ρ, ρs = eq ρ /\ (
+    forall v,
+      (exists i b, cellsState s i = OMemCanRead v b) <->
+      (exists vs m,
+        PState ρ = SnapDef vs m /\
+        v ∈ vs)
+  ).
+
+Definition InvN {T A} : Prec T A :=
+  fun s ρs => exists ρ, ρs = eq ρ /\ (
+    
+  ).

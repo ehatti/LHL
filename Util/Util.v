@@ -145,3 +145,8 @@ Axiom insert_unique : forall {A} (s : set A) x, insert x (insert x s) = insert x
 Axiom insert_cong : forall {A} (s1 s2 : set A) x y, insert x s1 = insert y s2 -> x = y /\ s1 = s2.
 
 Axiom disj_cons : forall {A} (s : set A) x, insert x s <> emp.
+
+Parameter contains : forall {A}, A -> set A -> Prop.
+Infix "∈" := contains (at level 40).
+
+Axiom contains_triv : forall {A} (s : set A) x, contains x (insert x s).

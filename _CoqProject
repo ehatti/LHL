@@ -29,7 +29,7 @@
 # ./Examples/CounterSpec.v
 # ./Examples/FAISpec.v
 # ./Examples/YieldSpec.v
-./Examples/MRSWCellSpec.v
+./Examples/OMemSpec.v
 ./Examples/LocalVarSpec.v
 ./Examples/SnapshotSpec.v
 ./Examples/ThreadLocal.v
