@@ -1,6 +1,7 @@
 From Coq Require Import
   Logic
-  Classical.
+  Classical
+  Program.Equality.
 
 From LHL.Util Require Import
   Tactics.
@@ -150,3 +151,5 @@ Parameter contains : forall {A}, A -> set A -> Prop.
 Infix "∈" := contains (at level 40).
 
 Axiom contains_triv : forall {A} (s : set A) x, contains x (insert x s).
+
+Ltac ddestruct H := dependent destruction H.
