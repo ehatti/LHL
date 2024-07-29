@@ -2350,6 +2350,43 @@ ddestruct H4. ddestruct H1.
 }
 Qed.
 
+Lemma float_ret {T E F} :
+  forall (p : Trace (ThreadLEvent T E F)),
+  forall (q : Trace (ThreadLEvent T F F)),
+  forall i A (m : F A) v,
+  HBRw (projOver p ++ [(i, RetEv m v)]) (projOver q) ->
+  exists l r,
+    no_self i r /\ q = l ++ [(i, OEvent (RetEv m v))] ++ r.
+intros.
+Admitted.
+
+Lemma remove_ret {T E F} :
+  forall (p : Trace (ThreadLEvent T E F)),
+  forall (q r : Trace (ThreadLEvent T F F)),
+  forall i A (m : F A) v,
+  HBRw (projOver p ++ [(i, RetEv m v)]) (projOver q ++ [(i, RetEv m v)] ++ projOver r) ->
+  no_self i r ->
+  HBRw (projOver p) (projOver q ++ projOver r).
+intros.
+
+Lemma float_call {T E F} :
+  forall (p : Trace (ThreadLEvent T E F)),
+  forall (q : Trace (ThreadLEvent T F F)),
+  forall i A (m : F A),
+  HBRw (projOver p ++ [(i, CallEv m)]) (projOver q) ->
+  exists l r,
+    no_self i r /\ q = l ++ [(i, OEvent (CallEv m))] ++ r.
+Admitted.
+
+Lemma remove_call {T E F} :
+  forall (p : Trace (ThreadLEvent T E F)),
+  forall (q r : Trace (ThreadLEvent T F F)),
+  forall i A (m : F A),
+  HBRw (projOver p ++ [(i, CallEv m)]) (projOver q ++ [(i, CallEv m)] ++ projOver r) ->
+  no_self i r ->
+  HBRw (projOver p) (projOver q ++ projOver r).
+Admitted.
+
 Lemma return_in_rely {T E F} {VE : Spec T E} {VF : Spec T F } {M : Impl E F} :
   (forall st p,
     InterSteps M (allIdle, Init VE) p st ->
@@ -2370,8 +2407,7 @@ intros. psimpl.
     constructor; easy.
   }
   {
-    set_ext τ.
-     unfold mapRetPoss. split; intros; psimpl.
+    set_ext τ. unfold mapRetPoss. split; intros; psimpl.
     {
       exists (x4 ++ [(i, OEvent (RetEv x1 x2))]).
       split. repeat rewrite projOver_app. cbn.
@@ -2391,7 +2427,8 @@ intros. psimpl.
           x3 = l ++ [(i, OEvent (RetEv x1 x2))] ++ r
       ).
       {
-        admit.
+        eapply float_ret.
+        exact H2.
       }
       psimpl.
       apply FullPossSteps_trans_inv in H4.
@@ -2407,7 +2444,11 @@ intros. psimpl.
       {
         exists (x4 ++ x5). split.
         {
-          admit.
+          rewrite (cons_app (xs:=x5)) in H12.
+          repeat rewrite projOver_app in H12 at 1.
+          rewrite projOver_app at 1.
+          simpl (projOver _) in *.
+          eapply remove_ret. exact H12. easy.
         }
         {
           apply FullPossSteps_trans.
@@ -2422,7 +2463,7 @@ intros. psimpl.
     }
   }
 }
-Admitted.
+Qed.
 
 Lemma invoke_in_rely {T E F} {VE : Spec T E} {VF : Spec T F } {M : Impl E F} :
   (forall st p,
@@ -2471,7 +2512,11 @@ intros. psimpl. psimpl.
           no_self i r /\
           x2 = l ++ [(i, OEvent (CallEv x1))] ++ r
       ).
-      admit.
+      {
+        eapply float_call.
+        rewrite projOver_app in H2.
+        exact H2.
+      }
       psimpl.
       apply FullPossSteps_trans_inv in H5. psimpl.
       rewrite cons_app in H8 at 1.
@@ -2484,7 +2529,11 @@ intros. psimpl. psimpl.
       {
         exists (x3 ++ x4). split.
         {
-          admit.
+          rewrite (cons_app (xs:=x4)) in H14.
+          repeat rewrite projOver_app in H14 at 1.
+          rewrite projOver_app at 1.
+          simpl (projOver _) in *.
+          eapply remove_call. exact H14. easy.
         }
         {
           apply FullPossSteps_trans.
@@ -2498,7 +2547,7 @@ intros. psimpl. psimpl.
     }
   }
 }
-Admitted.
+Qed.
 
 Lemma comp_commit {T E F} {VE : Spec T E} {VF : Spec T F} {M : Impl E F} i e :
   (forall st p,
@@ -2596,7 +2645,113 @@ assert (
   }
   apply H in H1. clear H. destruct_all.
   exists (m2p x), x0. split. easy.
-  admit.
+  clear - H1.
+  change initPoss
+  with (m2p (allIdle, Init VF)).
+  assert (
+    forall i,
+      (@allIdle T F F i = Idle) \/
+      (exists A (m : F A), @allIdle T F F i = Cont m (Bind m Return)) \/
+      (exists A (m : F A), @allIdle T F F i = UCall m m Return) \/
+      (exists A (m : F A) v, @allIdle T F F i = Cont m (Return v))
+  ).
+  { left. easy. }
+  change (@allIdle T F F)
+  with (fst (@allIdle T F F, Init VF))
+  in H.
+  generalize dependent (@allIdle T F F, Init VF).
+  induction x0; intros.
+  {
+    ddestruct H1.
+    constructor.
+  }
+  {
+    ddestruct H1. destruct a.
+    unfold InterStep, ThreadsStep, StateStep in H.
+    psimpl. ddestruct H. cbn in *.
+    eapply PossStepsStep with
+      (σ:= m2p st'').
+    2:{ unfold m2p. intros. cbn. rewrite H0; easy. }
+    2:{ unfold m2p. intros. cbn. rewrite H0; easy. }
+    2:{
+      apply IHx0. easy.
+      clear - H H3 H0. intros.
+      specialize (H3 i).
+      dec_eq_nats i n.
+      {
+        clear H0.
+        repeat match goal with
+        | [ H : ?P \/ ?Q |- _] => destruct H; destruct_all
+        end.
+        {
+          rewrite H0 in H.
+          destruct l; cbn in *; ddestruct H.
+          right. left. exists _, m. easy.
+        }
+        {
+          rewrite H0 in H.
+          destruct l; cbn in *; ddestruct H.
+          right. right. left. exists _, x0. easy.
+        }
+        {
+          rewrite H0 in H.
+          destruct l; cbn in *; ddestruct H.
+          right. right. right. exists _, x0, v. easy.
+        }
+        {
+          rewrite H0 in H.
+          destruct l; cbn in *; ddestruct H.
+          left. easy.
+        }
+      }
+      {
+        rewrite H0 in H3; easy.
+      }
+    }
+    {
+      clear - H3 H2 H0 H.
+      specialize (H3 n).
+      repeat match goal with
+      | [ H : ?P \/ ?Q |- _] => destruct H; destruct_all
+      end.
+      {
+        rewrite H1 in H.
+        destruct l; cbn in *; ddestruct H.
+        constructor. easy.
+        cbn. rewrite H1. easy.
+        cbn. rewrite <- x. easy.
+        cbn. rewrite H1. easy.
+        cbn. rewrite <- x. easy.
+      }
+      {
+        rewrite H1 in H.
+        destruct l; cbn in *; ddestruct H.
+        constructor. easy.
+        cbn. rewrite H1. easy.
+        cbn. rewrite <- x. easy.
+        cbn. rewrite H1. easy.
+        cbn. rewrite <- x. easy.
+      }
+      {
+        rewrite H1 in H.
+        destruct l; cbn in *; ddestruct H.
+        constructor. easy.
+        cbn. rewrite H1. easy.
+        cbn. rewrite <- x. easy.
+        cbn. rewrite H1. easy.
+        cbn. rewrite <- x. easy.
+      }
+      {
+        rewrite H1 in H.
+        destruct l; cbn in *; ddestruct H.
+        constructor. easy.
+        cbn. rewrite H1. easy.
+        cbn. rewrite <- x. easy.
+        cbn. rewrite H1. easy.
+        cbn. rewrite <- x. easy.
+      }
+    }
+  }
 }
 clear H. rename H0 into H.
 exists
@@ -2769,7 +2924,56 @@ constructor.
     repeat constructor; easy.
   }
   {
-    admit.
+    eapply SafeNoOp with
+      (QS:=fun _ _ => comp_inv VE VF M).
+    {
+      unfold Stable, stableRelt, sub, subRelt.
+      intros. psimpl. apply H2. easy.
+    }
+    {
+      unfold SilentStep. intros.
+      unfold ReltToPrec in H0. psimpl.
+      apply H1 in H0. unfold comp_inv in *.
+      psimpl.
+      split.
+      exists (x1 ++ [(i, UEvent None)]).
+      split.
+      {
+        unfold InterSteps. rewrite <- Steps_app.
+        exists (ths, s). split. easy.
+        econstructor. 2: constructor.
+        split. 2: easy.
+        constructor; try easy.
+        intros. rewrite H2; easy.
+      }
+      {
+        rewrite projOver_app. cbn.
+        rewrite app_nil_r. easy.
+      }
+      {
+        unfold comp_guar, comp_rely, comp_inv.
+        intros. psimpl.
+        exists (x2 ++ [(i, UEvent None)]).
+        split.
+        {
+          unfold InterSteps. rewrite <- Steps_app.
+          exists (ths, s). split. easy.
+          econstructor. 2: constructor.
+          split. 2: easy.
+          constructor; try easy.
+          intros. rewrite H2; easy.
+        }
+        {
+          rewrite projOver_app. cbn.
+          rewrite app_nil_r. easy.
+        }
+      }
+    }
+    {
+      right. apply rec.
+      unfold sub, subRelt.
+      intros. psimpl. easy.
+    }
   }
 }
 Qed.
