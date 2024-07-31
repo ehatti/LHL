@@ -172,11 +172,9 @@ Definition ReturnStep {T E F} {VE : Spec T E} {VF : Spec T F} i
   (P : Prec VE VF)
   {A} (m : F A) v
   (Q : Relt VE VF) :=
-  forall s ths tht ρs,
-  P (ths, s) ρs ->
-  Util.differ_pointwise ths tht i ->
-  ths i = Cont m (Return v) ->
-  tht i = Idle ->
+  forall s ρs,
+  P s ρs ->
+  fst s i = Cont m (Return v) ->
     exists σs,
       (exists σ, σs σ) /\
       (forall σ,
@@ -184,8 +182,8 @@ Definition ReturnStep {T E F} {VE : Spec T E} {VF : Spec T F} i
         exists ρ,
           ρs ρ /\
           PossSteps ρ σ) /\
-      Q (ths, s) ρs (tht, s) σs /\
-      G (ths, s) ρs (tht, s) σs.
+      Q s ρs s σs /\
+      G s ρs s σs.
 
 CoInductive SafeProg {T E F} {VE : Spec T E} {VF : Spec T F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> F A -> Prog E A -> Post VE VF A -> Prop :=
 | SafeReturn A om v R G (P : Relt VE VF) Q S :
@@ -260,14 +258,12 @@ Definition mapRetPoss {T F VF A} i (m : F A) v (ρ σ : @Poss T F VF) :=
 
 Definition TReturn {T E F VE VF} (impl : Impl E F) (i : Name T) {Ret} (m : F Ret) v : @Relt T E F VE VF :=
   fun s ρs t σs =>
-    Returned i m v s ρs /\
+    (forall ρ, ρs ρ ->
+      ρ.(PRets) i = RetPoss m v /\
+      ρ.(PCalls) i = CallDone m) /\
     InterOStep impl i (fst s) (RetEv m v) (fst t) /\
     snd s = snd t /\
-    σs = (fun σ =>
-      exists ρ, ρs ρ /\
-        ρ.(PRets) i = RetPoss m v /\
-        ρ.(PCalls) i = CallDone m /\
-        mapRetPoss i m v ρ σ).
+    σs = (fun σ => exists ρ, ρs ρ /\ mapRetPoss i m v ρ σ).
 
 Definition ReturnAny {T E F VE VF} impl i : @Relt T E F VE VF :=
   fun s ρ t σ =>
