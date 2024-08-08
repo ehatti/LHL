@@ -13,9 +13,8 @@ From LHL.Util Require Import
 From Paco Require Import paco.
 
 Inductive paco_safeF {T E F A} {VE : Spec T E} {VF : Spec T F} i (R G : Relt VE VF) (Q : Post VE VF A) (om : F A) (rec : Relt VE VF -> Prog E A -> Prop) : Relt VE VF -> Prog E A -> Prop :=
-| SafeReturn v (P : Relt VE VF) P' :
-    ReturnStep i G P om v (P' v) ->
-    P' v ==> Q v ->
+| SafeReturn v (P : Relt VE VF) :
+    P ==> Q v ->
     paco_safeF i R G Q om rec P (Return v)
 | SafeBind A (P : Relt VE VF) QI QR (m : E A) k :
     Stable R QI ->
@@ -38,7 +37,7 @@ Lemma safe_monotone {T E F A} {VE : Spec T E} {VF : Spec T F} (i : Name T) (R G 
   monotone2 (paco_safeF i R G Q om).
 unfold monotone2. intros.
 destruct IN.
-econstructor. exact H. easy.
+econstructor. exact H.
 econstructor. exact H. exact H0. easy.
 intros. specialize (H2 v).
 split. easy.
@@ -53,7 +52,7 @@ CoFixpoint paco_eqv_help {T E F A} {m : F A} {VE : Spec T E} {VF : Spec T F} (i 
 intros.
 punfold H.
 dependent destruction H.
-econstructor. exact H. easy.
+econstructor. exact H.
 econstructor. exact H. exact H0. easy.
 intros. specialize (H2 v). destruct_all.
 split. easy.
@@ -74,7 +73,7 @@ split; intros.
   generalize dependent C. generalize dependent P.
   pcofix rec. intros. pfold.
   destruct H0.
-  econstructor. exact H. easy.
+  econstructor. exact H.
   econstructor. exact H. exact H0. easy.
   intros. specialize (H2 v). destruct_all.
   split. easy.

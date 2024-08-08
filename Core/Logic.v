@@ -6,10 +6,12 @@ From LHL.Core Require Import
 
 From Coq Require Import
   Lists.List
-  Init.Nat
   Logic.FunctionalExtensionality
   Logic.PropExtensionality
   Relations.Relation_Operators.
+
+From LHL.Util Require Import
+  Util.
 
 Variant PCall {F : ESig} :=
 | CallIdle
@@ -167,6 +169,20 @@ Definition SilentStep {T E F} {VE : Spec T E} {VF : Spec T F} i
     Q (ths, s) ρs (tht, s) ρs /\
     G (ths, s) ρs (tht, s) ρs.
 
+Definition mapRetPoss {T F VF A} i (m : F A) v (ρ σ : @Poss T F VF) :=
+  σ.(PCalls) i = CallIdle /\ ρ.(PCalls) i = CallDone m /\
+  σ.(PRets) i = RetIdle /\ ρ.(PRets) i = RetPoss m v /\
+  Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
+  Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
+  σ.(PState) = ρ.(PState).
+
+Definition Returned {T E F VE VF} (i : Name T) {A} (m : F A) v : @Prec T E F VE VF :=
+  fun s ρs =>
+    fst s i = Cont m (Return v) ->
+      forall ρ, ρs ρ ->
+        ρ.(PRets) i = RetPoss m v /\
+        ρ.(PCalls) i = CallDone m.
+
 Definition ReturnStep {T E F} {VE : Spec T E} {VF : Spec T F} i
   (G : Relt VE VF)
   (P : Prec VE VF)
@@ -175,21 +191,25 @@ Definition ReturnStep {T E F} {VE : Spec T E} {VF : Spec T F} i
   forall s ρs,
   P s ρs ->
   fst s i = Cont m (Return v) ->
-    exists σs,
-      (exists σ, σs σ) /\
-      (forall σ,
-        σs σ ->
-        exists ρ,
-          ρs ρ /\
-          PossSteps ρ σ) /\
-      Q s ρs s σs /\
-      G s ρs s σs.
+  exists σs,
+    (exists σ, σs σ) /\
+    (forall σ,
+      σs σ ->
+      exists ρ,
+        ρs ρ /\
+        PossSteps ρ σ) /\
+    (forall σ, σs σ ->
+      σ.(PRets) i = RetPoss m v /\
+      σ.(PCalls) i = CallDone m) /\
+    Q s ρs s σs /\
+    G s ρs
+      (fun j => if i =? j then Idle else fst s j, snd s)
+      (fun τ => exists σ, σs σ /\ mapRetPoss i m v σ τ).
 
 CoInductive SafeProg {T E F} {VE : Spec T E} {VF : Spec T F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> F A -> Prog E A -> Post VE VF A -> Prop :=
-| SafeReturn A om v R G (P : Relt VE VF) Q S :
-    ReturnStep i G P om v (Q v) ->
-    Q v ==> S v ->
-    SafeProg i R G A P om (Return v) S
+| SafeReturn A om v R G (P : Relt VE VF) Q :
+    P ==> Q v ->
+    SafeProg i R G A P om (Return v) Q
 | SafeBind A B R G (P : Relt VE VF) QI QR Q (m : E A) k om :
     Stable R QI ->
     Stable R QR ->
@@ -242,25 +262,9 @@ Definition InvokeAny {T E F VE VF} impl i : @Relt T E F VE VF :=
   fun s ρ t σ =>
     exists Ret (m : F Ret), TInvoke impl i Ret m s ρ t σ.
 
-Definition Returned {T E F VE VF} (i : Name T) {A} (m : F A) v : @Prec T E F VE VF :=
-  fun s ρs =>
-    fst s i = Cont m (Return v) ->
-      exists ρ, ρs ρ /\
-        ρ.(PRets) i = RetPoss m v /\
-        ρ.(PCalls) i = CallDone m.
-
-Definition mapRetPoss {T F VF A} i (m : F A) v (ρ σ : @Poss T F VF) :=
-  σ.(PCalls) i = CallIdle /\ ρ.(PCalls) i = CallDone m /\
-  σ.(PRets) i = RetIdle /\ ρ.(PRets) i = RetPoss m v /\
-  Util.differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
-  Util.differ_pointwise ρ.(PRets) σ.(PRets) i /\
-  σ.(PState) = ρ.(PState).
-
 Definition TReturn {T E F VE VF} (impl : Impl E F) (i : Name T) {Ret} (m : F Ret) v : @Relt T E F VE VF :=
   fun s ρs t σs =>
-    (forall ρ, ρs ρ ->
-      ρ.(PRets) i = RetPoss m v /\
-      ρ.(PCalls) i = CallDone m) /\
+    Returned i m v s ρs /\
     InterOStep impl i (fst s) (RetEv m v) (fst t) /\
     snd s = snd t /\
     σs = (fun σ => exists ρ, ρs ρ /\ mapRetPoss i m v ρ σ).
@@ -290,8 +294,9 @@ Record VerifyImpl
   {R G : Name T -> Relt VE VF}
   {P : Name T -> forall Ret, F Ret -> Prec VE VF}
   {impl : Impl E F}
-  {Q : Name T -> forall Ret, F Ret -> Post VE VF Ret} : Prop
-:= {
+  {Q : Name T -> forall Ret, F Ret -> Post VE VF Ret}
+  {Cs : Name T -> forall Ret, F Ret -> Post VE VF Ret}
+: Prop := {
   R_refl : forall i s ρ,
     R i s ρ s ρ;
   R_trans : forall i,
@@ -306,15 +311,17 @@ Record VerifyImpl
     P i A m (allIdle, VE.(Init)) (eq initPoss);
   P_stable : forall i A m,
     Stable (R i) (P i A m);
-  Q_stable : forall i Ret (m : F Ret) v,
-    Stable (R i) (Q i Ret m v);
+  (* Q_stable : forall i Ret (m : F Ret) v,
+    Stable (R i) (Q i Ret m v); *)
   switch_code : forall i A m1 B m2 v,
-    prComp (P i _ m1) (Q i A m1 v) <<- PrecToRelt (Returned i m1 v) <<- TReturn impl i m1 v ==> P i B m2;
+    prComp (P i _ m1) (Q i A m1 v) <<- Cs i A m1 v <<- TReturn impl i m1 v ==> P i B m2;
   all_verified : forall i A m,
     VerifyProg i (R i) (G i)
       (prComp (P i A m) (TInvoke impl i _ m) ->> R i)
       m
       (impl _ m)
-      (fun v => Q i A m v ->> PrecToRelt (Returned i m v))
+      (Q i A m);
+  all_return : forall i A (m : F A) v,
+    ReturnStep i (G i) (Q i A m v) m v (Cs i A m v)
 }.
 Arguments VerifyImpl {T E F} VE VF R G P impl Q.
