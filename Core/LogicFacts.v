@@ -1722,6 +1722,19 @@ Definition comp_inv {T E F}
         FullPossSteps initPoss l σ /\
         FullPossSteps σ r τ).
 
+Definition comp_post {T E F}
+  (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
+  : Name T -> forall A, F A -> A -> Prec VE VF :=
+  fun i _ m v t σs =>
+  exists p,
+    InterSteps (spec:=VE) M (allIdle, Init VE) p t /\
+    σs = (fun σ =>
+      exists q,
+        projOver p = projOver q /\
+        FullPossSteps initPoss q σ /\
+        PCalls σ i = CallDone m /\
+        PRets σ i = RetPoss m v).
+
 Definition comp_rely {T E F}
   (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
   : Name T -> Relt VE VF :=
@@ -1995,7 +2008,131 @@ Lemma steps_delay_call {T F} {VF : Spec T F} :
   projOver p = [] ->
   FullPossSteps x (p ++ [(i, OEvent (CallEv m))]) y ->
   FullPossSteps x ([(i, OEvent (CallEv m))] ++ p) y.
-Admitted.
+intros.
+assert (PCalls x i = CallIdle /\ PRets x i = RetIdle).
+{
+  generalize dependent x.
+  induction p; cbn in *.
+  {
+    intros. do 2 ddestruct H0.
+    easy.
+  }
+  {
+    intros. ddestruct H0.
+    destruct e; cbn in *.
+    2: discriminate.
+    apply IHp in H3. clear IHp.
+    2: easy.
+    psimpl.
+    ddestruct H0.
+    assert (i <> i0).
+    {
+      dec_eq_nats i i0.
+      rewrite H7 in H2.
+      discriminate.
+      easy.
+    }
+    rewrite H5, H6; easy.
+    assert (i <> i0).
+    {
+      dec_eq_nats i i0.
+      rewrite H7 in H2.
+      discriminate.
+      easy.
+    }
+    rewrite H5, H6; easy.
+  }
+}
+generalize dependent x.
+induction p; cbn in *. easy.
+destruct a, l; cbn in *.
+{
+  intros. psimpl.
+  ddestruct H0.
+  apply IHp in H3.
+  2: easy.
+  2:{
+    ddestruct H0.
+    assert (i <> n).
+    {
+      dec_eq_nats i n.
+      rewrite H8 in H1.
+      discriminate.
+      easy.
+    }
+    rewrite <- H5, <- H6; easy.
+    assert (i <> n).
+    {
+      dec_eq_nats i n.
+      rewrite H8 in H1.
+      discriminate.
+      easy.
+    }
+    rewrite <- H5, <- H6; easy.
+  }
+  do 2 ddestruct H3.
+  eapply PossStepsStep with
+    (σ:= invPoss i ρ m).
+  {
+    constructor; try easy.
+    cbn. rewrite eqb_id. easy.
+    cbn. rewrite eqb_id. easy.
+  }
+  cbn. intros. rewrite eqb_nid; easy.
+  cbn. intros. rewrite eqb_nid; easy.
+  econstructor. 4: exact H10.
+  2:{
+    cbn. intros.
+    rewrite H1. 2: easy.
+    dec_eq_nats i j.
+    rewrite eqb_id. easy.
+    rewrite eqb_nid. 2: easy.
+    apply H8. easy.
+  }
+  2:{
+    cbn. intros.
+    rewrite H2. 2: easy.
+    dec_eq_nats i j.
+    rewrite eqb_id. easy.
+    rewrite eqb_nid. 2: easy.
+    apply H9. easy.
+  }
+  {
+    ddestruct H0.
+    {
+      assert (i <> n).
+      {
+        dec_eq_nats i n.
+        rewrite H8 in H2.
+        discriminate.
+        easy.
+      }
+      constructor; cbn.
+      rewrite <- H7. easy.
+      rewrite eqb_nid; easy.
+      rewrite <- H12; easy.
+      rewrite eqb_nid; easy.
+      rewrite <- H13; easy.
+    }
+    {
+      assert (i <> n).
+      {
+        dec_eq_nats i n.
+        rewrite H8 in H2.
+        discriminate.
+        easy.
+      }
+      constructor; cbn.
+      rewrite <- H7. easy.
+      rewrite eqb_nid; easy.
+      rewrite <- H12; easy.
+      rewrite eqb_nid; easy.
+      rewrite <- H13; easy.
+    }
+  }
+}
+discriminate.
+Qed.
 
 Lemma invoke_in_rely {T E F} {VE : Spec T E} {VF : Spec T F } {M : Impl E F} :
   (forall st p,
@@ -2079,7 +2216,108 @@ Lemma steps_delay_ret {T F} {VF : Spec T F} :
   PRets x i = RetPoss m v ->
   FullPossSteps x (p ++ [(i, OEvent (RetEv m v))]) y ->
   FullPossSteps x ([(i, OEvent (RetEv m v))] ++ p) y.
-Admitted.
+intros.
+generalize dependent x.
+induction p; cbn in *. easy.
+destruct a, l; cbn in *.
+{
+  intros. psimpl.
+  ddestruct H2.
+  apply IHp in H5.
+  2: easy.
+  2:{
+    ddestruct H2.
+    assert (i <> n).
+    {
+      dec_eq_nats i n.
+      rewrite H5 in H1.
+      discriminate.
+      easy.
+    }
+    rewrite <- H7; easy.
+    assert (i <> n).
+    {
+      dec_eq_nats i n.
+      rewrite H5 in H1.
+      discriminate.
+      easy.
+    }
+    rewrite <- H7; easy.
+  }
+  do 2 ddestruct H5.
+  eapply PossStepsStep with
+    (σ:= retPoss i ρ).
+  {
+    constructor; try easy.
+    cbn. rewrite eqb_id. easy.
+    cbn. rewrite eqb_id. easy.
+  }
+  cbn. intros. rewrite eqb_nid; easy.
+  cbn. intros. rewrite eqb_nid; easy.
+  econstructor. 4: exact H12.
+  2:{
+    cbn. intros.
+    rewrite H3. 2: easy.
+    dec_eq_nats i j.
+    rewrite eqb_id. easy.
+    rewrite eqb_nid. 2: easy.
+    apply H10. easy.
+  }
+  2:{
+    cbn. intros.
+    rewrite H4. 2: easy.
+    dec_eq_nats i j.
+    rewrite eqb_id. easy.
+    rewrite eqb_nid. 2: easy.
+    apply H11. easy.
+  }
+  {
+    ddestruct H2.
+    {
+      assert (i <> n).
+      {
+        dec_eq_nats i n.
+        rewrite H12 in H6.
+        discriminate.
+        easy.
+      }
+      constructor; cbn.
+      rewrite <- H9. easy.
+      rewrite eqb_nid; easy.
+      rewrite <- H14; easy.
+      rewrite eqb_nid; easy.
+      rewrite <- H15; easy.
+    }
+    {
+      assert (i <> n).
+      {
+        dec_eq_nats i n.
+        rewrite H5 in H1.
+        discriminate.
+        easy.
+      }
+      constructor; cbn.
+      rewrite <- H9. easy.
+      rewrite eqb_nid; easy.
+      rewrite <- H14; easy.
+      rewrite eqb_nid; easy.
+      rewrite <- H15; easy.
+    }
+  }
+  assert (i <> n).
+  {
+    unfold not. intros.
+    subst. ddestruct H2.
+    rewrite H3 in H0.
+    discriminate.
+    rewrite H5 in H1.
+    discriminate.
+  }
+  rewrite <- H4; easy.
+}
+discriminate.
+Qed.
+
 
 Lemma return_in_rely {T E F} {VE : Spec T E} {VF : Spec T F } {M : Impl E F} :
   (forall st p,
@@ -2165,7 +2403,31 @@ Lemma full_to_local {T F} {VF : Spec T F} :
   forall x y : Poss VF,
   FullPossSteps x p y ->
   PossSteps x y.
-Admitted.
+intros.
+generalize dependent x.
+induction p; intros; cbn in *.
+ddestruct H0. constructor.
+destruct a, l; cbn in *.
+2: discriminate.
+ddestruct H0.
+econstructor.
+4:{
+  apply IHp. easy.
+  exact H3.
+}
+2: exact H1.
+2: exact H2.
+clear - H0.
+ddestruct H0.
+{
+  econstructor.
+  exact H. all: easy.
+}
+{
+  econstructor 2.
+  exact H. all: easy.
+}
+Qed.
 
 Lemma comp_commit {T E F} {VE : Spec T E} {VF : Spec T F} {M : Impl E F} i e :
   (forall st p,
@@ -2261,8 +2523,8 @@ Fixpoint numSilent {T F} (p : Trace (ThreadLEvent T F F)) : nat :=
 
 Theorem completeness {T E F} (lay : Layer T E F) VF :
   Lin (overObj lay) VF ->
-  exists R G Ps Qs,
-    VerifyImpl lay.(USpec) VF R G Ps lay.(LImpl) Qs.
+  exists R G Ps Qs Cs,
+    VerifyImpl lay.(USpec) VF R G Ps lay.(LImpl) Qs Cs.
 unfold Lin, KConc, specRefines, Incl, IsTraceOfSpec.
 repeat rewrite projInterSteps.
 destruct lay. cbn. intros.
@@ -2408,7 +2670,8 @@ exists
   (comp_rely VE VF M),
   (comp_guar VE VF M),
   (fun _ _ _ => comp_inv VE VF M),
-  (fun _ _ _ _ _ _ => comp_inv VE VF M).
+  (fun _ _ _ _ _ _ => comp_inv VE VF M),
+  (fun i A m v _ _ => comp_post VE VF M i A m v).
 constructor.
 {
   easy.
@@ -2455,10 +2718,70 @@ constructor.
 }
 {
   unfold sub, subPrec. intros. psimpl.
-  assert (comp_rely VE VF M i x x0 s ρ).
-  eapply return_in_rely. easy. easy.
-  exists _, m1, v. exact H1.
-  apply H4. easy.
+  unfold comp_post, TReturn, Returned in *.
+  clear - H1 H2. psimpl.
+  unfold comp_inv.
+  exists (x1 ++ [(i, OEvent (RetEv m1 v))]).
+  split.
+  {
+    unfold InterSteps. rewrite <- Steps_app.
+    exists x. split. easy.
+    econstructor. 2: constructor.
+    split. 2: easy.
+    destruct H0. cbn in *.
+    constructor; easy.
+  }
+  {
+    repeat rewrite projOver_app. cbn.
+    unfold mapRetPoss.
+    split.
+    {
+      intros. psimpl.
+      exists (x2 ++ [(i, OEvent (RetEv m1 v))]).
+      split.
+      {
+        rewrite projOver_app, H3. easy.
+      }
+      {
+        apply FullPossSteps_trans.
+        exists x0. split. easy.
+        econstructor. 4: constructor.
+        constructor; easy.
+        intros. rewrite H8; easy.
+        intros. rewrite H9; easy.
+      }
+    }
+    {
+      intros. symmetry in H3.
+      apply projOver_extract_oev in H3. psimpl.
+      apply FullPossSteps_trans_inv in H4. psimpl.
+      ddestruct H6. ddestruct H6.
+      exists σ, (x0 ++ [(i, OEvent (RetEv m1 v))]), x2.
+      rewrite projOver_app, H3.
+      repeat split; try easy.
+      {
+        exists ρ.
+        repeat split; try easy.
+        {
+          exists x0. easy.
+        }
+        {
+          unfold differ_pointwise.
+          intros. rewrite H11; easy.
+        }
+        {
+          unfold differ_pointwise.
+          intros. rewrite H12; easy.
+        }
+      }
+      {
+        apply FullPossSteps_trans.
+        exists ρ. split. easy.
+        econstructor. 4: constructor.
+        all: (try constructor; easy).
+      }
+    }
+  }
 }
 {
   intros.
@@ -2652,6 +2975,10 @@ constructor.
     intros. psimpl.
     easy.
   }
+  split.
+  {
+    exists x1. easy.
+  }
   {
     unfold comp_guar, comp_rely, comp_inv.
     intros. psimpl.
@@ -2715,4 +3042,14 @@ constructor.
     }
   }
 }
+Qed.
+
+Theorem equiv {T E F} (lay : Layer T E F) VF :
+  Lin (overObj lay) VF =
+  exists R G Ps Qs Cs,
+    VerifyImpl lay.(USpec) VF R G Ps lay.(LImpl) Qs Cs.
+apply propositional_extensionality.
+split; intros; psimpl.
+apply completeness. easy.
+eapply soundness. exact H.
 Qed.
