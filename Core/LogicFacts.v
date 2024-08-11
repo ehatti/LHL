@@ -279,10 +279,10 @@ apply H. easy.
 easy.
 Qed.
 
-CoFixpoint weakenSafe {T E F VE VF i R G P P' A Q C m} :
+CoFixpoint weakenSafe {T E F VE VF i R G P P' A Q C} :
   (P' ==> P) ->
-  SafeProg (T:=T) (E:=E) (F:=F) (VE:=VE) (VF:=VF) (A:=A) i R G P m C Q ->
-  SafeProg i R G P' m C Q.
+  SafeProg (T:=T) (E:=E) (F:=F) (VE:=VE) (VF:=VF) (A:=A) i R G P C Q ->
+  SafeProg i R G P' C Q.
 intros.
 destruct H0.
 {
@@ -404,13 +404,13 @@ Record LHLState {T E F}
     forall A (m : F A), Ps i A m s ρs
   | Cont m p =>
     exists Is,
-      SafeProg i (R i) (G i) ((prComp (Ps i _ m) (TInvoke M i _ m)) ->> Is) m p (Qs i _ m) /\
+      SafeProg i (R i) (G i) ((prComp (Ps i _ m) (TInvoke M i _ m)) ->> Is) p (Qs i _ m) /\
       (Ps i _ m <<- TInvoke M i _ m <<- Is) s ρs /\
       (Is ->> R i) ==> Is
   | UCall om um k =>
     exists Is QR, forall v,
       Commit i (G i) ((prComp (Ps i _ om) (TInvoke M i _ om)) ->> Is) (RetEv um v) (QR v) /\
-      SafeProg i (R i) (G i) ((prComp (Ps i _ om) (TInvoke M i _ om)) ->> Is ->> QR v) om (k v) (Qs i _ om) /\
+      SafeProg i (R i) (G i) ((prComp (Ps i _ om) (TInvoke M i _ om)) ->> Is ->> QR v) (k v) (Qs i _ om) /\
       (Ps i _ om <<- TInvoke M i _ om <<- Is) s ρs /\
       (QR v ->> R i) ==> QR v /\
       (Is ->> R i) ==> Is
@@ -1438,12 +1438,12 @@ destruct e.
   assert (H1' := H1). move H1' at top. move H1 at bottom.
   destruct H1. specialize (all_safe0 n).
   rewrite H2 in all_safe0. psimpl. ddestruct H1.
-  assert (ReturnStep n (G n) (Qs n A om n0) om n0 (Cs n A om n0)).
+  assert (ReturnStep n (G n) (Qs n A m n0) m n0 (Cs n A m n0)).
   {
     apply H.(all_return).
   }
   unfold ReturnStep in H9.
-  assert (ReltToPrec (Qs n A om n0) s ρs).
+  assert (ReltToPrec (Qs n A m n0) s ρs).
   {
     exists x4, x5. apply H1.
     psplit. psplit.
@@ -1454,7 +1454,7 @@ destruct e.
   exists (fun y =>
     exists x,
       x6 x /\
-      mapRetPoss n om n0 x y).
+      mapRetPoss n m n0 x y).
   clear H9.
   split.
   {
@@ -1480,7 +1480,7 @@ destruct e.
       {
         intros.
         eapply H.(switch_code) with
-          (m1:=om) (v:=n0).
+          (m1:=m) (v:=n0).
         psplit. psplit.
         exists x4, x5.
         psplit. easy.
@@ -1564,7 +1564,7 @@ destruct e.
         exists (x8 ->> R i).
         repeat split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i A0 m) (TInvoke M i A0 m) ->> x8)).
+          eapply (weakenSafe (P:= prComp (Ps i A0 m0) (TInvoke M i A0 m0) ->> x8)).
           2: easy.
           unfold sub, subRelt. intros. psimpl.
           psplit. psplit.
@@ -1595,7 +1595,7 @@ destruct e.
           eapply weakenCommit with (Q:= x9 v).
           unfold sub, subRelt. intros. psimpl.
           psplit. exact H22. apply H.(R_refl).
-          eapply weakenCommitPre with (P:= prComp (Ps i B om0) (TInvoke M i B om0) ->> x8).
+          eapply weakenCommitPre with (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x8).
           unfold sub, subRelt. intros. psimpl.
           psplit. psplit. easy. exact H24.
           apply H19. exists x16, x17. easy.
@@ -1603,7 +1603,7 @@ destruct e.
         }
         split.
         {
-          eapply (weakenSafe (P:= prComp (Ps i B om0) (TInvoke M i B om0) ->> x8 ->> x9 v)).
+          eapply (weakenSafe (P:= prComp (Ps i B om) (TInvoke M i B om) ->> x8 ->> x9 v)).
           2: easy.
           unfold sub, subRelt. intros. psimpl.
           psplit. psplit. easy. exact H24.
@@ -1645,7 +1645,7 @@ destruct e.
     apply H11 in H9. psimpl.
     exists x9. split. easy.
     apply local_to_full in H22. psimpl.
-    exists (x10 ++ [(n, OEvent (RetEv om n0))]).
+    exists (x10 ++ [(n, OEvent (RetEv m n0))]).
     rewrite projOver_app, H22. split. easy.
     apply full_poss_to_inter.
     apply FullPossSteps_trans.
@@ -3045,9 +3045,7 @@ constructor.
 Qed.
 
 Theorem equiv {T E F} (lay : Layer T E F) VF :
-  Lin (overObj lay) VF =
-  exists R G Ps Qs Cs,
-    VerifyImpl lay.(USpec) VF R G Ps lay.(LImpl) Qs Cs.
+  Lin (overObj lay) VF = exists R G Ps Qs Cs, VerifyImpl lay.(USpec) VF R G Ps lay.(LImpl) Qs Cs.
 apply propositional_extensionality.
 split; intros; psimpl.
 apply completeness. easy.

@@ -12,10 +12,10 @@ From LHL.Util Require Import
 
 From Paco Require Import paco.
 
-Inductive paco_safeF {T E F A} {VE : Spec T E} {VF : Spec T F} i (R G : Relt VE VF) (Q : Post VE VF A) (om : F A) (rec : Relt VE VF -> Prog E A -> Prop) : Relt VE VF -> Prog E A -> Prop :=
+Inductive paco_safeF {T E F A} {VE : Spec T E} {VF : Spec T F} i (R G : Relt VE VF) (Q : Post VE VF A) (rec : Relt VE VF -> Prog E A -> Prop) : Relt VE VF -> Prog E A -> Prop :=
 | SafeReturn v (P : Relt VE VF) :
     P ==> Q v ->
-    paco_safeF i R G Q om rec P (Return v)
+    paco_safeF i R G Q rec P (Return v)
 | SafeBind A (P : Relt VE VF) QI QR (m : E A) k :
     Stable R QI ->
     Stable R QR ->
@@ -23,18 +23,18 @@ Inductive paco_safeF {T E F A} {VE : Spec T E} {VF : Spec T F} i (R G : Relt VE 
     (forall v,
       Commit i G (P ->> QI) (RetEv m v) (QR v) /\
       rec (P ->> QI ->> QR v) (k v)) ->
-    paco_safeF i R G Q om rec P (Bind m k)
+    paco_safeF i R G Q rec P (Bind m k)
 | SafeNoOp (P : Relt VE VF) QS C :
     Stable R QS ->
     SilentStep i G P QS ->
     rec (P ->> QS) C ->
-    paco_safeF i R G Q om rec P (NoOp C)
+    paco_safeF i R G Q rec P (NoOp C)
 .
 
-Definition paco_safe {T E F A} {VE : Spec T E} {VF : Spec T F} i (R G P : Relt VE VF) (om : F A) (C : Prog E A) (Q : Post VE VF A) : Prop := paco2 (paco_safeF i R G Q om) bot2 P C.
+Definition paco_safe {T E F A} {VE : Spec T E} {VF : Spec T F} i (R G P : Relt VE VF) (C : Prog E A) (Q : Post VE VF A) : Prop := paco2 (paco_safeF i R G Q) bot2 P C.
 
-Lemma safe_monotone {T E F A} {VE : Spec T E} {VF : Spec T F} (i : Name T) (R G : Relt VE VF) (Q : Post VE VF A) (om : F A) :
-  monotone2 (paco_safeF i R G Q om).
+Lemma safe_monotone {T E F A} {VE : Spec T E} {VF : Spec T F} (i : Name T) (R G : Relt VE VF) (Q : Post VE VF A) :
+  monotone2 (paco_safeF i R G Q).
 unfold monotone2. intros.
 destruct IN.
 econstructor. exact H.
@@ -47,8 +47,8 @@ apply LE. easy.
 Qed.
 Hint Resolve safe_monotone : paco.
 
-CoFixpoint paco_eqv_help {T E F A} {m : F A} {VE : Spec T E} {VF : Spec T F} (i : Name T) (R G : Relt VE VF) (Q : Post VE VF A) (P : Relt VE VF) (C : Prog E A) :
-  paco_safe i R G P m C Q -> SafeProg i R G P m C Q.
+CoFixpoint paco_eqv_help {T E F A} {VE : Spec T E} {VF : Spec T F} (i : Name T) (R G : Relt VE VF) (Q : Post VE VF A) (P : Relt VE VF) (C : Prog E A) :
+  paco_safe i R G P C Q -> SafeProg i R G P C Q.
 intros.
 punfold H.
 dependent destruction H.
@@ -65,8 +65,8 @@ apply paco_eqv_help. easy.
 destruct H1.
 Qed.
 
-Lemma paco_eqv {T E F A} {VE : Spec T E} {VF : Spec T F} (i : Name T) {m : F A} (R G : Relt VE VF) (Q : Post VE VF A) (P : Relt VE VF) (C : Prog E A):
-  SafeProg i R G P m C Q = paco_safe i R G P m C Q.
+Lemma paco_eqv {T E F A} {VE : Spec T E} {VF : Spec T F} (i : Name T) (R G : Relt VE VF) (Q : Post VE VF A) (P : Relt VE VF) (C : Prog E A):
+  SafeProg i R G P C Q = paco_safe i R G P C Q.
 apply propositional_extensionality.
 split; intros.
 {

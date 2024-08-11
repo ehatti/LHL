@@ -206,26 +206,26 @@ Definition ReturnStep {T E F} {VE : Spec T E} {VF : Spec T F} i
       (fun j => if i =? j then Idle else fst s j, snd s)
       (fun τ => exists σ, σs σ /\ mapRetPoss i m v σ τ).
 
-CoInductive SafeProg {T E F} {VE : Spec T E} {VF : Spec T F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> F A -> Prog E A -> Post VE VF A -> Prop :=
-| SafeReturn A om v R G (P : Relt VE VF) Q :
+CoInductive SafeProg {T E F} {VE : Spec T E} {VF : Spec T F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
+| SafeReturn A v R G (P : Relt VE VF) Q :
     P ==> Q v ->
-    SafeProg i R G A P om (Return v) Q
-| SafeBind A B R G (P : Relt VE VF) QI QR Q (m : E A) k om :
+    SafeProg i R G A P (Return v) Q
+| SafeBind A B R G (P : Relt VE VF) QI QR Q (m : E A) k :
     Stable R QI ->
     Stable R QR ->
     Commit i G P (CallEv m) QI ->
     (forall v,
       Commit i G (P ->> QI) (RetEv m v) (QR v) /\
-      SafeProg i R G B (P ->> QI ->> QR v) om (k v) Q) ->
-    SafeProg i R G B P om (Bind m k) Q
-| SafeNoOp R G A om (P : Relt VE VF) QS C Q :
+      SafeProg i R G B (P ->> QI ->> QR v) (k v) Q) ->
+    SafeProg i R G B P (Bind m k) Q
+| SafeNoOp R G A (P : Relt VE VF) QS C Q :
     Stable R QS ->
     SilentStep i G P QS ->
-    SafeProg i R G A (P ->> QS) om C Q ->
-    SafeProg i R G A P om (NoOp C) Q
+    SafeProg i R G A (P ->> QS) C Q ->
+    SafeProg i R G A P (NoOp C) Q
 .
 
-Arguments SafeProg {T E F VE VF} i R G {A} P om C Q.
+Arguments SafeProg {T E F VE VF} i R G {A} P C Q.
 
 Definition TIdle {T E F VE VF} (i : Name T) : @Prec T E F VE VF :=
   fun s ρs =>
@@ -276,10 +276,10 @@ Definition ReturnAny {T E F VE VF} impl i : @Relt T E F VE VF :=
 Definition VerifyProg {T E F VE VF A} i
   (R G : @Relt T E F VE VF)
   (P : Relt VE VF)
-  (m : F A) (C : Prog E A)
+  (C : Prog E A)
   (Q : Post VE VF A)
   : Prop :=
-  SafeProg i R G P m C Q.
+  SafeProg i R G P C Q.
 
 Definition initPoss {T F VF} : @Poss T F VF := {|
   PState := VF.(Init);
@@ -318,7 +318,6 @@ Record VerifyImpl
   all_verified : forall i A m,
     VerifyProg i (R i) (G i)
       (prComp (P i A m) (TInvoke impl i _ m) ->> R i)
-      m
       (impl _ m)
       (Q i A m);
   all_return : forall i A (m : F A) v,
