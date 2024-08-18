@@ -206,6 +206,12 @@ Definition ReturnStep {T E F} {VE : Spec T E} {VF : Spec T F} i
       (fun j => if i =? j then Idle else fst s j, snd s)
       (fun τ => exists σ, σs σ /\ mapRetPoss i m v σ τ).
 
+Definition initPoss {T F VF} : @Poss T F VF := {|
+  PState := VF.(Init);
+  PCalls _ := CallIdle;
+  PRets _ := RetIdle;
+|}.
+
 CoInductive SafeProg {T E F} {VE : Spec T E} {VF : Spec T F} i : Relt VE VF -> Relt VE VF -> forall (A : Type), Relt VE VF -> Prog E A -> Post VE VF A -> Prop :=
 | SafeReturn A v R G (P : Relt VE VF) Q :
     P ==> Q v ->
@@ -215,7 +221,7 @@ CoInductive SafeProg {T E F} {VE : Spec T E} {VF : Spec T F} i : Relt VE VF -> R
     Stable R QR ->
     Commit i G P (CallEv m) QI ->
     (forall v,
-      Commit i G (P ->> QI) (RetEv m v) (QR v) /\
+      Commit i G ((P ->> QI)) (RetEv m v) (QR v) /\
       SafeProg i R G B (P ->> QI ->> QR v) (k v) Q) ->
     SafeProg i R G B P (Bind m k) Q
 | SafeNoOp R G A (P : Relt VE VF) QS C Q :
@@ -280,12 +286,6 @@ Definition VerifyProg {T E F VE VF A} i
   (Q : Post VE VF A)
   : Prop :=
   SafeProg i R G P C Q.
-
-Definition initPoss {T F VF} : @Poss T F VF := {|
-  PState := VF.(Init);
-  PCalls _ := CallIdle;
-  PRets _ := RetIdle;
-|}.
 
 Record VerifyImpl
   {T E F}

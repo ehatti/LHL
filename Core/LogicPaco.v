@@ -1,7 +1,8 @@
 From LHL.Core Require Import
   Specs
   Program
-  Logic.
+  Logic
+  Traces.
 
 From Coq Require Import
   Program.Equality
