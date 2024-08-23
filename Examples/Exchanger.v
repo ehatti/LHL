@@ -433,47 +433,7 @@ Definition PossSetSteps {T F} {VF : Spec T F} (ρs σs : PossSet VF) :=
       PossSteps ρ σ.
 
 Lemma lemCAS {T A} {i : Name T} :
-  forall e n (P : Relt T A),
-  forall (PS PF : PossSet (VF T A) -> PossSet (VF T A) -> Prop),
-  (forall s ρs σs,
-    ReltToPrec P s ρs ->
-    snd s = CASDef e None ->
-    σs = (fun σ =>
-      exists ρ, ρs ρ /\
-        σ.(PState) = ρ.(PState) /\
-        σ.(PCalls) i = ρ.(PCalls) i /\
-        σ.(PRets) i = ρ.(PRets) i) ->
-    exists τs,
-      PossSetSteps σs τs /\
-      PS σs τs) ->
-  (forall s ρs σs,
-    ReltToPrec P s ρs ->
-    (exists a,
-      a <> e /\
-      snd s = CASDef a None) ->
-    σs = (fun σ =>
-      exists ρ, ρs ρ /\
-        σ.(PState) = ρ.(PState) /\
-        σ.(PCalls) i = ρ.(PCalls) i /\
-        σ.(PRets) i = ρ.(PRets) i) ->
-    exists τs,
-      PossSetSteps σs τs /\
-      PF σs τs) ->
-  (forall s ρs,
-    ReltToPrec P s ρs ->
-    exists a,
-      snd s = CASDef a None) ->
-  (forall s ρs t σs,
-    snd s = CASDef e (Some (MkCASPend i (CAS e n))) ->
-    snd t = CASDef n None ->
-    PS ρs σs ->
-    Guar i s ρs t σs) ->
-  (forall a s ρs t σs,
-    a <> e ->
-    snd s = CASDef a (Some (MkCASPend i (CAS e n))) ->
-    snd t = CASDef a None ->
-    PF ρs σs ->
-    Guar i s ρs t σs) ->
+  forall (P : Relt VE VF),
   VerifyProg i (Rely i) (Guar i)
     P
     (call (CAS e n))
@@ -489,31 +449,6 @@ Lemma lemCAS {T A} {i : Name T} :
             snd t = CASDef a None) /\
           PF ρs σs /\
           Rely i t σs r τs))).
-intros.
-eapply weakenPost.
-eapply (lemCall
-  (Q:=fun (s : InterState (F A) (VE T A)) ρs t σs =>
-    σs = (fun σ =>
-    exists ρ, ρs ρ /\
-      σ.(PState) = ρ.(PState) /\
-      σ.(PCalls) i = ρ.(PCalls) i /\
-      σ.(PRets) i = ρ.(PRets) i) /\
-    (exists a,
-      snd s = CASDef a None /\
-      snd t = CASDef a (Some (MkCASPend i (CAS e n)))))
-  (S:=fun v s ρs r τs =>
-    exists t σs,
-    ((v = true /\
-      PS ρs σs /\
-      snd t = CASDef n None /\
-      Rely i t σs r τs) \/
-    (v = false /\
-      PF ρs σs /\
-      (exists a,
-        a <> e /\
-        snd t = CASDef a None) /\
-      Rely i t σs r τs)))).
-Admitted.
 
 Lemma exch_correct {T A} {i : Name T} :
   forall v,

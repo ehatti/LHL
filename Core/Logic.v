@@ -138,6 +138,8 @@ Inductive PossSteps {T F} {VF : Spec T F} : Poss VF -> Poss VF -> Prop :=
     PossSteps σ τ ->
     PossSteps ρ τ.
 
+
+
 Definition Commit {T E F} {VE : Spec T E} {VF : Spec T F} i
   (G : Relt VE VF)
   (P : Prec VE VF)
@@ -201,7 +203,9 @@ Definition ReturnStep {T E F} {VE : Spec T E} {VF : Spec T F} i
     (forall σ, σs σ ->
       σ.(PRets) i = RetPoss m v /\
       σ.(PCalls) i = CallDone m) /\
-    Q s ρs s σs /\
+    Q s ρs
+      (fun j => if i =? j then Idle else fst s j, snd s)
+      (fun τ => exists σ, σs σ /\ mapRetPoss i m v σ τ) /\
     G s ρs
       (fun j => if i =? j then Idle else fst s j, snd s)
       (fun τ => exists σ, σs σ /\ mapRetPoss i m v σ τ).
@@ -311,10 +315,8 @@ Record VerifyImpl
     P i A m (allIdle, VE.(Init)) (eq initPoss);
   P_stable : forall i A m,
     Stable (R i) (P i A m);
-  (* Q_stable : forall i Ret (m : F Ret) v,
-    Stable (R i) (Q i Ret m v); *)
   switch_code : forall i A m1 B m2 v,
-    prComp (P i _ m1) (Q i A m1 v) <<- Cs i A m1 v <<- TReturn impl i m1 v ==> P i B m2;
+    prComp (P i _ m1) (Q i A m1 v) <<- Cs i A m1 v ==> P i B m2;
   all_verified : forall i A m,
     VerifyProg i (R i) (G i)
       (prComp (P i A m) (TInvoke impl i _ m) ->> R i)
