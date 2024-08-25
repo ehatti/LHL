@@ -19,6 +19,13 @@ From Paco Require Import paco.
 
 Ltac ddestruct H := dependent destruction H.
 
+Definition IsAtomic {T E A} (VE : Spec T E) (m : E A) :=
+  forall i s t e r,
+    VE.(Step) s (i, CallEv m) t ->
+    VE.(Step) t e r ->
+    exists v,
+      e = (i, RetEv m v).
+
 Section rules.
 
 Context
@@ -67,6 +74,12 @@ split. easy.
 econstructor. unfold sub, subRelt. intros.
 easy.
 Qed.
+
+Lemma lemCallAtomic {A Q} {P : Relt VE VF} {m : E A} :
+  Stable R Q ->
+  IsAtomic VE m ->
+  (forall v, Commit i G P (RetEv m v) (Q v)) ->
+  VerifyProg i R G P (call m) Q.
 
 Lemma lemCallSimp {A Q S} {P : Relt VE VF} {m : E A} :
   Stable R Q ->
