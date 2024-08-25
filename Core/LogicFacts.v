@@ -1718,30 +1718,11 @@ Definition comp_inv {T E F}
         FullPossSteps initPoss l σ /\
         FullPossSteps σ r τ).
 
-Definition comp_post {T E F}
-  (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
-  : Name T -> forall A, F A -> A -> Prec VE VF :=
-  fun i _ m v t σs =>
-  exists p,
-    InterSteps (spec:=VE) M (allIdle, Init VE) p t /\
-    σs = (fun σ =>
-      exists q,
-        projOver p = projOver q /\
-        FullPossSteps initPoss q σ /\
-        PCalls σ i = CallDone m /\
-        PRets σ i = RetPoss m v).
-
 Definition comp_rely {T E F}
   (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
   : Name T -> Relt VE VF :=
   fun i s ρs t σs =>
     comp_inv VE VF M s ρs -> comp_inv VE VF M t σs.
-
-Definition comp_guar {T E F}
-  (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
-  : Name T -> Relt VE VF :=
-  fun i s ρs t σs =>
-    forall j, i <> j -> comp_rely VE VF M j s ρs t σs.
 
 Lemma AllCallEv_cong {T F} :
   forall p q : Trace (ThreadEvent T F),

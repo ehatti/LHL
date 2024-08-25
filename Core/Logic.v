@@ -138,8 +138,6 @@ Inductive PossSteps {T F} {VF : Spec T F} : Poss VF -> Poss VF -> Prop :=
     PossSteps σ τ ->
     PossSteps ρ τ.
 
-
-
 Definition Commit {T E F} {VE : Spec T E} {VF : Spec T F} i
   (G : Relt VE VF)
   (P : Prec VE VF)
