@@ -55,9 +55,6 @@ Proof.
     econstructor; eassumption.
 Qed.
 
-Definition ActiveFSound {T F} {State: Type} (step: State -> ThreadEvent T F -> State -> Prop) (f: State -> ActiveMap T F) :=
-  forall s te s', step s te s' -> ActiveMapStep (f s) te (f s').
-
 Definition ActiveF {T F} {State: Type} (step: State -> ThreadEvent T F -> State -> Prop):= State -> ActiveMap T F.
 
 Inductive StepWithUB {T F} {State: Type}
@@ -124,15 +121,29 @@ Definition PossSetUBFree {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf
     (exists a, PState ρ = inr (UBState_, a)) -> ~ ρs ρ.
 
 Definition PrecWithUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (prec: Prec VE VF) : Prec VE (SpecWithUB VF acf HAcf) :=
-  fun s' ρs' => exists s ρs, prec s ρs /\ s = s' /\ ρs' = PossSetWithUB acf HAcf ρs.
+  fun s ρs => prec s (PossSetRemoveUB acf HAcf ρs).
 
-Definition ReltWithUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (relt: Relt VE VF) : Relt VE (SpecWithUB VF acf HAcf) :=
+Definition ReltWithUBEmp {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (relt: Relt VE VF) : Relt VE (SpecWithUB VF acf HAcf) :=
   fun s1 ρs1 s2 ρs2 => 
-    exists t1 σs1 t2 σs2, relt t1 σs1 t2 σs2 /\ t1 = s1 /\ t2 = s2 /\ ρs1 = PossSetWithUB acf HAcf σs1 /\ ρs2 = PossSetWithUB acf HAcf σs2.
+    exists ρs1' ρs2', relt s1 ρs1' s2 ρs2' /\ ρs1 = PossSetWithUB acf HAcf ρs1' /\ ρs2 = PossSetWithUB acf HAcf ρs2'.
 
-Definition PostWithUB {T E F A} {VE: Spec T E} {VF: Spec T F} acf HAcf (post: Post VE VF A) : Post VE (SpecWithUB VF acf HAcf) A :=
+Definition ReltWithUBFull {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (relt: Relt VE VF) : Relt VE (SpecWithUB VF acf HAcf) :=
+  fun s1 ρs1 s2 ρs2 => 
+    relt s1 (PossSetRemoveUB acf HAcf ρs1) s2 (PossSetRemoveUB acf HAcf ρs2).
+
+Definition RelyWithUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (R: Name T -> Relt VE VF) (i: Name T) : Relt VE (SpecWithUB VF acf HAcf) :=
+  ReltWithUBFull acf HAcf (R i).
+
+Definition GuarWithUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (G: Name T -> Relt VE VF) (i: Name T) : Relt VE (SpecWithUB VF acf HAcf) :=
+  ReltWithUBFull acf HAcf (G i).
+
+Definition PostWithUBFull {T E F A} {VE: Spec T E} {VF: Spec T F} acf HAcf (post: Post VE VF A) : Post VE (SpecWithUB VF acf HAcf) A :=
   fun v s1 ρs1 s2 ρs2 => 
-    exists t1 σs1 t2 σs2, post v t1 σs1 t2 σs2 /\ t1 = s1 /\ t2 = s2 /\ ρs1 = PossSetWithUB acf HAcf σs1 /\ ρs2 = PossSetWithUB acf HAcf σs2.
+    post v s1 (PossSetRemoveUB acf HAcf ρs1) s2 (PossSetRemoveUB acf HAcf ρs2).
+
+Definition PostWithUBEmp{T E F A} {VE: Spec T E} {VF: Spec T F} acf HAcf (post: Post VE VF A) : Post VE (SpecWithUB VF acf HAcf) A :=
+  fun v s1 ρs1 s2 ρs2 => 
+    exists ρs1' ρs2', post v s1 ρs1' s2 ρs2' /\ ρs1 = PossSetWithUB acf HAcf ρs1' /\ ρs2 = PossSetWithUB acf HAcf ρs2'.
 
 Lemma PossWithUBUnfold {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
   forall ρ, 
@@ -221,19 +232,34 @@ Proof.
   rewrite H0; easy.
 Qed.
 
+Lemma PossSetEmbedForgetUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+  forall ρs, PossSetRemoveUB acf HAcf (PossSetWithUB acf HAcf ρs) = ρs.
+Proof.
+  unfold PossSetRemoveUB, PossSetWithUB, PossWithUB.
+  intros.
+  extensionality s.
+  apply propositional_extensionality.
+  split; intros.
+  + destruct_all.
+    inversion H0.
+    assert(s = x). { destruct s, x; simpl in *; subst. reflexivity. }
+    subst s; assumption.
+  + exists s. split; [assumption | reflexivity].
+Qed.
+
 Lemma reltUBEmbedding {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall (R: Relt VE VF) s ρs t σs,
-    R s ρs t σs -> ReltWithUB acf HAcf R s (PossSetWithUB acf HAcf ρs) t (PossSetWithUB acf HAcf σs).
+    R s ρs t σs -> ReltWithUBFull acf HAcf R s (PossSetWithUB acf HAcf ρs) t (PossSetWithUB acf HAcf σs).
 Proof.
   intros.
-  unfold ReltWithUB.
-  exists s, ρs, t, σs.
-  auto.
+  unfold ReltWithUBFull.
+  rewrite !PossSetEmbedForgetUB.
+  assumption.
 Qed.
 
 Lemma reltCompUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall R1 R2 : Relt VE VF,
-    ReltWithUB acf HAcf (R1 ->> R2) = ReltWithUB acf HAcf R1 ->> ReltWithUB acf HAcf R2.
+    ReltWithUBFull acf HAcf (R1 ->> R2) = ReltWithUBFull acf HAcf R1 ->> ReltWithUBFull acf HAcf R2.
 Proof.
   intros.
   extensionality s.
@@ -243,18 +269,16 @@ Proof.
   apply propositional_extensionality.
   split; intros.
   + unfold ReltCompose in *.
-    unfold ReltWithUB in H.
+    unfold ReltWithUBFull in H.
     destruct_all; subst.
-    exists x3, (PossSetWithUB acf HAcf x4). 
-    split; apply reltUBEmbedding; assumption.
+    exists x, (PossSetWithUB acf HAcf x0).
+    unfold ReltWithUBFull.
+    rewrite !PossSetEmbedForgetUB.
+    easy.
   + unfold ReltCompose in *.
-    unfold ReltWithUB in *.
+    unfold ReltWithUBFull in *.
     destruct_all; subst.
-    exists s, x6, t, x4.
-    repeat split; try reflexivity.
-    exists x, x2.
-    pose proof possSetUBInv acf HAcf x8 x2 H3.
-    subst x8.
+    exists x, (PossSetRemoveUB acf HAcf x0).
     easy.
 Qed.
 
@@ -277,251 +301,114 @@ Proof.
 Qed.
 
 Lemma precToReltUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
-  forall P : Prec VE VF, PrecToRelt (PrecWithUB acf HAcf P) = ReltWithUB acf HAcf (PrecToRelt P).
+  forall P : Prec VE VF, PrecToRelt (PrecWithUB acf HAcf P) ==> ReltWithUBFull acf HAcf (PrecToRelt P).
 Proof.
-  unfold PrecToRelt, PrecWithUB, ReltWithUB.
+  unfold PrecToRelt, PrecWithUB, ReltWithUBFull, sub, subRelt.
   intros.
-  extensionality s.
-  extensionality ρs.
-  extensionality t.
-  extensionality σs.
-  apply propositional_extensionality.
-  split; intros.
-  + destruct_all; subst.
-    exists t, x0, t, x0.
-    easy.
-  + destruct_all; subst.
-    split.
-    exists t, x2; easy.
-    easy.
+  destruct_all; subst.
+  easy.
 Qed.
 
 Lemma reltToPrecUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
-  forall R : Relt VE VF, ReltToPrec (ReltWithUB acf HAcf R) = PrecWithUB acf HAcf (ReltToPrec R).
+  forall R : Relt VE VF, ReltToPrec (ReltWithUBFull acf HAcf R) = PrecWithUB acf HAcf (ReltToPrec R).
 Proof.
-  unfold ReltToPrec, PrecWithUB, ReltWithUB.
+  unfold ReltToPrec, PrecWithUB, ReltWithUBFull.
   intros.
   extensionality s.
   extensionality ρs.
   apply propositional_extensionality.
   split; intros.
   + destruct_all; subst.
-    exists s, x4.
-    split.
-    { exists x, x2; easy. }
+    exists x, (PossSetRemoveUB acf HAcf x0).
     easy.
   + destruct_all; subst.
-    exists x1, (PossSetWithUB acf HAcf x2), x1, x2.
-    exists s, x0.
+    exists x, (PossSetWithUB acf HAcf x0).
+    rewrite PossSetEmbedForgetUB.  
     easy.
 Qed.
 
-Lemma prCompUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
-  forall P (R : Relt VE VF), ReltWithUB acf HAcf (prComp P R) = prComp (PrecWithUB acf HAcf P) (ReltWithUB acf HAcf R).
+(* Lemma prCompUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+  forall P (R : Relt VE VF), ReltWithUBFull acf HAcf (prComp P R) = prComp (PrecWithUB acf HAcf P) (ReltWithUBFull acf HAcf R).
 Proof.
   intros.
   rewrite! precToReltComp.
   rewrite reltCompUB.
   rewrite precToReltUB.
   reflexivity.
-Qed.
+Qed. *)
 
 Lemma reltCompInvokeUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
-  forall (R : Relt VE VF) (impl : Impl E F) i A m, (ReltWithUB acf HAcf R) ->> (TInvoke impl i A m) = ReltWithUB acf HAcf (R ->> (TInvoke impl i A m)).
+  forall (R : Relt VE VF) (impl : Impl E F) i A m, (ReltWithUBFull acf HAcf R) ->> (TInvoke impl i A m) ==> ReltWithUBFull acf HAcf (R ->> (TInvoke impl i A m)).
 Proof.
   intros.
-  extensionality s.
-  extensionality ρs.
-  extensionality t.
-  extensionality σs.
+  unfold sub, subRelt.
+  intros.
+  rename ρ into ρs.
+  rename σ into σs.
+  unfold ReltCompose in *.
+  destruct H as [s' [ρs' [? ?]]].
+  unfold ReltWithUBFull in *.
+  destruct_all; subst.
+  exists s', (PossSetRemoveUB acf HAcf ρs').
+  split; [easy |].
+  unfold TInvoke in *.
+  destruct_all.
+  subst σs.
+  split.
+  { 
+    unfold PossSetRemoveUB, PossWithUB. unfold TIdle in *. destruct_all.
+    split; [easy |].
+    intros.
+    specialize (H3 _ H4).
+    simpl in *. easy.
+  }
+  split; [easy |].
+  split; [easy |].
+  unfold PossSetRemoveUB, PossWithUB. unfold TIdle in *. destruct_all.
+  simpl in *.
+  extensionality x.
   apply propositional_extensionality.
   split; intros.
-  + unfold ReltCompose in *.
-    destruct H as [s' [ρs' [? ?]]].
-    unfold ReltWithUB in *.
-    destruct_all; subst.
-    rename x0 into ρs.
-    rename x2 into ρs'.
-    exists s, ρs, t.
-    exists (PossSetRemoveUB acf HAcf σs).
-    split.
+  - destruct_all.
+    destruct x0.
+    destruct PState.
     { 
-      exists s', ρs'.
-      split; [exact H |].
-      unfold TInvoke in *.
-      destruct_all.
-      split.
-      { 
-        unfold TIdle in *.
-        destruct_all.
-        split; [exact H0 |].
-        intros.
-        specialize (H4 (PossWithUB acf HAcf ρ)).
-        assert(PossSetWithUB acf HAcf ρs' (PossWithUB acf HAcf ρ)).
-        { unfold PossSetWithUB. exists ρ. split; easy. }
-        specialize (H4 H6).
-        destruct H4 as [? ?].
-        split.
-        {
-          unfold PossWithUB in H4.
-          simpl in H4.
-          apply H4.
-        }
-        {
-          unfold PossWithUB in H7.
-          simpl in H7.
-          apply H7.
-        }
-      }
-      split; [exact H1 |].
-      split; [exact H2 |].
-      rewrite H3.
-      unfold PossSetRemoveUB.
-      extensionality x.
-      apply propositional_extensionality.
-      split; intros; subst.
-      {
-        destruct_all.
-        exists 
-          {| PState := x.(PState);
-             PCalls := x0.(PCalls);
-             PRets := x0.(PRets);
-          |}.
-        simpl.
-        unfold PossWithUB in *. simpl in *.
-        repeat split; try assumption.
-        unfold PossSetWithUB in H3.
-        destruct H3 as [ρ' [? ?]].
-        assert(ρ' = {| PState := PState x; PCalls := PCalls x0; PRets := PRets x0 |}). {
-          destruct ρ'; subst; simpl in *.
-          f_equal.
-          inversion H4.
-          reflexivity.
-        }
-        subst ρ'.
-        apply H3.
-      }
-      {
-        destruct_all.
-        exists (PossWithUB acf HAcf x0).
-        split; [apply PossSetEmbedding; easy |].
-        unfold PossWithUB. simpl.
-        rewrite H4.
-        repeat split; try assumption.
-      }
-    }
-    repeat split; try reflexivity.
-    unfold TInvoke in H0.
-    destruct_all.
-    assert(PossSetUBFree acf HAcf σs). {
-      unfold PossSetUBFree.
-      intros.
-      destruct H4 as [a ?].
-      intro.
-      rewrite H3 in H5.
-      destruct_all.
-      unfold PossSetWithUB in H5.
-      destruct_all.
-      rewrite H11 in H6.
-      rewrite H4 in H6.
-      unfold PossWithUB in H6; simpl in H6.
-      inversion H6.
-    }
-    apply (PossSetRemoveEmbedding _ _ _ H4).
-  + unfold ReltCompose in *.
-    unfold ReltWithUB in *.
-    destruct H as [s'' [ρs_ [t'' [σs_ [[s' [ρs' [? ?]]] [? [? [? ?]]]]]]]].
-    subst.
-    exists s', (PossSetWithUB acf HAcf ρs').
-    split. { exists s, ρs_, s', ρs'. easy. }
-    unfold TInvoke in *.
-    destruct_all.
-    split.
-    { 
-      unfold TIdle in *.
-      destruct_all.
-      split; [exact H0 |].
-      intros.
-      unfold PossSetWithUB in H5.
-      destruct H5 as [ρ0 [? ?]].
-      unfold PossWithUB in H6.
-      specialize (H4 ρ0 H5).
-      destruct H4 as [? ?].
-      rewrite H6; simpl.
+      exists {| PState := s0; PCalls := PCalls; PRets := PRets; |}.
+      unfold PossWithUB. simpl in *.
+      inversion H5; subst.
       easy.
     }
-    split; [exact H1 |].
-    split; [exact H2 |].
-    rewrite H3.
-    unfold PossSetWithUB.
-    extensionality x.
-    apply propositional_extensionality.
-    split; intros; subst.
     {
-      destruct_all.
-      exists (PossWithUB acf HAcf x1).
-      rewrite H4. unfold PossWithUB. simpl.
-      repeat split; try assumption.
-      { exists x1. easy. }
-      { rewrite H5. reflexivity. }
+      simpl in H5.
+      inversion H5.
     }
-    {
-      destruct_all.
-      exists 
-      {| PState := x1.(PState);
-          PCalls := fun j => if (eqb i j) then CallPoss m else x1.(PCalls) j;
-          PRets := fun j => if (eqb i j) then RetIdle else x1.(PRets) j;
-      |}.
-      split; simpl.
-      { 
-        exists x1.
-        repeat split; try easy.
-        { rewrite eqb_id. reflexivity. }
-        { rewrite eqb_id. reflexivity. }
-        { apply differ_pointwise_trivial. }
-        { apply differ_pointwise_trivial. }
-      }
-      {
-        unfold PossWithUB.
-        simpl.
-        destruct x; simpl in *.
-        f_equal.
-        { rewrite H4, H9. unfold PossWithUB. simpl. reflexivity. }
-        { rewrite H9 in H7. unfold PossWithUB in H7. simpl in H7.
-          extensionality j. destruct (classicT (i = j)).
-          { subst. rewrite eqb_id. apply H5. }
-          { rewrite (eqb_nid _ _ n). unfold differ_pointwise in H7. apply H7. easy. }
-        }
-        { rewrite H9 in H8. unfold PossWithUB in H8. simpl in H8.
-          extensionality j. destruct (classicT (i = j)).
-          { subst. rewrite eqb_id. apply H6. }
-          { rewrite (eqb_nid _ _ n). unfold differ_pointwise in H8. apply H8. easy. }
-        }
-      }
-    }
+  - destruct_all. 
+    exists (PossWithUB acf HAcf x0).
+    unfold PossWithUB. simpl in *.
+    repeat split; try assumption.
+    f_equal. assumption.
 Qed.
 
 Lemma ReltPostUBEmbedding {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall (R : Relt VE VF) Ret (Q: Post VE VF Ret) (v: Ret),
-    R ==> (Q v) -> ReltWithUB acf HAcf R ==> (PostWithUB acf HAcf Q v).
+    R ==> (Q v) -> ReltWithUBFull acf HAcf R ==> (PostWithUBFull acf HAcf Q v).
 Proof.
   unfold sub, subRelt in *.
   intros.
   unfold PostToRelt in *.
-  unfold PostWithUB.
-  unfold ReltWithUB in H0.
+  unfold PostWithUBFull.
+  unfold ReltWithUBFull in H0.
   destruct_all; subst.
   specialize (H _ _ _ _ H0).
-  exists s, x0, t, x2.
   easy.
 Qed.
 
 Lemma PostValueUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall A (Q: Post VE VF A) v, 
-    (PostWithUB acf HAcf Q) v = ReltWithUB acf HAcf (Q v).
+    (PostWithUBFull acf HAcf Q) v = ReltWithUBFull acf HAcf (Q v).
 Proof.
   intros.
-  unfold PostWithUB, ReltWithUB.
+  unfold PostWithUBFull, ReltWithUBFull.
   extensionality s.
   extensionality ρs.
   extensionality t.
@@ -531,21 +418,20 @@ Qed.
 
 Lemma reltSubUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall (R Q : Relt VE VF), 
-    R ==> Q -> ReltWithUB acf HAcf R ==> ReltWithUB acf HAcf Q.
+    R ==> Q -> ReltWithUBFull acf HAcf R ==> ReltWithUBFull acf HAcf Q.
 Proof.
   intros.
   unfold sub, subRelt in *.
-  unfold ReltWithUB in *.
+  unfold ReltWithUBFull in *.
   intros.
   destruct_all; subst.
   specialize (H _ _ _ _ H0).
-  exists s, x0, t, x2.
   easy.
 Qed.
 
 Lemma stableReltUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall (R Q : Relt VE VF), 
-    stableRelt R Q -> stableRelt (ReltWithUB acf HAcf R) (ReltWithUB acf HAcf Q).
+    stableRelt R Q -> stableRelt (ReltWithUBFull acf HAcf R) (ReltWithUBFull acf HAcf Q).
 Proof.
   intros.
   unfold stableRelt in *.
@@ -556,7 +442,7 @@ Qed.
 
 Lemma stablePostUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall (R : Relt VE VF) Ret (Q: Post VE VF Ret),
-    stablePost R Q -> stablePost (ReltWithUB acf HAcf R) (PostWithUB acf HAcf Q).
+    stablePost R Q -> stablePost (ReltWithUBFull acf HAcf R) (PostWithUBFull acf HAcf Q).
 Proof.
   intros.
   unfold stablePost in *.
@@ -567,7 +453,7 @@ Qed.
 
 Lemma silentStepUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall (i: Name T) (G: Relt VE VF) P Q,
-    SilentStep i G P Q -> SilentStep i (ReltWithUB acf HAcf G) (PrecWithUB acf HAcf P) (ReltWithUB acf HAcf Q).
+    SilentStep i G P Q -> SilentStep i (ReltWithUBFull acf HAcf G) (PrecWithUB acf HAcf P) (ReltWithUBFull acf HAcf Q).
 Proof.
   intros.
   unfold SilentStep in *.
@@ -576,7 +462,9 @@ Proof.
   destruct_all; subst.
   specialize (H _ _ _ _ H0 H1 H2).
   destruct H.
-  split; apply reltUBEmbedding; easy. 
+  split.
+  { unfold ReltWithUBFull. easy. }
+  { unfold ReltWithUBFull. easy. }
 Qed.
 
 Lemma stepSpecCallUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
@@ -654,14 +542,13 @@ Qed.
 Lemma commitUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall i (e: Event E) (G: Relt VE VF) P Q,
     Commit i G P e Q -> 
-      Commit i (ReltWithUB acf HAcf G) (PrecWithUB acf HAcf P) e (ReltWithUB acf HAcf Q).
+      Commit i (ReltWithUBFull acf HAcf G) (PrecWithUB acf HAcf P) e (ReltWithUBFull acf HAcf Q).
 Proof.
   intros.
   unfold Commit in *.
   intros.
   unfold PrecWithUB in H0.
   destruct_all; subst.
-  rename x0 into ρs.
   specialize (H _ _ _ H0 H1 H2 H3).
   destruct_all.
   rename x into σs.
@@ -681,21 +568,28 @@ Proof.
       destruct H4 as [ρ' [? ?]].
       exists (PossWithUB acf HAcf ρ').
       split.
-      { apply PossSetEmbedding, H4. }
+      { unfold PossSetRemoveUB in H4. easy. }
       { rewrite <- PossWithUBUnfold. apply possStepsUB, H9. } 
     - unfold PossSetWithUB in H7. 
       destruct H7 as [σ' [? ?]].
       unfold PossWithUB in H8.
       inversion H8; subst.
-  + apply reltUBEmbedding, H5.
-  + apply reltUBEmbedding, H6.
+  + unfold ReltWithUBFull.
+    rewrite PossSetEmbedForgetUB.
+    easy.
+  + unfold ReltWithUBFull.
+    rewrite PossSetEmbedForgetUB.
+    easy.
 Qed.
 
-Lemma paco_safe_UB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma SafeProgUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
   forall i A (R: Relt VE VF) (G: Relt VE VF) P (Q: Post VE VF A) prog,
-    paco_safe i R G P prog Q -> paco_safe i (ReltWithUB acf HAcf R) (ReltWithUB acf HAcf G) (ReltWithUB acf HAcf P) prog (PostWithUB acf HAcf Q).
+    SafeProg i R G P prog Q ->
+       SafeProg i (ReltWithUBFull acf HAcf R) (ReltWithUBFull acf HAcf G) (ReltWithUBFull acf HAcf P) prog (PostWithUBFull acf HAcf Q).
 Proof.
   intros.
+  rewrite paco_eqv.
+  rewrite paco_eqv in H.
   generalize dependent P.
   generalize dependent prog.
   pcofix rec.
@@ -770,19 +664,741 @@ Lemma VerifyWithUB
       (prComp (P i A m) (TInvoke impl i _ m) ->> R i)
       (impl _ m)
       (Q i A m)) ->
-        (VerifyProg i (ReltWithUB acf HAcf (R i)) (ReltWithUB acf HAcf (G i))
-        (prComp (PrecWithUB acf HAcf (P i A m)) (TInvoke impl i _ m) ->> ReltWithUB acf HAcf (R i))
+        (VerifyProg i (RelyWithUB acf HAcf R i) (GuarWithUB acf HAcf G i)
+        (prComp (PrecWithUB acf HAcf (P i A m)) (TInvoke impl i _ m) ->> (RelyWithUB acf HAcf R i))
         (impl _ m)
-        (PostWithUB acf HAcf (Q i A m))).
+        (PostWithUBFull acf HAcf (Q i A m))).
 Proof.
   unfold VerifyProg.
-  rewrite! paco_eqv.
   rewrite! precToReltComp.
-  rewrite precToReltUB.
-  rewrite reltCompInvokeUB.
-  rewrite <- reltCompUB. 
-  generalize dependent ((PrecToRelt (P i A m) ->> TInvoke impl i A m) ->> R i).
-  generalize dependent (impl A m).
   intros.
-  apply (paco_safe_UB acf HAcf i A (R i) (G i) r (Q i A m) p H).
+  cut(
+    SafeProg i (RelyWithUB acf HAcf R i)
+      (GuarWithUB acf HAcf G i)
+      ((ReltWithUBFull acf HAcf (PrecToRelt (P i A m)) ->>
+          TInvoke impl i A m) ->>
+          (RelyWithUB acf HAcf R i))
+      (impl A m) 
+      (PostWithUBFull acf HAcf (Q i A m))
+  ). {
+    apply weakenSafe.
+    apply reltComposeMono1.
+    apply reltComposeMono1.
+    apply precToReltUB.
+  }
+  cut(
+    SafeProg i (RelyWithUB acf HAcf R i)
+      (GuarWithUB acf HAcf G i)
+      (ReltWithUBFull acf HAcf (PrecToRelt (P i A m) ->> (TInvoke impl i A m)) ->>
+          (RelyWithUB acf HAcf R i))
+      (impl A m) 
+      (PostWithUBFull acf HAcf (Q i A m))
+  ). {
+    apply weakenSafe.
+    assert((ReltWithUBFull acf HAcf (PrecToRelt (P i A m)) ->> TInvoke impl i A m) ==>
+           ReltWithUBFull acf HAcf (PrecToRelt (P i A m) ->> TInvoke impl i A m)). 
+    { apply reltCompInvokeUB. }
+    apply reltComposeMono1.
+    apply H0.
+  }
+  unfold RelyWithUB.
+  rewrite <- reltCompUB.
+  apply SafeProgUB.
+  exact H.
 Qed.
+
+Definition ReltToPost {T E F} {VE: Spec T E} {VF: Spec T F} A (R: Relt VE VF): Post VE VF A :=
+  fun _ s1 ρs1 s2 ρs2 => R s1 ρs1 s2 ρs2.
+
+Definition ClientSpec {T F} (VF: Spec T F) := forall A, F A -> Name T -> (VF.(State)) -> Prop.
+
+Definition vioClientSpecPossSet {T F} {spec: Spec T F} (i: Name T) (A: Type) (m: F A) (client: ClientSpec spec) (ρs: PossSet spec) :=
+  exists ρ, ρs ρ /\ ~client A m i (PState ρ).
+
+Definition coClientSpecPrec {T E F} {VE: Spec T E} {VF: Spec T F} (i: Name T) (A: Type) (m: F A) (client: ClientSpec VF) : Prec VE VF :=
+  fun s ρs => vioClientSpecPossSet i A m client ρs.
+
+Definition coClientSpecRelt {T E F} {VE: Spec T E} {VF: Spec T F} (i: Name T) (A: Type) (m: F A) (client: ClientSpec VF) : Relt VE VF :=
+  fun s1 ρs1 s2 ρs2 => vioClientSpecPossSet i A m client ρs1 /\ vioClientSpecPossSet i A m client ρs2.
+
+Definition coClientSpecPost {T E F} {VE: Spec T E} {VF: Spec T F} (i: Name T) (A B: Type) (m: F A) (client: ClientSpec VF) : Post VE VF B:=
+  fun _ s1 ρs1 s2 ρs2 => vioClientSpecPossSet i A m client ρs1 /\ vioClientSpecPossSet i A m client ρs2.
+
+(* Definition clientSpecToRelt {T E F} {VE: Spec T E} {VF: Spec T F} (client: ClientSpec VF) (i: Name T) (A: Type) (m: F A) : Relt VE VF :=
+  fun s1 ρs1 s2 ρs2 => s1 = s2 /\ ρs1 = ρs2 /\ (forall ρ, ρs1 ρ -> client A m i (PState ρ)).
+
+Definition coRelt {T E F} {VE: Spec T E} {VF: Spec T F} (R: Relt VE VF) : Relt VE VF :=
+  fun s1 ρs1 s2 ρs2 => ~ R s1 ρs1 s2 ρs2. *)
+
+Definition clientSpecSound {T E F} {VE: Spec T E} {VF: Spec T F} (client: ClientSpec VF) (R: Name T -> Relt VE VF) :=
+  forall A (m: F A) i, 
+    (stableRelt (R i) (coClientSpecRelt i A m client) /\
+     forall s, client A m i s -> (forall s', ~VF.(Step) s (i, CallEv m) s')).
+
+Lemma coClientSpecIdem {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (client: ClientSpec VF) i A (m: F A) :
+  (ReltWithUBFull acf HAcf (coClientSpecRelt (E:=E) (VE:=VE) i A m client)) ->>
+    ReltWithUBFull acf HAcf (coClientSpecRelt (E:=E) (VE:=VE) i A m client) = 
+  ReltWithUBFull acf HAcf (coClientSpecRelt (E:=E) (VE:=VE) i A m client).
+Proof.
+  unfold ReltCompose.
+  extensionality s1.
+  extensionality ρs1.
+  extensionality s2.
+  extensionality ρs2.
+  apply propositional_extensionality.
+  split; intros.
+  + destruct_all.
+    unfold ReltWithUBFull, coClientSpecRelt in *; simpl in *.
+    easy.
+  + unfold ReltWithUBFull, coClientSpecRelt in *; simpl in *.
+    exists s1, ρs1.
+    easy.
+Qed.
+
+Lemma stableReltStablePost {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (client: ClientSpec VF) i A B (m: F A) (R: Name T -> Relt VE VF):
+  stableRelt (R i) (coClientSpecRelt i A m client) -> 
+    stablePost (ReltWithUBFull acf HAcf (R i)) (PostWithUBFull acf HAcf (coClientSpecPost i A B m client)).
+Proof.
+  intros.
+  pose proof stableReltUB acf HAcf _ _ H as Hstable.
+  easy.
+Qed.
+
+Definition Prec_in_UB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (prec: Prec VE (SpecWithUB VF acf HAcf)) : Prop :=
+  forall s ρs,
+    (exists (ρ: Poss(SpecWithUB VF acf HAcf)), ρs ρ) /\
+    forall (ρ: Poss(SpecWithUB VF acf HAcf)), prec s ρs -> ρs ρ -> exists a, (PState ρ) = inr (UBState_, a).
+
+Definition UBRelt {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf: Relt VE (SpecWithUB VF acf HAcf) :=
+  fun s1 ρs1 s2 ρs2 => 
+    (forall ρ1, ρs1 ρ1 -> exists a1, (PState ρ1) = inr (UBState_, a1)) /\
+    (forall ρ2, ρs2 ρ2 -> exists a2, (PState ρ2) = inr (UBState_, a2)) /\
+    (exists ρ, ρs1 ρ) /\ (exists ρ, ρs2 ρ).
+
+Definition UBPost {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf A: Post VE (SpecWithUB VF acf HAcf) A :=
+  fun _ s1 ρs1 s2 ρs2 => 
+    (forall ρ1, ρs1 ρ1 -> exists a1, (PState ρ1) = inr (UBState_, a1)) /\
+    (forall ρ2, ρs2 ρ2 -> exists a2, (PState ρ2) = inr (UBState_, a2)) /\
+    (exists ρ, ρs1 ρ) /\ (exists ρ, ρs2 
+    ρ).
+
+Definition GuarUBCom {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf i : Relt VE (SpecWithUB VF acf HAcf) :=
+  fun s1 ρs1 s2 (ρs2: PossSet(SpecWithUB VF acf HAcf)) => 
+    (forall j, j <> i -> fst s1 j = fst s2 j) /\
+    ( (exists ρ1, ρs1 ρ1) ->
+      (forall ρ1, ρs1 ρ1 -> exists a1, PState ρ1 = inr (UBState_, a1)) ->
+      (exists ρ2, ρs2 ρ2) /\
+      (forall ρ2, ρs2 ρ2 -> 
+        exists a2, PState ρ2 = inr (UBState_, a2) /\ 
+        exists (ρ1: Poss(SpecWithUB VF acf HAcf)) a1, PState ρ1 = inr (UBState_, a1) /\ a1 i = a2 i)).
+
+Definition RelyUBCom {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf i : Relt VE (SpecWithUB VF acf HAcf) :=
+  fun s1 ρs1 s2 (ρs2: PossSet(SpecWithUB VF acf HAcf)) => 
+    fst s1 i = fst s2 i /\
+    ( (exists ρ1, ρs1 ρ1) ->
+      (forall ρ1, ρs1 ρ1 -> exists a1, PState ρ1 = inr (UBState_, a1)) ->
+      (exists ρ2, ρs2 ρ2) /\
+      (forall ρ2, ρs2 ρ2 -> 
+        exists a2, PState ρ2 = inr (UBState_, a2) /\ 
+        exists (ρ1: Poss(SpecWithUB VF acf HAcf)) a1, PState ρ1 = inr (UBState_, a1) /\ a1 i = a2 i)). 
+
+Lemma UBReltStable {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (R: Relt VE (SpecWithUB VF acf HAcf)) i:
+  R ==> RelyUBCom acf HAcf i ->
+    stableRelt R (UBRelt acf HAcf).
+Proof.
+  intros.
+  unfold stableRelt.
+  unfold ReltCompose, sub, subRelt.
+  intros.
+  destruct H0 as [s' [ρ' [? ?]]].
+  unfold UBRelt in *.
+  destruct H0.
+  split; [exact H0 |].
+  unfold sub, subRelt in H.
+  specialize (H _ _ _ _ H1).
+  unfold RelyUBCom in H.
+  destruct H.
+  destruct H2.
+  destruct H4.
+  specialize (H3 H5 H2).
+  split.
+  { 
+    intros.
+    destruct H3.
+    specialize (H7 _ H6).
+    destruct H7 as [? [? ?]].
+    exists x.
+    apply H7.
+  }
+  destruct_all.
+  split.
+  { exists x0. apply H4. }
+  { exists x1. apply H3. }
+Qed.
+
+Lemma UBPostStable {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf A (R: Relt VE (SpecWithUB VF acf HAcf)) i:
+  R ==> RelyUBCom acf HAcf i ->
+    stablePost R (UBPost acf HAcf A).
+Proof.
+  intros.
+  unfold stablePost, stableRelt.
+  unfold ReltCompose, sub, subRelt.
+  intros.
+  destruct H0 as [s' [ρ' [? ?]]].
+  unfold UBRelt in *.
+  destruct H0.
+  split; [exact H0 |].
+  unfold sub, subRelt in H.
+  specialize (H _ _ _ _ H1).
+  unfold RelyUBCom in H.
+  destruct H.
+  destruct H2.
+  destruct H4.
+  specialize (H3 H5 H2).
+  split.
+  { 
+    intros.
+    destruct H3.
+    specialize (H7 _ H6).
+    destruct H7 as [? [? ?]].
+    exists x.
+    apply H7.
+  }
+  destruct_all.
+  split.
+  { exists x0. apply H4. }
+  { exists x1. apply H3. }
+Qed.
+
+Lemma UBPostUBRelt {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+  forall A (v: A), (@UBPost T E F VE VF acf HAcf A v) = UBRelt acf HAcf.
+Proof. reflexivity. Qed.
+
+Lemma UBReltID {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf: 
+  forall s ρs t, 
+    (exists ρ, ρs ρ) ->
+    (forall ρ: Poss(SpecWithUB VF acf HAcf), ρs ρ -> exists a, (PState ρ) = inr (UBState_, a)) ->
+      (@UBRelt T E F VE VF acf HAcf) s ρs t ρs.
+Proof.
+  unfold UBRelt.
+  intros.
+  repeat split; intros.
+  { specialize (H0 ρ1 H1). destruct H0. exists x. easy. }
+  { specialize (H0 ρ2 H1). destruct H0. exists x. easy. }
+  { apply H. }
+  { apply H. }
+Qed.
+
+Lemma UBPostId {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf A: 
+  forall v s ρs t, 
+    (exists ρ, ρs ρ) ->
+    (forall ρ: Poss(SpecWithUB VF acf HAcf), ρs ρ -> exists a, (PState ρ) = inr (UBState_, a)) ->
+      (@UBPost T E F VE VF acf HAcf A) v s ρs t ρs.
+Proof.
+  unfold UBPost.
+  intros.
+  repeat split; intros.
+  { specialize (H0 ρ1 H1). destruct H0. exists x. easy. }
+  { specialize (H0 ρ2 H1). destruct H0. exists x. easy. }
+  { apply H. }
+  { apply H. }
+Qed.
+
+Lemma UBReltIdem {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+  (@UBRelt T E F VE VF acf HAcf) ->> (UBRelt acf HAcf) = UBRelt acf HAcf.
+Proof.
+  unfold sub, subRelt, ReltCompose.
+  extensionality s1.
+  extensionality ρs1.
+  extensionality s2.
+  extensionality ρs2.
+  apply propositional_extensionality.
+  split; intros.
+  + destruct H as [s [ρs [? ?]]].
+    unfold UBRelt in *.
+    destruct_all.
+    repeat split.
+    { apply H. }
+    { apply H1. }
+    { exists x2. apply H5. }
+    { exists x. apply H3. }
+  + exists s1, ρs1.
+    split; [ | easy].
+    unfold UBRelt in *.
+    destruct_all.
+    repeat split.
+    { apply H. }
+    { apply H. }
+    { exists x0. apply H1. }
+    { exists x0. apply H1. }
+Qed.
+
+Lemma UB_verify_UB
+  {T E F}
+  {VE : Spec T E}
+  {VF : Spec T F}
+  {acf HAcf}
+  (R G : Relt VE (SpecWithUB VF acf HAcf))
+  (P : Relt VE (SpecWithUB VF acf HAcf)) :
+    forall A (prog : Prog E A) (i: Name T),
+      P ==> UBRelt acf HAcf ->
+      R ==> RelyUBCom acf HAcf i ->
+      GuarUBCom acf HAcf i ==> G ->
+      VerifyProg i R G P prog (UBPost acf HAcf A).
+Proof.
+  unfold VerifyProg.
+  intros.
+  rewrite paco_eqv.
+  generalize dependent P.
+  generalize dependent prog.
+  pcofix rec. 
+  destruct prog; intros.
+  + pfold.
+    econstructor.
+    { eapply UBReltStable. apply H0. }
+    { eapply UBPostStable. apply H0. }
+    { unfold Commit. intros.
+      exists ρs.
+      unfold ReltToPrec in H.
+      destruct H as [s' [ρ' ? ]].
+      subst.
+      unfold sub, subRelt, PrecToRelt in H2.
+      specialize (H2 s' ρ' s ρs (ltac:(auto))).
+      destruct H2 as [? [? [? ?]]].
+      split; [exact H8 |].
+      split.
+      { intros.
+        exists σ.
+        split; [exact H9 |].
+        constructor.
+      }
+      split.
+      {
+        unfold UBRelt.
+        repeat split; intros.
+        { specialize (H6 _ H9). apply H6. }
+        { specialize (H6 _ H9). apply H6. }
+        { apply H8. }
+        { apply H8. }
+      }
+      {
+        unfold sub, subRelt in H1.
+        apply H1. clear H1.
+        unfold GuarUBCom.
+        repeat split; intros.
+        { unfold differ_pointwise in H3. specialize (H3 _ H1). easy. }
+        { apply H1. }
+        { specialize (H6 _ H10).
+          destruct H6 as [a2 ?].
+          exists a2.
+          split; [exact H6 |].
+          exists ρ2, a2.
+          easy.
+        }
+      }
+    }
+    {
+      intros.
+      split.
+      { 
+        unfold Commit; intros.
+        exists ρs.
+        split.
+        { destruct H as [s' [ρ' [? [? [? ?]]]]].
+          unfold UBRelt in H6.
+          destruct H6 as [? [? [? ?]]].
+          apply H9.
+        }
+        split.
+        { intros. exists σ. split; [exact H6 | constructor]. }
+        split.
+        { unfold ReltCompose in H.
+          destruct H as [s' [ρ' [? [? [? ?]]]]].
+          unfold UBRelt in H6.
+          destruct H6 as [? [? [? ?]]].
+          apply UBPostId.
+          { apply H9. }
+          { intros. apply H7, H10. }
+        }
+        { apply H1. unfold GuarUBCom.
+          split; intros.
+          { unfold differ_pointwise in H3. specialize (H3 _ H6). easy. }
+          { unfold ReltCompose in H.
+            destruct H as [s' [ρ' [? [? [? ?]]]]].
+            destruct H8 as [? [? [? ?]]].
+            repeat split; intros.
+            { apply H11. }
+            { specialize(H9 _ H12).
+              destruct H9 as [a2 ?].
+              exists a2.
+              split; [exact H9 |].
+              exists ρ2, a2.
+              easy.
+            }
+          }
+        }
+      }
+      {
+        right.
+        apply rec.
+        rewrite UBPostUBRelt.
+        rewrite UBReltIdem.
+        apply (subReltTrans _ (UBRelt acf HAcf ->> UBRelt acf HAcf)).
+        { apply reltComposeMono1, H2. }
+        { rewrite UBReltIdem. easy. }
+      }
+    }
+  + pfold. constructor.
+    rewrite UBPostUBRelt.
+    apply H2.
+  + pfold. econstructor. 
+    { eapply UBReltStable. apply H0. }
+    { unfold SilentStep.
+      intros.
+      unfold ReltToPrec in H.
+      destruct H as [s' [ρ' ? ]].
+      specialize (H2 _ _ _ _ H).
+      destruct H2 as [? [? [? ?]]].
+      split.
+      { apply UBReltID.
+        { apply H7. }
+        { apply H5. }
+      }
+      { apply H1.
+        unfold GuarUBCom.
+        repeat split; intros.
+        { unfold differ_pointwise in H3. specialize (H3 _ H8). easy. }
+        { apply H7. }
+        { specialize (H5 _ H10).
+          destruct H5 as [a2 ?].
+          exists a2.
+          split; [exact H5 |].
+          exists ρ2, a2.
+          easy.
+        }
+      }
+    }
+    { right.
+      apply rec.
+      apply (subReltTrans _ (UBRelt acf HAcf ->> UBRelt acf HAcf)).
+      { apply reltComposeMono1, H2. }
+      { rewrite UBReltIdem. easy. }
+    }
+Qed.
+
+(* 
+Definition UBRelt2 {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf A (m: F A) i: Relt VE (SpecWithUB VF acf HAcf) :=
+  fun s1 ρs1 s2 ρs2 => 
+    (forall ρ1, ρs1 ρ1 -> exists a1, (PState ρ1) = inr (UBState_, a1)) /\
+    (forall ρ2, ρs2 ρ2 -> exists a2, (PState ρ2) = inr (UBState_, a2) /\ (PCalls ρ2 i = CallDone m) /\ (exists v, (PRets ρ2 i = RetPoss m v))) /\
+    (exists ρ, ρs1 ρ) /\ (exists ρ, ρs2 ρ).
+
+Definition UBPost2 {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf A (m: F A) i: Post VE (SpecWithUB VF acf HAcf) A :=
+  fun v s1 ρs1 s2 ρs2 => 
+    (forall ρ1, ρs1 ρ1 -> exists a1, (PState ρ1) = inr (UBState_, a1)) /\
+    (forall ρ2, ρs2 ρ2 -> exists a2, (PState ρ2) = inr (UBState_, a2) /\ (PCalls ρ2 i = CallDone m) /\ (PRets ρ2 i = RetPoss m v)) /\
+    (exists ρ, ρs1 ρ) /\ (exists ρ, ρs2 ρ).
+
+Definition GuarUBCom2 {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf i : Relt VE (SpecWithUB VF acf HAcf) :=
+  fun s1 ρs1 s2 (ρs2: PossSet(SpecWithUB VF acf HAcf)) => 
+    (forall j, j <> i -> fst s1 j = fst s2 j) /\
+    ( (exists ρ1, ρs1 ρ1) ->
+      (forall ρ1, ρs1 ρ1 -> exists a1, PState ρ1 = inr (UBState_, a1)) ->
+      (exists ρ2, ρs2 ρ2) /\
+      (forall ρ2, ρs2 ρ2 -> 
+        exists a2, PState ρ2 = inr (UBState_, a2) /\ 
+        exists (ρ1: Poss(SpecWithUB VF acf HAcf)) a1, PState ρ1 = inr (UBState_, a1) /\ a1 i = a2 i)).
+
+Definition RelyUBCom2 {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf i : Relt VE (SpecWithUB VF acf HAcf) :=
+  fun s1 ρs1 s2 (ρs2: PossSet(SpecWithUB VF acf HAcf)) => 
+    fst s1 i = fst s2 i /\
+    ( (exists ρ1, ρs1 ρ1) ->
+      (forall ρ1, ρs1 ρ1 -> exists a1, PState ρ1 = inr (UBState_, a1)) ->
+      (exists ρ2, ρs2 ρ2) /\
+      (forall ρ2, ρs2 ρ2 -> 
+        exists a2, PState ρ2 = inr (UBState_, a2) /\ 
+        exists (ρ1: Poss(SpecWithUB VF acf HAcf)) a1, PState ρ1 = inr (UBState_, a1) /\ a1 i = a2 i)). 
+
+Lemma UBReltStable2 {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (R: Relt VE (SpecWithUB VF acf HAcf)) i:
+  R ==> RelyUBCom2 acf HAcf i ->
+    stableRelt R (UBRelt2 acf HAcf).
+Proof.
+  intros.
+  unfold stableRelt.
+  unfold ReltCompose, sub, subRelt.
+  intros.
+  destruct H0 as [s' [ρ' [? ?]]].
+  unfold UBRelt in *.
+  destruct H0.
+  split; [exact H0 |].
+  unfold sub, subRelt in H.
+  specialize (H _ _ _ _ H1).
+  unfold RelyUBCom in H.
+  destruct H.
+  destruct H2.
+  destruct H4.
+  specialize (H3 H5 H2).
+  split.
+  { 
+    intros.
+    destruct H3.
+    specialize (H7 _ H6).
+    destruct H7 as [? [? ?]].
+    exists x.
+    apply H7.
+  }
+  destruct_all.
+  split.
+  { exists x0. apply H4. }
+  { exists x1. apply H3. }
+Qed.
+
+Lemma UBPostStable {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf A (R: Relt VE (SpecWithUB VF acf HAcf)) i:
+  R ==> RelyUBCom acf HAcf i ->
+    stablePost R (UBPost acf HAcf A).
+Proof.
+  intros.
+  unfold stablePost, stableRelt.
+  unfold ReltCompose, sub, subRelt.
+  intros.
+  destruct H0 as [s' [ρ' [? ?]]].
+  unfold UBRelt in *.
+  destruct H0.
+  split; [exact H0 |].
+  unfold sub, subRelt in H.
+  specialize (H _ _ _ _ H1).
+  unfold RelyUBCom in H.
+  destruct H.
+  destruct H2.
+  destruct H4.
+  specialize (H3 H5 H2).
+  split.
+  { 
+    intros.
+    destruct H3.
+    specialize (H7 _ H6).
+    destruct H7 as [? [? ?]].
+    exists x.
+    apply H7.
+  }
+  destruct_all.
+  split.
+  { exists x0. apply H4. }
+  { exists x1. apply H3. }
+Qed.
+
+Lemma UBPostUBRelt {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+  forall A (v: A), (@UBPost T E F VE VF acf HAcf A v) = UBRelt acf HAcf.
+Proof. reflexivity. Qed.
+
+Lemma UBReltID {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf: 
+  forall s ρs t, 
+    (exists ρ, ρs ρ) ->
+    (forall ρ: Poss(SpecWithUB VF acf HAcf), ρs ρ -> exists a, (PState ρ) = inr (UBState_, a)) ->
+      (@UBRelt T E F VE VF acf HAcf) s ρs t ρs.
+Proof.
+  unfold UBRelt.
+  intros.
+  repeat split; intros.
+  { specialize (H0 ρ1 H1). destruct H0. exists x. easy. }
+  { specialize (H0 ρ2 H1). destruct H0. exists x. easy. }
+  { apply H. }
+  { apply H. }
+Qed.
+
+Lemma UBPostId {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf A: 
+  forall v s ρs t, 
+    (exists ρ, ρs ρ) ->
+    (forall ρ: Poss(SpecWithUB VF acf HAcf), ρs ρ -> exists a, (PState ρ) = inr (UBState_, a)) ->
+      (@UBPost T E F VE VF acf HAcf A) v s ρs t ρs.
+Proof.
+  unfold UBPost.
+  intros.
+  repeat split; intros.
+  { specialize (H0 ρ1 H1). destruct H0. exists x. easy. }
+  { specialize (H0 ρ2 H1). destruct H0. exists x. easy. }
+  { apply H. }
+  { apply H. }
+Qed.
+
+Lemma UBReltIdem {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+  (@UBRelt T E F VE VF acf HAcf) ->> (UBRelt acf HAcf) = UBRelt acf HAcf.
+Proof.
+  unfold sub, subRelt, ReltCompose.
+  extensionality s1.
+  extensionality ρs1.
+  extensionality s2.
+  extensionality ρs2.
+  apply propositional_extensionality.
+  split; intros.
+  + destruct H as [s [ρs [? ?]]].
+    unfold UBRelt in *.
+    destruct_all.
+    repeat split.
+    { apply H. }
+    { apply H1. }
+    { exists x2. apply H5. }
+    { exists x. apply H3. }
+  + exists s1, ρs1.
+    split; [ | easy].
+    unfold UBRelt in *.
+    destruct_all.
+    repeat split.
+    { apply H. }
+    { apply H. }
+    { exists x0. apply H1. }
+    { exists x0. apply H1. }
+Qed.
+
+Lemma UB_verify_UB2
+  {T E F}
+  {VE : Spec T E}
+  {VF : Spec T F}
+  {acf HAcf}
+  (R G : Relt VE (SpecWithUB VF acf HAcf))
+  (P : Relt VE (SpecWithUB VF acf HAcf)) :
+    forall A (prog : Prog E A) (i: Name T) m,
+      P ==> UBRelt2 acf HAcf A m i ->
+      R ==> RelyUBCom2 acf HAcf i ->
+      GuarUBCom2 acf HAcf i ==> G ->
+      VerifyProg i R G P prog (UBPost2 acf HAcf A m i).
+Proof.
+  unfold VerifyProg.
+  intros.
+  rewrite paco_eqv.
+  generalize dependent P.
+  generalize dependent prog.
+  pcofix rec. 
+  destruct prog; intros.
+  + pfold.
+    econstructor.
+    { eapply UBReltStable. apply H0. }
+    { eapply UBPostStable. apply H0. }
+    { unfold Commit. intros.
+      exists ρs.
+      unfold ReltToPrec in H.
+      destruct H as [s' [ρ' ? ]].
+      subst.
+      unfold sub, subRelt, PrecToRelt in H2.
+      specialize (H2 s' ρ' s ρs (ltac:(auto))).
+      destruct H2 as [? [? [? ?]]].
+      split; [exact H8 |].
+      split.
+      { intros.
+        exists σ.
+        split; [exact H9 |].
+        constructor.
+      }
+      split.
+      {
+        unfold UBRelt.
+        repeat split; intros.
+        { specialize (H6 _ H9). apply H6. }
+        { specialize (H6 _ H9). apply H6. }
+        { apply H8. }
+        { apply H8. }
+      }
+      {
+        unfold sub, subRelt in H1.
+        apply H1. clear H1.
+        unfold GuarUBCom.
+        repeat split; intros.
+        { unfold differ_pointwise in H3. specialize (H3 _ H1). easy. }
+        { apply H1. }
+        { specialize (H6 _ H10).
+          destruct H6 as [a2 ?].
+          exists a2.
+          split; [exact H6 |].
+          exists ρ2, a2.
+          easy.
+        }
+      }
+    }
+    {
+      intros.
+      split.
+      { 
+        unfold Commit; intros.
+        exists ρs.
+        split.
+        { destruct H as [s' [ρ' [? [? [? ?]]]]].
+          unfold UBRelt in H6.
+          destruct H6 as [? [? [? ?]]].
+          apply H9.
+        }
+        split.
+        { intros. exists σ. split; [exact H6 | constructor]. }
+        split.
+        { unfold ReltCompose in H.
+          destruct H as [s' [ρ' [? [? [? ?]]]]].
+          unfold UBRelt in H6.
+          destruct H6 as [? [? [? ?]]].
+          apply UBPostId.
+          { apply H9. }
+          { intros. apply H7, H10. }
+        }
+        { apply H1. unfold GuarUBCom.
+          split; intros.
+          { unfold differ_pointwise in H3. specialize (H3 _ H6). easy. }
+          { unfold ReltCompose in H.
+            destruct H as [s' [ρ' [? [? [? ?]]]]].
+            destruct H8 as [? [? [? ?]]].
+            repeat split; intros.
+            { apply H11. }
+            { specialize(H9 _ H12).
+              destruct H9 as [a2 ?].
+              exists a2.
+              split; [exact H9 |].
+              exists ρ2, a2.
+              easy.
+            }
+          }
+        }
+      }
+      {
+        right.
+        apply rec.
+        rewrite UBPostUBRelt.
+        rewrite UBReltIdem.
+        apply (subReltTrans _ (UBRelt acf HAcf ->> UBRelt acf HAcf)).
+        { apply reltComposeMono1, H2. }
+        { rewrite UBReltIdem. easy. }
+      }
+    }
+  + pfold. constructor.
+    rewrite UBPostUBRelt.
+    apply H2.
+  + pfold. econstructor. 
+    { eapply UBReltStable. apply H0. }
+    { unfold SilentStep.
+      intros.
+      unfold ReltToPrec in H.
+      destruct H as [s' [ρ' ? ]].
+      specialize (H2 _ _ _ _ H).
+      destruct H2 as [? [? [? ?]]].
+      split.
+      { apply UBReltID.
+        { apply H7. }
+        { apply H5. }
+      }
+      { apply H1.
+        unfold GuarUBCom.
+        repeat split; intros.
+        { unfold differ_pointwise in H3. specialize (H3 _ H8). easy. }
+        { apply H7. }
+        { specialize (H5 _ H10).
+          destruct H5 as [a2 ?].
+          exists a2.
+          split; [exact H5 |].
+          exists ρ2, a2.
+          easy.
+        }
+      }
+    }
+    { right.
+      apply rec.
+      apply (subReltTrans _ (UBRelt acf HAcf ->> UBRelt acf HAcf)).
+      { apply reltComposeMono1, H2. }
+      { rewrite UBReltIdem. easy. }
+    }
+Qed. *)

@@ -16,6 +16,7 @@
 ./Core/Tensor.v
 # ./Core/TensorFacts.v
 ./Core/ProgramRules.v
+./Core/UBLayer.v
 
 ./Core/ProgramFacts.v
 # ./Core/EuttRefinesSetup.v
@@ -25,7 +26,7 @@
 # Requires Paco
 ./Core/Eutt.v
 
-# ./Examples/LockSpec.v
+./Examples/LockSpec.v
 # ./Examples/CounterSpec.v
 # ./Examples/FAISpec.v
 # ./Examples/YieldSpec.v
