@@ -37,7 +37,7 @@ Definition SpinLockImpl: Impl (CASSig bool) LockSig :=
     | Rel => SpinLockRel
     end.
 
-Definition E := CASSig bool.
+(* Definition E := CASSig bool.
 Definition F := LockSig.
 Definition acf T := @LockActiveMap T.
 Definition HAcf T : @acf_sound T F lockSpec (acf T) := @LockActiveMapSound T.
@@ -72,17 +72,17 @@ Definition Posts {T} i A (m : LockSig A) : @PostU T A :=
         PRets σ i = RetPoss Rel tt /\
         ((PState ρ = inl (LockOwned i) /\ (forall m, PState σ <> inl (LockDef (Some i) m)) /\ fst t i = Cont m (Return v)) \/
          (exists a, PState σ = inr (UBState_, a)))
-    end.
+    end. *)
 
 Module SpinLockNormal.
 
-(* Definition E := CASSig bool.
+Definition E := CASSig bool.
 Definition F := LockSig.
 Definition VE T : Spec T E:= @casSpec T bool.
 Definition VF T := @lockSpec T.
 Definition Relt T := Relt (VE T) (VF T).
 Definition Prec T := Prec (VE T) (VF T).
-Definition Post T := Post (VE T) (VF T). *)
+Definition Post T := Post (VE T) (VF T).
 
 (* Definition Valid {T} : Prec T :=
   fun s ρs => exists ρ, ρs = eq ρ /\
