@@ -1,6 +1,7 @@
 From LHL.Core Require Import
   Program
-  Specs.
+  Specs
+  Logic.
 
 From LHL.Util Require Import
   Util.
@@ -58,3 +59,14 @@ Program Definition casSpec {T A} : Spec T (CASSig A) := {|
 |}.
 
 Admit Obligations.
+
+Lemma lemCAS {T F A} {VF : Spec T F} {i : Name T}
+  (P R G : Relt (@casSpec T A) VF)
+  (PS PF : PossSet VF -> PossSet VF -> Prop)
+  e n :
+  VerifyProg i R G
+    P
+    (call (CAS e n))
+    (fun v s xs t ys =>
+      (v = false /\
+        snd s = snd t)).

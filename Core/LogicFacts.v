@@ -1511,28 +1511,24 @@ destruct e.
         intros.
         eapply H.(switch_code) with
           (m1:=m) (v:=n0).
-        psplit. psplit.
-        exists x4, x5.
-        psplit. easy.
+        psplit. do 2 eexists.
+        split. exact H5.
+        apply H1.
         {
-          apply H1.
-          psplit. psplit.
-          easy. exact H8. exact H7.
+          psplit. split.
+          easy. exact H8.
+          exact H7.
         }
-        exact H13.
+        assert (t = (fun j : Name T => if n =? j then Idle else fst s j, snd s)).
         {
-          unfold TReturn, Returned.
-          split.
-          {
-            intros. apply H12. easy.
-          }
-          split.
-          {
-            constructor; try easy.
-            constructor; easy.
-          }
-          easy.
+          destruct t. cbn in *.
+          f_equal. 2: easy.
+          extensionality j.
+          dec_eq_nats n j.
+          rewrite eqb_id. easy.
+          rewrite eqb_nid, H3; easy.
         }
+        rewrite H9. easy.
       }
     }
     {
@@ -2459,13 +2455,17 @@ ddestruct H0.
 }
 Qed.
 
+Lemma pwk P : P -> P /\ P.
+easy.
+Qed.
+
 Lemma comp_commit {T E F} {VE : Spec T E} {VF : Spec T F} {M : Impl E F} i e :
   (forall st p,
     InterSteps M (allIdle, Init VE) p st ->
     exists st' q,
       projOver p = projOver q /\
       FullPossSteps (VF:=VF) initPoss q st') ->
-  Commit i (comp_guar VE VF M i) (comp_inv VE VF M) e (fun _ _ => comp_inv VE VF M).
+  Commit i (fun _ _ => comp_inv VE VF M) (comp_inv VE VF M) e (fun _ _ => comp_inv VE VF M).
 unfold Commit, comp_inv. intros. psimpl.
 assert (
   InterSteps M
@@ -2485,10 +2485,11 @@ exists (fun σ =>
   exists q,
     projOver x = projOver q /\
     FullPossSteps initPoss q σ).
-repeat split.
+split.
 {
   eapply H. exact H0.
 }
+split.
 {
   intros. psimpl.
   apply H5 in H8. psimpl.
@@ -2497,6 +2498,7 @@ repeat split.
   exact H10. easy.
   easy.
 }
+apply pwk.
 exists (x ++ [(i, UEvent (Some e))]).
 split. easy.
 split.
@@ -2512,35 +2514,6 @@ split.
   exists x0, x1, x2.
   repeat split; try easy.
   exists x1. easy.
-}
-{
-  unfold comp_guar, comp_rely, comp_inv.
-  intros. psimpl.
-  exists (x ++ [(i, UEvent (Some e))]).
-  split.
-  {
-    unfold InterSteps. rewrite <- Steps_app.
-    exists s. split. easy.
-    econstructor. 2: constructor.
-    split. 2: easy.
-    constructor; try easy.
-    intros. rewrite H1; easy.
-  }
-  {
-    split.
-    {
-      rewrite projOver_app.
-      cbn. rewrite app_nil_r.
-      easy.
-    }
-    {
-      repeat rewrite projOver_app.
-      cbn. repeat rewrite app_nil_r.
-      intros. apply H5 in H12. 2: easy. psimpl.
-      exists x1, x2, x3. repeat split; try easy.
-      apply H4. easy.
-    }
-  }
 }
 Qed.
 
@@ -2698,10 +2671,10 @@ assert (
 clear H. rename H0 into H.
 exists
   (comp_rely VE VF M),
-  (comp_guar VE VF M),
+  (fun _ _ _ => comp_inv VE VF M),
   (fun _ _ _ => comp_inv VE VF M),
   (fun _ _ _ _ _ _ => comp_inv VE VF M),
-  (fun i A m v _ _ => comp_post VE VF M i A m v).
+  (fun i A m v _ _ => comp_inv VE VF M).
 constructor.
 {
   easy.
@@ -2711,8 +2684,8 @@ constructor.
   apply H2, H0. easy.
 }
 {
-  unfold comp_guar, sub, subRelt. intros. psimpl.
-  apply H1. easy.
+  unfold comp_rely, sub, subRelt.
+  intros. easy.
 }
 {
   intros. apply invoke_in_rely; easy.
@@ -2747,71 +2720,8 @@ constructor.
   intros. apply comp_inv_stable.
 }
 {
-  unfold sub, subPrec. intros. psimpl.
-  unfold comp_post, TReturn, Returned in *.
-  clear - H1 H2. psimpl.
-  unfold comp_inv.
-  exists (x1 ++ [(i, OEvent (RetEv m1 v))]).
-  split.
-  {
-    unfold InterSteps. rewrite <- Steps_app.
-    exists x. split. easy.
-    econstructor. 2: constructor.
-    split. 2: easy.
-    destruct H0. cbn in *.
-    constructor; easy.
-  }
-  {
-    repeat rewrite projOver_app. cbn.
-    unfold mapRetPoss.
-    split.
-    {
-      intros. psimpl.
-      exists (x2 ++ [(i, OEvent (RetEv m1 v))]).
-      split.
-      {
-        rewrite projOver_app, H3. easy.
-      }
-      {
-        apply FullPossSteps_trans.
-        exists x0. split. easy.
-        econstructor. 4: constructor.
-        constructor; easy.
-        intros. rewrite H8; easy.
-        intros. rewrite H9; easy.
-      }
-    }
-    {
-      intros. symmetry in H3.
-      apply projOver_extract_oev in H3. psimpl.
-      apply FullPossSteps_trans_inv in H4. psimpl.
-      ddestruct H6. ddestruct H6.
-      exists σ, (x0 ++ [(i, OEvent (RetEv m1 v))]), x2.
-      rewrite projOver_app, H3.
-      repeat split; try easy.
-      {
-        exists ρ.
-        repeat split; try easy.
-        {
-          exists x0. easy.
-        }
-        {
-          unfold differ_pointwise.
-          intros. rewrite H11; easy.
-        }
-        {
-          unfold differ_pointwise.
-          intros. rewrite H12; easy.
-        }
-      }
-      {
-        apply FullPossSteps_trans.
-        exists ρ. split. easy.
-        econstructor. 4: constructor.
-        all: (try constructor; easy).
-      }
-    }
-  }
+  unfold sub, subPrec.
+  intros. psimpl. easy.
 }
 {
   intros.
@@ -2902,8 +2812,7 @@ constructor.
       unfold SilentStep. intros.
       unfold ReltToPrec in H0. psimpl.
       apply H1 in H0. unfold comp_inv in *.
-      psimpl.
-      split.
+      psimpl. apply pwk.
       exists (x1 ++ [(i, UEvent None)]).
       split.
       {
@@ -2925,31 +2834,6 @@ constructor.
         cbn. repeat rewrite app_nil_r.
         intros. eapply H5. exact H6. easy.
       }
-      {
-        unfold comp_guar, comp_rely, comp_inv.
-        intros. exists (x1 ++ [(i, UEvent None)]).
-        split.
-        {
-          unfold InterSteps. rewrite <- Steps_app.
-          exists (ths, s). split. easy.
-          econstructor. 2: constructor.
-          split. 2: easy.
-          constructor; try easy.
-          intros. rewrite H2; easy.
-        }
-        split.
-        {
-          intros. apply H4 in H8. psimpl.
-          exists x0. rewrite projOver_app.
-          cbn. rewrite app_nil_r. easy.
-        }
-        {
-          repeat rewrite projOver_app.
-          cbn. rewrite app_nil_r.
-          intros. apply H5 with (q:=q).
-          all: easy.
-        }
-      }
     }
     {
       right. apply rec.
@@ -2966,24 +2850,24 @@ constructor.
       FullPossSteps initPoss q y /\
       PCalls y i = CallDone m /\
       PRets y i = RetPoss m v).
+  assert (
+    InterSteps M
+      (allIdle, Init VE)
+      (x1 ++ [(i, OEvent (RetEv m v))])
+      (fun j => if i =? j then Idle else fst s j, snd s)
+  ).
+  {
+    unfold InterSteps. rewrite <- Steps_app.
+    exists s. split. easy.
+    econstructor. 2: constructor.
+    split. 2: easy.
+    constructor; cbn.
+    rewrite H1, eqb_id.
+    constructor; easy.
+    intros. rewrite eqb_nid; easy.
+  }
   split.
   {
-    assert (
-      InterSteps M
-        (allIdle, Init VE)
-        (x1 ++ [(i, OEvent (RetEv m v))])
-        (fun j => if i =? j then Idle else fst s j, snd s)
-    ).
-    {
-      unfold InterSteps. rewrite <- Steps_app.
-      exists s. split. easy.
-      econstructor. 2: constructor.
-      split. 2: easy.
-      constructor; cbn.
-      rewrite H1, eqb_id.
-      constructor; easy.
-      intros. rewrite eqb_nid; easy.
-    }
     apply H in H4. psimpl.
     repeat rewrite projOver_app in H4.
     cbn in H4. symmetry in H4.
@@ -2995,79 +2879,63 @@ constructor.
   split.
   {
     intros. psimpl.
-    apply H3 in H5. 2: easy. psimpl.
+    apply H3 in H6. 2: easy. psimpl.
     exists x0. split. easy.
     eapply full_to_local.
-    exact H9. easy.
+    exact H10. easy.
   }
   split.
   {
     intros. psimpl.
     easy.
   }
-  split.
+  apply pwk.
   {
-    exists x1. easy.
-  }
-  {
-    unfold comp_guar, comp_rely, comp_inv.
-    intros. psimpl.
     exists (x1 ++ [(i, OEvent (RetEv m v))]).
+    split. easy.
     split.
     {
-      unfold InterSteps. rewrite <- Steps_app.
-      exists s. split. easy.
-      econstructor. 2: constructor.
-      split. 2: easy. cbn.
-      constructor; cbn.
-      rewrite H1, eqb_id.
-      constructor; easy.
-      intros. rewrite eqb_nid; easy.
-    }
-    split.
-    {
+      unfold mapRetPoss.
       intros. psimpl.
-      exists (x2 ++ [(i, OEvent (RetEv m v))]).
-      repeat rewrite projOver_app. rewrite H8.
-      split. easy.
-      unfold mapRetPoss in H9. psimpl.
-      apply FullPossSteps_trans.
-      exists x0. split. easy.
-      econstructor. 4: constructor.
-      constructor; easy.
-      intros. rewrite H16; easy.
-      intros. rewrite H17; easy.
+      exists (x0 ++ [(i, OEvent (RetEv m v))]).
+      split.
+      {
+        repeat rewrite projOver_app.
+        rewrite H5. easy.
+      }
+      {
+        apply FullPossSteps_trans.
+        exists x. split. easy.
+        econstructor. 4: constructor.
+        constructor; easy.
+        intros. rewrite H10; easy.
+        intros. rewrite H11; easy.
+      }
     }
     {
-      repeat rewrite projOver_app. cbn.
-      unfold mapRetPoss. intros. symmetry in H8.
-      apply projOver_extract_oev in H8. psimpl.
-      apply FullPossSteps_trans_inv in H9. psimpl.
-      ddestruct H11. ddestruct H11.
-      exists σ, (x0 ++ [(i, OEvent (RetEv m v))]), x2.
-      repeat rewrite projOver_app. cbn.
-      rewrite H10, H8. repeat split; try easy.
+      repeat rewrite projOver_app.
+      cbn. intros. symmetry in H5.
+      apply split_projOver in H5. psimpl.
+      apply FullPossSteps_trans_inv in H6. psimpl.
+      ddestruct H8. ddestruct H8.
+      exists σ, (x ++ [(i, OEvent (RetEv m v))]), x0.
+      repeat rewrite projOver_app, H5. cbn.
+      repeat split; try easy.
       {
+        unfold mapRetPoss.
         exists ρ. repeat split; try easy.
-        {
-          exists x0. easy.
-        }
-        {
-          unfold differ_pointwise.
-          intros. rewrite H16; easy.
-        }
-        
-        {
-          unfold differ_pointwise.
-          intros. rewrite H17; easy.
-        }
+        exists x. easy.
+        unfold differ_pointwise.
+        intros. rewrite H13; easy.
+        unfold differ_pointwise.
+        intros. rewrite H14; easy.
       }
       {
         apply FullPossSteps_trans.
         exists ρ. split. easy.
         econstructor. 4: constructor.
         constructor; easy.
-        easy. easy.
+        all: easy.
       }
     }
   }

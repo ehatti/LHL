@@ -17,6 +17,8 @@ From LHL.Util Require Import
 
 From Paco Require Import paco.
 
+Ltac ddestruct H := dependent destruction H.
+
 Section rules.
 
 Context
@@ -318,17 +320,39 @@ pcofix rec. intros. punfold H2. dependent destruction H2.
 }
 Qed.
 
-Lemma disjCommit {PL PR Q : Relt VE VF} {e} :
-  Commit i G PL e Q ->
-  Commit i G PR e Q ->
-  Commit i G (ReltToPrec (PL \4/ PR)) e Q.
+Lemma strongCommit {P Q : Relt VE VF} {e} :
+  Commit i G P e Q ->
+  Commit i G P e (prComp P Q).
+unfold Commit. intros.
+assert (H0' := H0).
+apply H with (t:=t) in H0.
+all: try easy. psimpl.
+exists x.
+split. exists x0. easy.
+split. easy.
+split.
+{
+  split. exists x1, x2.
+  easy. easy.
+}
+easy.
+Qed.
+
+End rules.
+
+Lemma disjCommit {T E F} {VE : Spec T E} {VF : Spec T F} {PL PR QL QR GL GR  : Relt VE VF} {i e} :
+  Commit i GL PL e QL ->
+  Commit i GR PR e QR ->
+  Commit i (GL \4/ GR) (ReltToPrec (PL \4/ PR)) e (QL \4/ QR).
 unfold Commit. intros.
 unfold ReltToPrec in H1. destruct_all. destruct H1.
 {
   apply H with (t:=t) (ρs:=ρs) in H4.
   destruct_all. exists x1. split. exists x2. easy.
   split. easy.
-  split. easy. easy.
+  split.
+  left. easy.
+  left. easy.
   exists x, x0. easy.
   easy.
   easy.
@@ -337,11 +361,11 @@ unfold ReltToPrec in H1. destruct_all. destruct H1.
   apply H0 with (t:=t) (ρs:=ρs) in H4.
   destruct_all. exists x1. split. exists x2. easy.
   split. easy.
-  split. easy. easy.
+  split.
+  right. easy.
+  right. easy.
   exists x, x0. easy.
   easy.
   easy.
 }
 Qed.
-
-End rules.
