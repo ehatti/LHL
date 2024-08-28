@@ -6,7 +6,7 @@ From LHL.Core Require Import
   Tensor
   Traces
   Linearizability
-  UBLayer2.
+  UBLayer.
 
 From LHL.Examples Require Import
   LockSpec
@@ -37,7 +37,9 @@ Definition SpinLockImpl: Impl (CASSig bool) LockSig :=
     | Rel => SpinLockRel
     end.
 
-(* Definition E := CASSig bool.
+Module SpinLockTest.
+
+Definition E := CASSig bool.
 Definition F := LockSig.
 Definition acf T := @LockActiveMap T.
 Definition HAcf T : @acf_sound T F lockSpec (acf T) := @LockActiveMapSound T.
@@ -52,27 +54,1033 @@ Definition PostU T := Post (VE T) (VFU T).
 Definition Post T := Post (VE T) (VF T).
 Definition UState T := State (VFU T).
 
-Definition Precs {T} i A (m : LockSig A) : @PrecU T :=
+Ltac elim_corece :=
+  do 20 try match goal with
+  | [ H : context[@fst (ThreadsSt ?T (CASSig bool) LockSig) (@State ?T (CASSig bool) (VE ?T)) ?s ?i] |- _ ] =>
+      let H' := fresh "H" in
+      change (@fst (ThreadsSt T (CASSig bool) LockSig) (@State T (CASSig bool) (VE T)) s i)
+      with (@fst (ThreadsSt T (CASSig bool) LockSig) (CASState T bool) s i) in H
+  | [ |- context[@fst (ThreadsSt ?T (CASSig bool) LockSig) (@State ?T (CASSig bool) (VE ?T)) ?s ?i] ] =>
+      change (@fst (ThreadsSt T (CASSig bool) LockSig) (@State T (CASSig bool) (VE T)) s i)
+      with (@fst (ThreadsSt T (CASSig bool) LockSig) (CASState T bool) s i)
+  | [ H : context[@snd (ThreadsSt ?T (CASSig bool) LockSig) (@State ?T (CASSig bool) (VE ?T)) ?s] |- _ ] =>
+      let H' := fresh "H" in
+      change (@snd (ThreadsSt T (CASSig bool) LockSig) (@State T (CASSig bool) (VE T)) s)
+      with (@snd (ThreadsSt T (CASSig bool) LockSig) (CASState T bool) s) in H
+  | [ |- context[@snd (ThreadsSt ?T (CASSig bool) LockSig) (@State ?T (CASSig bool) (VE ?T)) ?s] ] =>
+      change (@snd (ThreadsSt T (CASSig bool) LockSig) (@State T (CASSig bool) (VE T)) s)
+      with (@snd (ThreadsSt T (CASSig bool) LockSig) (CASState T bool) s)
+  | [ H : context[@snd (ThreadsSt ?T E ?F) (@State ?T E (VE ?T)) ?s] |- _ ] =>
+      unfold E in H
+  | [ |- context[@snd (ThreadsSt ?T E ?F) (@State ?T E (VE ?T)) ?s] ] =>
+      unfold E
+  | [ H : context[@snd (ThreadsSt ?T ?E F) (@State ?T ?E (VE ?T)) ?s] |- _ ] =>
+      unfold F in H
+  | [ |- context[@snd (ThreadsSt ?T ?E F) (@State ?T ?E (VE ?T)) ?s] ] =>
+      unfold F
+  | [ H : context[@fst (ThreadsSt ?T E ?F) (@State ?T E (VE ?T)) ?s] |- _ ] =>
+      unfold E in H
+  | [ |- context[@fst (ThreadsSt ?T E ?F) (@State ?T E (VE ?T)) ?s] ] =>
+      unfold E
+  | [ H : context[@fst (ThreadsSt ?T ?E F) (@State ?T ?E (VE ?T)) ?s] |- _ ] =>
+      unfold F in H
+  | [ |- context[@fst (ThreadsSt ?T ?E F) (@State ?T ?E (VE ?T)) ?s] ] =>
+      unfold F
+  end.
+
+Definition Precs {T} i A (m : LockSig A) : PrecU T :=
   fun s ρs => exists ρ, ρs = eq ρ /\
     match m with
     | Acq =>
-        True (* To be complete *)
+        True (* To be completed *)
     | Rel =>
-        (PState ρ = inl (LockOwned i) /\ snd s = CASDef (Some true) None) \/
-        (PState ρ <> inl (LockOwned i) /\ (StateWithUB_acf _ (acf T) (PState ρ) i = None))
+        ((PState ρ = inl (LockOwned i) /\ snd s = CASDef (Some true) None) \/
+         (PState ρ <> inl (LockOwned i) /\ (StateWithUB_acf _ (acf T) (PState ρ) i = None)))
     end.
 
-Definition Posts {T} i A (m : LockSig A) : @PostU T A :=
+Definition Posts {T} i A (m : LockSig A) : PostU T A :=
   fun v s ρs t σs => exists ρ σ, ρs = eq ρ /\ σs = eq σ /\
     match m with
     | Acq =>
-        True (* To be complete *)
+        True (* To be completed *)
     | Rel =>
+        (PCalls σ i = CallDone Rel /\ PRets σ i = RetPoss Rel tt) /\
+        (((forall m, PState σ <> inl (LockDef (Some i) m)) /\ fst t i = Cont m (Return v)) \/
+         exists a, PState σ = inr (UBState_, a))
+    end.
+
+Definition CSs {T} i A (m : LockSig A) : PostU T A :=
+  fun v s ρs t σs => exists ρ σ, ρs = eq ρ /\ σs = eq σ /\
+    match m with
+    | Acq =>
+        True (* To be completed *)
+    | Rel =>
+        t = (fun j => if i =? j then Idle else fst s j, snd s) /\ 
+        PState σ = PState ρ /\
+        PCalls σ i = CallIdle /\
+        differ_pointwise (PCalls ρ) (PCalls σ) i /\
+        PRets σ i = RetIdle /\
+        differ_pointwise (PRets ρ) (PRets σ) i
+    end.
+
+Definition Rely {T} i : ReltU T :=
+  fun s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\
+    fst s i = fst t i /\
+    (forall m, PState ρ = inl (LockDef (Some i) m) -> 
+      ((PState σ = inl (LockDef (Some i) m) /\ snd s = snd t) \/ 
+      (exists a, PState σ = inr (UBState_, a)))) /\ 
+    ((forall m, PState ρ <> inl (LockDef (Some i) m)) -> (forall m, PState σ <> inl (LockDef (Some i) m))) /\
+    (forall a1, PState ρ = inr (UBState_, a1) -> exists a2, PState σ = inr (UBState_, a2)) /\
+    PCalls ρ i = PCalls σ i /\
+    PRets ρ i = PRets σ i /\ 
+    StateWithUB_acf _ (acf T) (PState ρ) i = StateWithUB_acf _ (acf T) (PState σ) i.
+
+Definition Guar {T} i : ReltU T :=
+  fun s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\
+    (forall j, j <> i -> fst s j = fst t j) /\
+    (forall j, j <> i -> 
+      forall m, PState ρ = inl (LockDef (Some j) m) -> 
+        (PState σ = inl (LockDef (Some j) m) /\ snd s = snd t) \/ 
+        (exists a, PState σ = inr (UBState_, a))) /\
+    (forall j, j <> i -> 
+      ((forall m, PState ρ <> inl (LockDef (Some j) m)) -> (forall m, PState σ <> inl (LockDef (Some j) m)))) /\
+    (forall a1, PState ρ = inr (UBState_, a1) -> exists a2, PState σ = inr (UBState_, a2)) /\
+    (forall j, j <> i -> PCalls ρ j = PCalls σ j /\ PRets ρ j = PRets σ j 
+                         /\ StateWithUB_acf _ (acf T) (PState ρ) j = StateWithUB_acf _ (acf T) (PState σ) j).
+
+Lemma SpinLock_R_refl {T} : forall (i : Name T) s ρ, Rely i s ρ s ρ.
+Admitted.
+
+Lemma SpinLock_R_trans {T} : 
+  forall (i : Name T), Rely i ->> Rely i ==> Rely i.
+Admitted.
+
+Lemma SpinLock_G_in_R {T} : 
+  forall (i j : Name T), i <> j -> Guar i ==> Rely j.
+Admitted.
+
+Lemma Poss_eq_inv2: forall {T F} {VF: Spec T F} (i: Name T) (ρ0: Poss VF)  pcall pret,
+  (fun σ =>
+      exists ρ, ρ0 = ρ /\
+      PState σ = PState ρ /\
+      PCalls σ i = pcall /\
+      PRets σ i = pret /\
+      differ_pointwise (PCalls ρ) (PCalls σ) i /\
+      differ_pointwise (PRets ρ) (PRets σ) i) =
+  eq ({| PState := PState ρ0; 
+      PCalls := fun k : Name T => if i =? k then pcall else PCalls ρ0 k; 
+      PRets :=  fun k : Name T => if i =? k then pret else PRets ρ0 k |} : Poss VF).
+Proof.
+  intros.
+  extensionality σ'.
+  apply propositional_extensionality.
+  split.
+  { 
+    intros.
+    destruct H as [? [? [? [? [? [? ?]]]]]].
+    subst x. 
+    destruct σ'; simpl in *.
+    unfold differ_pointwise in H3, H4.
+    f_equal; try easy.
+    { extensionality k.
+      destruct (classicT (i = k)).
+      { subst k. rewrite eqb_id. auto. }
+      { rewrite (eqb_nid _ _ n). specialize (H3 k (ltac:(auto))). auto. }
+    }
+    { extensionality k.
+      destruct (classicT (i = k)).
+      { subst k. rewrite eqb_id. auto. }
+      { rewrite (eqb_nid _ _ n). specialize (H4 k (ltac:(auto))). auto. }
+    }
+  }
+  {
+    intros.
+    subst σ'.
+    simpl.
+    exists ρ0.
+    rewrite eqb_id.
+    repeat split; auto.
+    { apply differ_pointwise_trivial. }
+    { apply differ_pointwise_trivial. }
+  }
+Qed.
+
+Lemma Poss_eq_inv3: forall {T F} {VF: Spec T F} (i: Name T) (ρ: Poss VF) (st: State VF) pcall pret,
+  (fun σ =>
+      PState σ = st /\
+      PCalls σ i = pcall /\
+      PRets σ i = pret /\
+      differ_pointwise (PCalls ρ) (PCalls σ) i /\
+      differ_pointwise (PRets ρ) (PRets σ) i) =
+  eq ({| PState := st; 
+      PCalls := fun k : Name T => if i =? k then pcall else PCalls ρ k; 
+      PRets :=  fun k : Name T => if i =? k then pret else PRets ρ k |} : Poss VF).
+Proof.
+  intros.
+  extensionality σ'.
+  apply propositional_extensionality.
+  split.
+  { 
+    intros.
+    destruct H as [? [? [? [? ?]]]]. 
+    destruct σ'; simpl in *.
+    unfold differ_pointwise in H2, H3.
+    f_equal; try easy.
+    { extensionality k.
+      destruct (classicT (i = k)).
+      { subst k. rewrite eqb_id. auto. }
+      { rewrite (eqb_nid _ _ n). specialize (H2 k (ltac:(auto))). auto. }
+    }
+    { extensionality k.
+      destruct (classicT (i = k)).
+      { subst k. rewrite eqb_id. auto. }
+      { rewrite (eqb_nid _ _ n). specialize (H3 k (ltac:(auto))). auto. }
+    }
+  }
+  {
+    intros.
+    subst σ'.
+    simpl.
+    rewrite eqb_id.
+    repeat split; auto.
+    { apply differ_pointwise_trivial. }
+    { apply differ_pointwise_trivial. }
+  }
+Qed.
+
+Lemma Poss_eq_unique: forall {T} ρs (ρ: Poss (VFU T)) ρ', 
+  ρs = eq ρ -> ρs ρ' -> ρ = ρ'.
+Proof.
+  intros.
+  rewrite H in H0.
+  apply H0.
+Qed.
+
+Lemma Poss_eq_unique2: forall {T} ρs (ρ: Poss (VFU T)) ρ', 
+  ρs = eq ρ -> ρs = eq ρ' -> ρ' = ρ.
+Proof.
+  intros.
+  rewrite H in H0.
+  assert(eq ρ ρ = eq ρ' ρ). { rewrite H0. reflexivity. }
+  rewrite <- H1.
+  reflexivity.
+Qed.
+
+Lemma SpinLock_Inv_in_R {T} : 
+  forall (i j : Name T), i <> j -> InvokeAny SpinLockImpl i ==> Rely j.
+Proof.
+  intros.
+  unfold InvokeAny, sub, subRelt.
+  intros.
+  destruct H0 as [A [m HInv]].
+  unfold TInvoke in HInv.
+  destruct_all.
+  unfold TIdle in H0.
+  destruct_all.
+  inversion H1.
+  simpl in H5.
+  elim_corece.
+  rewrite H0 in H5.
+  inversion H5; subst.
+  dependent destruction H8.  
+  unfold Rely.
+  intros.
+  exists (@MkPoss T F (VFU T) (PState ρ0)
+          (fun k => if i =? k then CallPoss m else PCalls ρ0 k)
+          (fun k => if i =? k then RetIdle else PRets ρ0 k)).
+  split.
+  { subst ρ. apply Poss_eq_inv2. }
+  split.
+  { apply H6. easy. }
+  split.
+  { intros. simpl in *. left. easy. }
+  split.
+  { intros. simpl in *. easy. }
+  split.
+  { intros. simpl in *. exists a1. easy. }
+  { simpl. 
+    assert(ρ ρ0). { rewrite H3. reflexivity. }
+    specialize (H4 _ H7).
+    rewrite (eqb_nid i j H).
+    easy.
+  }
+Qed.
+
+Lemma SpinLock_Ret_in_R {T} : 
+  forall (i j : Name T), i <> j -> ReturnAny SpinLockImpl i ==> Rely j.
+Proof.
+  intros.
+  unfold ReturnAny, sub, subRelt.
+  intros.
+  destruct H0 as [A [m [v HRet]]].
+  unfold TReturn in HRet.
+  destruct_all.
+  unfold Returned in H0.
+  inversion H1.
+  simpl in *.
+  inversion H4; subst.
+  dependent destruction H7.
+  dependent destruction H10.
+  specialize (H0 H11).
+  unfold Rely.
+  intros.
+  exists (@MkPoss T F (VFU T) (PState ρ0)
+          (fun j => if i =? j then CallIdle else PCalls ρ0 j)
+          (fun j => if i =? j then RetIdle else PRets ρ0 j)).
+  split.
+  { subst ρ. unfold mapRetPoss. rewrite <- Poss_eq_inv2.
+    extensionality x. apply propositional_extensionality. split; intros; destruct_all; subst.
+    { exists x0. easy. }
+    { exists x0. specialize (H0 x0 (ltac:(reflexivity))). easy. }
+  }
+  split.
+  { apply H5. easy. }
+  split.
+  { intros. simpl in *. left. easy. }
+  split.
+  { intros. simpl in *. easy. }
+  split.
+  { intros. simpl in *. exists a1. easy. }
+  { simpl. rewrite (eqb_nid i j H). easy. }
+Qed.
+
+Lemma SpinLock_init_in_P {T} : 
+  forall i (A: Type) m, Precs i A m (allIdle, (VE T).(Init)) (eq initPoss).
+Admitted.
+
+Lemma SpinLock_P_stable {T} : 
+  forall (i: Name T) A m, Stable (Rely i) (Precs i A m).
+Admitted.
+
+Lemma SpinLock_switch_code {T} : 
+  forall (i: Name T) A m1 B m2 v,
+    (prComp (Precs i A m1) (Posts i A m1 v)) <<- (CSs i A m1 v) ==> Precs i B m2.
+Proof.
+Admitted.
+
+Lemma SpinLock_Acq_verified {T} : 
+  forall (i: Name T), 
+      VerifyProg i (Rely i) (Guar i) 
+      (prComp (Precs i unit Acq) (TInvoke SpinLockImpl i _ Acq) ->> Rely i)
+      (SpinLockImpl _ Acq)
+      (Posts i unit Acq).
+Proof.
+Admitted.
+
+Lemma SpinLock_Rel_aux1 {T} (i: Name T) (s1: InterState F (VE T)) ρs1 s2 ρs2: 
+  (prComp (Precs i unit Rel) (TInvoke SpinLockImpl i unit Rel)) s1 ρs1 s2 ρs2 ->
+    exists ρ, ρs2 = eq ρ /\ 
+    fst s2 i = Cont Rel (SpinLockImpl _ Rel) /\ 
+    PCalls ρ i = CallPoss Rel /\ PRets ρ i = RetIdle /\
+    ((snd s2 = CASDef (Some true) None /\ PState ρ = inl (LockOwned i))  \/ 
+     (PState ρ <> inl (LockOwned i) /\ (StateWithUB_acf _ (acf T) (PState ρ) i = None))).
+Proof.
+  intros.
+  destruct H.
+  unfold Precs in H.
+  destruct H as [ρ1 [? ?]].
+  unfold TInvoke in H0.
+  destruct_all.
+  exists (@MkPoss T F (VFU T) (PState ρ1)
+          (fun j => if i =? j then CallPoss Rel else PCalls ρ1 j)
+          (fun j => if i =? j then RetIdle else PRets ρ1 j)).
+  simpl.
+  split.
+  { subst ρs2. rewrite <- Poss_eq_inv2. rewrite H. reflexivity. }
+  split.
+  { unfold TIdle in H0. destruct_all. inversion H2; subst. 
+    simpl in H6. elim_corece. rewrite H0 in H6. 
+    inversion H6; subst. dependent destruction H4. easy. 
+  }
+  rewrite eqb_id.
+  do 2 split; try easy.
+  elim_corece.
+  rewrite H3 in H1.
+  destruct H1; [left | right]; easy.
+Qed.
+
+Lemma SpinLock_Rel_aux2 {T} (i: Name T) (s1: InterState F (VE T)) ρs1 s2 ρs2: 
+  (prComp (Precs i unit Rel) (TInvoke SpinLockImpl i unit Rel) ->> (Rely i)) s1 ρs1 s2 ρs2 ->
+    exists ρ, ρs2 = eq ρ /\ 
+    fst s2 i = Cont Rel (SpinLockImpl _ Rel) /\ 
+    PCalls ρ i = CallPoss Rel /\ PRets ρ i = RetIdle /\
+    ((snd s2 = CASDef (Some true) None /\ PState ρ = inl (LockOwned i))  \/ 
+     (PState ρ <> inl (LockOwned i) /\ (StateWithUB_acf _ (acf T) (PState ρ) i = None))).
+Proof.
+  intros.
+  destruct H as [s' [ρs' [? ?]]].
+  pose proof SpinLock_Rel_aux1 i s1 ρs1 s' ρs' H.
+  destruct H1 as [ρ' [? ?]].
+  unfold Rely in H0.
+  specialize (H0 _ H1).
+  destruct H0 as [ρ2 [? ?]].
+  exists ρ2.
+  split; try easy.
+  split.
+  { destruct_all. rewrite <- H3. rewrite H2. reflexivity. }
+  split.
+  { destruct_all. rewrite <- H10. apply H4. }
+  split.
+  { destruct_all. rewrite <- H11. apply H5. }
+  destruct_all.
+  destruct H6.
+  { destruct_all. specialize (H7 _ H13). destruct H7.
+    { left. destruct H7. rewrite <- H14, H7, H6. easy. }
+    { right. destruct H7 as [a ?]. rewrite <- H12. rewrite H7, H13. easy. }
+  }
+  { right. 
+    destruct H6. 
+    rewrite <- H12. rewrite H13.
+    split; [| reflexivity].
+    destruct (PState ρ').
+    { destruct s.
+      destruct owner.
+      { destruct (classicT (i = n)).
+        { subst n. specialize (H7 m (ltac:(auto))). destruct H7.
+          { destruct m.
+            { destruct H7. rewrite H7. easy. }
+            { unfold LockOwned in H6. contradiction. }
+          }
+          { destruct H7. rewrite H7. easy. }
+        }
+        { apply H8. intros. intro. inversion H14. subst n. contradiction. }
+      }
+      { apply H8. intros. intro. inversion H14. }
+    }
+    { destruct p. destruct u.
+      specialize (H9 a (ltac:(reflexivity))). destruct H9. rewrite H9. easy. 
+    }
+  }
+Qed.
+
+Lemma SpinLock_Rel_aux3 {T} (i: Name T) (s1: InterState F (VE T)) ρs1 s2 ρs2: 
+  ((prComp (Precs i unit Rel) (TInvoke SpinLockImpl i unit Rel) ->> (Rely i)) ->> 
+    (fun (s: InterState F (VE T)) (ρs: PossSet (VFU T)) t σs =>
+        exists ρ σ, ρs = eq ρ /\ σs = eq σ /\
+        UnderThreadStep (fst s i) (Some (CallEv (CAS (Some true) None))) (fst t i) /\
+        PCalls σ i = CallDone Rel /\
+        PRets σ i = RetIdle /\
+        ((PState ρ = inl (LockOwned i) /\ PState σ = inl (LockRelRan i) /\ Step (VE T) (snd s) (i, (CallEv (CAS (Some true) None))) (snd t)) \/ 
+         (exists a, PState σ = inr (UBState_, a) /\ (a i = Some (existT (fun A => LockSig A) unit Rel))))))
+    s1 ρs1 s2 ρs2 ->
+      exists ρ, ρs2 = eq ρ /\
+      fst s2 i = UCall Rel (CAS (Some true) None) (fun x1 : bool => Return x1;; Return tt) /\
+      PCalls ρ i = CallDone Rel /\
+      PRets ρ i = RetIdle /\
+      ((PState ρ = inl (LockRelRan i) /\ snd s2 = CASDef (Some true) (Some (MkCASPend i (CAS (Some true) None)))) \/
+       (exists a, PState ρ = inr (UBState_, a) /\ (a i = Some (existT (fun A => LockSig A) unit Rel)))).
+Proof.
+  intros.
+  destruct H as [s' [ρs' [? ?]]].
+  apply SpinLock_Rel_aux2 in H.
+  destruct H as [ρ [? [? [? [? ?]]]]].
+  destruct H0 as [ρ' [ρ2 [? [? ?]]]].
+  exists ρ2.
+  split; [easy |].
+  split.
+  { destruct H6. elim_corece. rewrite H1 in H6. inversion H6; subst.
+    dependent destruction H9. rewrite H13.
+    unfold call, ret in x.
+    rewrite ProgramFacts.frobProgId in x at 1. unfold ProgramFacts.frobProgram in x. simpl in x.
+    inversion x.
+    dependent destruction H5.
+    reflexivity.
+  }
+  split; [easy |].
+  split; [easy |].
+  destruct H6 as [? [? [? ?]]].
+  destruct H4.
+  { destruct H9.
+    { destruct H4. destruct H9. elim_corece. rewrite H4 in H11. destruct H11. inversion H12; subst. left. easy. }
+    { right. apply H9. } 
+  }
+  { pose proof Poss_eq_unique2 _ _ _ H H0. subst ρ.
+    destruct H9.
+    { destruct H9. destruct H4. contradiction. }
+    { right. destruct H9. exists x. easy. }
+  }
+Qed.
+
+Lemma SpinLock_Rel_aux4 {T} (i: Name T) (s1: InterState F (VE T)) ρs1 s2 ρs2 v: 
+  (((prComp (Precs i unit Rel) (TInvoke SpinLockImpl i unit Rel) ->> (Rely i)) ->> 
+    (fun (s: InterState F (VE T)) (ρs: PossSet (VFU T)) t σs =>
+        exists ρ σ, ρs = eq ρ /\ σs = eq σ /\
+        UnderThreadStep (fst s i) (Some (CallEv (CAS (Some true) None))) (fst t i) /\
+        PCalls σ i = CallDone Rel /\
+        PRets σ i = RetIdle /\
+        ((PState ρ = inl (LockOwned i) /\ PState σ = inl (LockRelRan i) /\ Step (VE T) (snd s) (i, (CallEv (CAS (Some true) None))) (snd t)) \/ 
+         (exists a, PState σ = inr (UBState_, a) /\ (a i = Some (existT (fun A => LockSig A) unit Rel)))))) ->>
+    (fun s ρs t σs =>
+        exists ρ σ, ρs = eq ρ /\ σs = eq σ /\
+        UnderThreadStep (fst s i) (Some (RetEv (CAS (Some true) None) v)) (fst t i) /\
         PCalls σ i = CallDone Rel /\
         PRets σ i = RetPoss Rel tt /\
-        ((PState ρ = inl (LockOwned i) /\ (forall m, PState σ <> inl (LockDef (Some i) m)) /\ fst t i = Cont m (Return v)) \/
-         (exists a, PState σ = inr (UBState_, a)))
-    end. *)
+        ((PState ρ = inl (LockRelRan i) /\ (forall m, PState σ <> inl (LockDef (Some i) m))) \/ 
+         ((exists a, PState σ = inr (UBState_, a) /\ a i = None)))))
+    s1 ρs1 s2 ρs2 ->
+      exists ρ, ρs2 = eq ρ /\
+      fst s2 i = Cont Rel (Return tt) /\
+      PCalls ρ i = CallDone Rel /\
+      PRets ρ i = RetPoss Rel tt /\
+      ((forall m, PState ρ <> inl (LockDef (Some i) m)) \/ 
+      (exists a, PState ρ = inr (UBState_, a) /\ a i = None)).
+Proof.
+  intros.
+  destruct H as [s' [ρs' [? ?]]].
+  apply SpinLock_Rel_aux3 in H.
+  destruct H as [ρ [? [? [? [? ?]]]]].
+  destruct H0 as [ρ' [ρ2 [? [? ?]]]].
+  exists ρ2.
+  split; [easy |].
+  split.
+  { destruct H6. elim_corece. rewrite H1 in H6. inversion H6; subst.
+    dependent destruction H9. dependent destruction H12. rewrite H14.
+    rewrite (ProgramFacts.frobProgId (@Return (CASSig bool) bool v;; Return tt)).
+    unfold ProgramFacts.frobProgram.
+    simpl. reflexivity.    
+  }
+  split; [easy |].
+  split; [easy |].
+  destruct H6 as [? [? [? ?]]].
+  destruct H4.
+  { destruct H9.
+    { destruct H9. left. apply H10. }
+    { destruct H9. right. exists x. easy. }
+  }
+  { pose proof Poss_eq_unique2 _ _ _ H H0. subst ρ.
+    destruct H9.
+    { destruct H9. left. easy. }
+    { right. destruct H9. exists x. easy. }
+  }
+Qed.
+
+Lemma SpinLock_Rel_verified {T} : 
+  forall (i: Name T), 
+      VerifyProg i (Rely i) (Guar i) 
+      (prComp (Precs i unit Rel) (TInvoke SpinLockImpl i _ Rel) ->> Rely i)
+      (SpinLockImpl _ Rel)
+      (Posts i unit Rel).
+Proof.
+  intros. simpl.
+  apply (lemBind (fun (_: bool) => 
+            (fun v : unit => Posts i unit Rel v) tt)).
+  + eapply weakenPost.
+    eapply (lemCall 
+      (Q := fun (s: InterState F (VE T)) (ρs: PossSet (VFU T)) t σs =>
+        exists ρ σ, ρs = eq ρ /\ σs = eq σ /\
+        UnderThreadStep (fst s i) (Some (CallEv (CAS (Some true) None))) (fst t i) /\
+        PCalls σ i = CallDone Rel /\
+        PRets σ i = RetIdle /\
+        ((PState ρ = inl (LockOwned i) /\ PState σ = inl (LockRelRan i) /\ Step (VE T) (snd s) (i, (CallEv (CAS (Some true) None))) (snd t)) \/ 
+         (exists a, PState σ = inr (UBState_, a) /\ (a i = Some (existT (fun A => LockSig A) unit Rel)))))
+      (S := fun v s ρs t σs =>
+        exists ρ σ, ρs = eq ρ /\ σs = eq σ /\
+        UnderThreadStep (fst s i) (Some (RetEv (CAS (Some true) None) v)) (fst t i) /\
+        PCalls σ i = CallDone Rel /\
+        PRets σ i = RetPoss Rel tt /\
+        (((PState ρ = inl (LockRelRan i) /\ forall m, PState σ <> inl (LockDef (Some i) m))) \/ 
+         (exists a, PState σ = inr (UBState_, a) /\ a i = None)))).
+    { unfold Stable, stableRelt, sub, subRelt.
+      intros.
+      rename ρ into ρs.
+      rename σ into σs.
+      destruct H as [s' [ρs' [? ?]]].
+      destruct H as [ρ [ρ' [? [? ?]]]].
+      unfold Rely in H0.
+      specialize (H0 _ H1).
+      destruct H0 as [σ [? ?]].
+      exists ρ, σ.
+      split; try easy.
+      split; try easy.
+      split.
+      { destruct H2. destruct H3. elim_corece. rewrite <- H3. apply H2. }
+      split.
+      { destruct_all. unfold F. rewrite <- H7. easy. }
+      split.
+      { destruct_all. unfold F. rewrite <- H8. easy. }  
+      destruct_all.
+      destruct H12.
+      { destruct H12 as [? [? ?]].
+        specialize (H4 _ H13).
+        destruct H4.
+        { left. destruct H4. elim_corece. rewrite <- H15. easy. }
+        { right. destruct H4 as [a ?].
+          unfold F in H13.
+          rewrite H13 in H9.
+          rewrite H4 in H9.
+          inversion H9; subst. rewrite eqb_id in H16.
+          exists a. easy.
+        }
+      }
+      {
+        right.
+        destruct H12 as [a ?].
+        destruct H12.
+        specialize (H6 _ H12).
+        destruct H6 as [a' ?].
+        unfold F in H12.
+        rewrite H12 in H9.
+        exists a'.
+        split; try easy.
+        rewrite H6 in H9.
+        inversion H9; subst.
+        easy.
+      }
+    }
+    { unfold Stable, stablePost, stableRelt, sub, subRelt.
+      intros.
+      rename ρ into ρs.
+      rename σ into σs.
+      destruct H as [s' [ρs' [? ?]]].
+      destruct H as [ρ [ρ' [? [? ?]]]].
+      unfold Rely in H0.
+      specialize (H0 _ H1).
+      destruct H0 as [σ [? ?]].
+      exists ρ, σ.
+      split; try easy.
+      split; try easy.
+      split.
+      { destruct H2. destruct H3. elim_corece. rewrite <- H3. apply H2. }
+      split.
+      { destruct_all. unfold F. rewrite <- H7. easy. }
+      split.
+      { destruct_all. unfold F. rewrite <- H8. easy. }  
+      destruct_all.
+      destruct H12.
+      { destruct H12 as [? ?].
+        specialize (H5 H13).
+        left. easy. 
+      }
+      { right.
+        destruct H12 as [a [? ?]].
+        specialize (H6 _ H12).
+        destruct H6 as [a' ?].
+        exists a'.
+        unfold F in H12.
+        rewrite H12 in H9.
+        rewrite H6 in H9.
+        inversion H9; subst.
+        easy.
+      }
+    }
+    { unfold Commit. intros.
+      destruct H as [s0 [ρs0 ?]].
+      apply SpinLock_Rel_aux2 in H.
+      destruct H as [ρ [? [? [? [? ?]]]]].
+      destruct H6.
+      {
+        remember (
+          (MkPoss T LockSig (VFU T)
+          (inl (LockRelRan i))
+          (fun k : Name T =>
+            match @eqb (Name T) i k
+            return (PCall LockSig) with
+            | true => @CallDone LockSig unit Rel
+            | false => @PCalls T LockSig (VFU T) ρ k
+            end)
+          (fun k : Name T =>
+            match @eqb (Name T) i k
+            return (PRet LockSig) with
+            | true => @RetIdle LockSig
+            | false => @PRets T LockSig (VFU T) ρ k
+            end))) as σ.
+        exists (eq σ).
+        split. { exists σ. easy. }
+        split.
+        { intros. subst σ0. exists ρ.
+          split. { rewrite H. reflexivity. }
+          subst σ.
+          destruct ρ.
+          destruct_all. simpl in *. subst.
+          eapply PossStepsStep.
+          4: apply PossStepsRefl.
+          { apply PCommitCall with (i := i) (A := unit) (m := Rel); simpl; try easy.
+            { constructor. constructor. }
+            { rewrite eqb_id. easy. }
+            { rewrite eqb_id. easy. }
+          }
+          { intros. simpl. rewrite (eqb_nid _ _ H). easy. }
+          { intros. simpl. rewrite (eqb_nid _ _ H). easy. }
+        }
+        split.
+        { exists ρ, σ.
+          subst σ. simpl. rewrite eqb_id. 
+          repeat split; try easy.
+          left. easy.
+        }
+        {
+          unfold Guar.
+          intros.
+          pose proof Poss_eq_unique2 _ _ _ H H7. subst ρ0.
+          exists σ.
+          split; try easy.
+          split.
+          { unfold differ_pointwise in H0. intros. specialize (H0 j (ltac:(auto))). easy. }
+          split.
+          { intros.
+            rewrite H9 in H6.
+            destruct H6.
+            inversion H10; subst; contradiction. 
+          }
+          split.
+          { intros. subst σ. simpl. intro. inversion H10; subst; contradiction. }
+          split.
+          { intros. rewrite H8 in H6. destruct H6. inversion H9. }
+          { intros. subst σ. simpl. assert(i <> j) by easy.
+            rewrite (eqb_nid _ _ H9). destruct H6. rewrite H10. easy.
+          }
+        }
+      }
+      { 
+        remember
+          ((MkPoss T LockSig (VFU T)
+          (inr (UBState_, fun j => if i =? j then Some (existT (fun A => LockSig A) unit Rel) else (StateWithUB_acf _ (acf T) (PState ρ) j)))
+          (fun j => if i =? j then CallDone Rel else PCalls ρ j)
+          (fun j => if i =? j then RetIdle else PRets ρ j))) as σ.
+        exists (eq σ).
+        split. { exists σ. easy. }
+        split.
+        { intros. subst σ0. exists ρ.
+          split. { rewrite H. reflexivity. }
+          subst σ.
+          destruct ρ.
+          destruct_all. simpl in *. subst.
+          eapply PossStepsStep.
+          4: apply PossStepsRefl.
+          { apply PCommitCall with (i := i) (A := unit) (m := Rel); simpl; try easy.
+            { destruct PState.
+              { constructor.
+                { intros. intro. inversion H; subst. contradiction. }
+                { constructor; try rewrite eqb_id; try easy; try apply differ_pointwise_trivial. }
+              }
+              { destruct p as [u a]. destruct u.
+                simpl in H7.
+                constructor.
+                constructor; try rewrite eqb_id; try easy; try apply differ_pointwise_trivial.
+              }
+            }
+            { rewrite eqb_id. easy. }
+            { rewrite eqb_id. easy. }
+          }
+          { intros. simpl. rewrite (eqb_nid _ _ H). easy. }
+          { intros. simpl. rewrite (eqb_nid _ _ H). easy. }
+        }
+        split.
+        { exists ρ, σ.
+          subst σ. simpl. rewrite eqb_id. 
+          repeat split; try easy.
+          right.
+          eexists.
+          split.
+          { reflexivity. }
+          { simpl. rewrite eqb_id. easy. }
+        }
+        {
+          unfold Guar.
+          intros.
+          pose proof Poss_eq_unique2 _ _ _ H H7. subst ρ0.
+          exists σ.
+          split; try easy.
+          split.
+          { unfold differ_pointwise in H0. intros. specialize (H0 j (ltac:(auto))). easy. }
+          split.
+          { intros. right. subst σ. eexists. reflexivity. }
+          split.
+          { intros. subst σ. simpl. easy. }
+          split.
+          { intros. subst σ. eexists. reflexivity. }
+          { intros. subst σ. simpl. assert(i <> j) by easy.
+            rewrite (eqb_nid _ _ H9). destruct H6. easy. }
+        }
+      }
+    }
+    {
+      unfold Commit. intros.
+      destruct H as [s0 [ρs0 ?]].
+      apply SpinLock_Rel_aux3 in H.
+      destruct H as [ρ [? [? [? [? ?]]]]].
+      destruct H6.
+      {
+        remember (
+          (MkPoss T LockSig (VFU T)
+          (inl (LockUnowned))
+          (fun k : Name T =>
+            match @eqb (Name T) i k
+            return (PCall LockSig) with
+            | true => @CallDone LockSig unit Rel
+            | false => @PCalls T LockSig (VFU T) ρ k
+            end)
+          (fun k : Name T =>
+            match @eqb (Name T) i k
+            return (PRet LockSig) with
+            | true => @RetPoss LockSig unit Rel tt
+            | false => @PRets T LockSig (VFU T) ρ k
+            end))) as σ.
+        exists (eq σ).
+        split. { exists σ. easy. }
+        split.
+        { intros. subst σ0. exists ρ.
+          split. { rewrite H. reflexivity. }
+          subst σ.
+          destruct ρ.
+          destruct_all. simpl in *. subst.
+          eapply PossStepsStep.
+          4: apply PossStepsRefl.
+          { apply PCommitRet with (i := i) (A := unit) (m := Rel) (v := tt); simpl; try easy.
+            { constructor. constructor. }
+            { rewrite eqb_id. easy. }
+            { rewrite eqb_id. easy. }
+          }
+          { intros. simpl. rewrite (eqb_nid _ _ H). easy. }
+          { intros. simpl. rewrite (eqb_nid _ _ H). easy. }
+        }
+        split.
+        { exists ρ, σ.
+          subst σ. simpl. rewrite eqb_id. 
+          repeat split; try easy.
+          left. easy.
+        }
+        {
+          unfold Guar.
+          intros.
+          pose proof Poss_eq_unique2 _ _ _ H H7. subst ρ0.
+          exists σ.
+          split; try easy.
+          split.
+          { unfold differ_pointwise in H0. intros. specialize (H0 j (ltac:(auto))). easy. }
+          split.
+          { intros.
+            rewrite H9 in H6.
+            destruct H6.
+            inversion H6; subst; contradiction. 
+          }
+          split.
+          { intros. subst σ. simpl. intro. inversion H10; subst; contradiction. }
+          split.
+          { intros. rewrite H8 in H6. destruct H6. inversion H6. }
+          { intros. subst σ. simpl. assert(i <> j) by easy.
+            destruct H6. rewrite H6. simpl.
+            rewrite (eqb_nid _ _ H9). 
+            easy.
+          }
+        }
+      }
+      {
+        remember
+          ((MkPoss T LockSig (VFU T)
+          (inr (UBState_, fun j => if i =? j then None else (StateWithUB_acf _ (acf T) (PState ρ) j)))
+          (fun j => if i =? j then CallDone Rel else PCalls ρ j)
+          (fun j => if i =? j then RetPoss Rel tt else PRets ρ j))) as σ.
+        exists (eq σ).
+        split. { exists σ. easy. }
+        split.
+        { intros. subst σ0. exists ρ.
+          split. { rewrite H. reflexivity. }
+          subst σ.
+          destruct ρ.
+          destruct_all. simpl in *. subst.
+          eapply PossStepsStep.
+          4: apply PossStepsRefl.
+          { apply PCommitRet with (i := i) (A := unit) (m := Rel) (v := tt); simpl; try easy.
+            { constructor. constructor; try rewrite eqb_id; try easy; try apply differ_pointwise_trivial. }
+            { rewrite eqb_id. easy. }
+            { rewrite eqb_id. easy. }
+          }
+          { intros. simpl. rewrite (eqb_nid _ _ H). easy. }
+          { intros. simpl. rewrite (eqb_nid _ _ H). easy. }
+        }
+        split.
+        { exists ρ, σ.
+          subst σ. simpl. rewrite eqb_id. 
+          repeat split; try easy.
+          right.
+          eexists.
+          split.
+          { reflexivity. }
+          { simpl. rewrite eqb_id. easy. }
+        }
+        {
+          unfold Guar.
+          intros.
+          pose proof Poss_eq_unique2 _ _ _ H H7. subst ρ0.
+          exists σ.
+          split; try easy.
+          split.
+          { unfold differ_pointwise in H0. intros. specialize (H0 j (ltac:(auto))). easy. }
+          split.
+          { intros. right. subst σ. eexists. reflexivity. }
+          split.
+          { intros. subst σ. simpl. easy. }
+          split.
+          { intros. subst σ. eexists. reflexivity. }
+          { intros. subst σ. simpl. assert(i <> j) by easy.
+            rewrite (eqb_nid _ _ H9). destruct H6. easy. }
+        }
+      }
+    }
+    {
+      unfold sub, subRelt.
+      intros.
+      rewrite <- LogicFacts.reltCompAssoc in H.
+      rename ρ into ρs.
+      rename σ into σs.
+      assert(Precs i unit Rel s ρs).
+      { destruct H as [x1 [x2 [? ?]]].
+        destruct H as [x3 [x4 [? ?]]].
+        destruct H as [x5 [x6 [? ?]]].
+        unfold prComp in H.
+        destruct H.
+        apply H.
+      }
+      apply SpinLock_Rel_aux4 in H.
+      unfold Posts.
+      unfold Precs in H0.
+      destruct H0 as [ρ [? ?]].
+      destruct H as [σ [? ?]].
+      exists ρ, σ.
+      split; try easy.
+      split; try easy.
+      split; try easy.
+      destruct H2 as [? [? [? ?]]].
+      destruct H5.
+      { left. easy. }
+      { right. destruct H5 as [a [? ?]]. exists a. easy. }
+    }
+  + intros.
+    constructor.
+    easy.
+Qed.
+
+Lemma SpinLock_all_verified {T} : 
+  forall (i: Name T) A m, 
+      VerifyProg i (Rely i) (Guar i) 
+      (prComp (Precs i A m) (TInvoke SpinLockImpl i _ m) ->> Rely i)
+      (SpinLockImpl _ m)
+      (Posts i A m).
+Proof.
+  intros.
+  destruct m.
+  + apply SpinLock_Acq_verified.
+  + apply SpinLock_Rel_verified.
+Qed.
+
+Lemma SpinLock_all_return {T} : 
+  forall (i: Name T) A m v, ReturnStep i (Guar i) (Posts i A m v) m v (CSs i A m v).
+Proof.
+  intros.
+  destruct m.
+  + admit.
+  + unfold ReturnStep.
+    intros.
+    unfold Posts in H.
+    destruct H as [s1 [ρs1 [ρ1 [ρ ?]]]].
+    destruct_all.
+    exists ρs.
+    split.
+    { exists ρ. rewrite H1. easy. }
+    split.
+    { intros. exists σ. split; [exact H5 | constructor]. }
+    split.
+    { intros. pose proof Poss_eq_unique _ _ _ H1 H5. subst σ. destruct v. easy. }
+    split.
+    { unfold CSs. 
+      exists ρ.
+      exists (MkPoss T F (VFU T)
+        (PState ρ)
+        (fun j => if i =? j then CallIdle else PCalls ρ j)
+        (fun j => if i =? j then RetIdle else PRets ρ j)).
+      split; [easy |].
+      split.
+      { extensionality x. apply propositional_extensionality. split; intros.
+        { destruct H5 as [σ [? ?]]. pose proof Poss_eq_unique _ _ _ H1 H5. subst σ. destruct v.
+          unfold mapRetPoss in H6.
+          destruct x. destruct ρ.
+          simpl in *.
+          destruct_all.
+          f_equal.
+          { easy. }
+          { extensionality j. destruct (classicT (i = j)).
+            { subst j. rewrite eqb_id. rewrite H6. easy. }
+            { rewrite (eqb_nid _ _ n). unfold differ_pointwise in H10.
+              assert(j <> i) by auto.
+              specialize (H10 j H13). easy.
+            }
+          }
+          { extensionality j. destruct (classicT (i = j)).
+            { subst j. rewrite eqb_id. rewrite H8. easy. }
+            { rewrite (eqb_nid _ _ n). unfold differ_pointwise in H11.
+              assert(j <> i) by auto.
+              specialize (H11 j H13). easy.
+            }
+          }
+        }
+        { exists ρ.
+          split. { rewrite H1. reflexivity. } 
+          unfold mapRetPoss.
+          subst x. simpl. rewrite eqb_id.
+          destruct v.
+          repeat split; try apply differ_pointwise_trivial; easy.
+        }
+      }
+      simpl. rewrite eqb_id.
+      repeat split; try apply differ_pointwise_trivial; easy.
+    }
+    { unfold Guar. intros.
+      pose proof Poss_eq_unique2 _ _ _ H1 H5. subst ρ0.
+      exists (MkPoss T F (VFU T)
+        (PState ρ)
+        (fun j => if i =? j then CallIdle else PCalls ρ j)
+        (fun j => if i =? j then RetIdle else PRets ρ j)).
+      split.
+      { extensionality x. apply propositional_extensionality. split; intros.
+        { destruct H6 as [σ [? ?]]. pose proof Poss_eq_unique _ _ _ H1 H6. subst σ. destruct v.
+          unfold mapRetPoss in H7.
+          destruct x. destruct ρ.
+          simpl in *.
+          destruct_all.
+          f_equal.
+          { easy. }
+          { extensionality j. destruct (classicT (i = j)).
+            { subst j. rewrite eqb_id. rewrite H7. easy. }
+            { rewrite (eqb_nid _ _ n). unfold differ_pointwise in H11.
+              assert(j <> i) by auto.
+              specialize (H11 j H14). easy.
+            }
+          }
+          { extensionality j. destruct (classicT (i = j)).
+            { subst j. rewrite eqb_id. rewrite H9. easy. }
+            { rewrite (eqb_nid _ _ n). unfold differ_pointwise in H12.
+              assert(j <> i) by auto.
+              specialize (H12 j H14). easy.
+            }
+          }
+        }
+        { exists ρ.
+          split. { rewrite H1. reflexivity. } 
+          unfold mapRetPoss.
+          subst x. simpl. rewrite eqb_id.
+          destruct v.
+          repeat split; try apply differ_pointwise_trivial; easy.
+        }
+      }
+      simpl.
+      split.
+      { intros. assert(i <> j) by auto. rewrite (eqb_nid _ _ H7). easy. }
+      split.
+      { intros. left. easy. }
+      split.
+      { intros. apply H7. }
+      split.
+      { intros. exists a1. easy. }
+      split.
+      { assert(i <> j) by auto. rewrite (eqb_nid _ _ H7). easy. }
+      split.
+      { assert(i <> j) by auto. rewrite (eqb_nid _ _ H7). easy. }
+      { reflexivity. }
+    }
+Admitted.
+
+End SpinLockTest.
 
 Module SpinLockNormal.
 
