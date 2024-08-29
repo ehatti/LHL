@@ -393,6 +393,35 @@ unfold mapRetPoss in *. psimpl.
 easy. easy.
 Qed.
 
+Lemma srtcTrans_inv {T A} {R} :
+  forall s x r z,
+  SRTC R s x r z ->
+  (exists t y,
+    SRTC (VE:= VE T A) (VF:= VF T A) R s x t y /\
+    R t y r z) \/
+  (s = r /\ x = z).
+intros. induction H.
+right. easy.
+destruct IHSRTC; psimpl.
+{
+  left. exists x, x0.
+  split. 2: easy.
+  apply srtcTrans.
+  psplit.
+  {
+    eapply SRTCStep.
+    exact H. constructor.
+  }
+  {
+    easy.
+  }
+}
+{
+  left. repeat eexists.
+  constructor. easy.
+}
+Qed.
+
 (* Lemma semGuarTran {T A} : *)
 
 Lemma Precs_stable {T A} :
@@ -463,7 +492,29 @@ eapply weakenPrec with
   } psimpl.
   specialize (H0 x2 eq_refl). psimpl.
   move H1 after H0. move x2 at top. move x0 at top.
-  admit.
+  apply srtcTrans_inv in H0. destruct H0; psimpl.
+  {
+    fold (Rely (T:=T) (A:=A) i x x2 x3 x4) in H.
+    exists x3, (eq x4). split.
+    {
+      exists x4. split. easy.
+      apply Precs_stable with (i:=i).
+      psplit. 2: exact H.
+      apply pres_state in H1. psimpl.
+      unfold Precs in *. psimpl.
+      exists x6. eapply pres_sem.
+      exact H4. exact H1. easy.
+    }
+    {
+      
+    }
+  }
+  {
+    do 2 eexists. split.
+    eexists. split. easy.
+    exact H2.
+    easy.
+  }
 }
 eapply lemBind.
 {
@@ -473,7 +524,7 @@ Admitted.
 
 (* Result *)
 
-Theorem ticketLockCorrect T A :
+Theorem oneCellExchCorrect T A :
   VerifyImpl (VE T A) (VF T A)
     (fun i => LiftSRelt (Rely i))
     (fun i => LiftSRelt (Guar i))
