@@ -83,12 +83,24 @@ apply H. exists x0, x2. easy.
 Qed.
 
 Inductive SRTC {T E F} {VE : Spec T E} {VF : Spec T F} (R : SRelt VE VF) : SRelt VE VF :=
-| RTCRefl s ρ : SRTC R s ρ s ρ
-| RTCStep s ρ t σ r τ :
+| SRTCRefl s ρ : SRTC R s ρ s ρ
+| SRTCStep s ρ t σ r τ :
     R s ρ t σ ->
     SRTC R t σ r τ ->
     SRTC R s ρ r τ.
 
+Lemma srtcTrans {T E F VE VF} {R : @SRelt T E F VE VF} :
+  (SRTC R S>> SRTC R) S=> SRTC R.
+unfold ssub, subSRelt, SReltCompose.
+intros.
+do 3 destruct H.
+induction H.
+easy.
+econstructor.
+exact H.
+apply IHSRTC.
+easy.
+Qed.
 
 Ltac psimpl :=
 repeat lazymatch goal with

@@ -321,6 +321,6 @@ Record VerifyImpl
       (impl _ m)
       (Q i A m);
   all_return : forall i A (m : F A) v,
-    ReturnStep i (G i) (Q i A m v) m v (Cs i A m v)
+    ReturnStep i (G i) (P i A m <<- Q i A m v) m v (Cs i A m v)
 }.
 Arguments VerifyImpl {T E F} VE VF R G P impl Q.

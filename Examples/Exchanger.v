@@ -168,9 +168,13 @@ Definition Posts {A T} R (m : ExchSig A R) : R -> SRelt T A :=
 
 Definition Guar {T A} (i : Name T) : SRelt T A :=
   fun s x t y =>
-    forall P, [[P]] s x ->
+    (forall j, i <> j ->
+      PCalls x j = PCalls y j /\
+      PRets x j = PRets y j) /\
+    (exists P, [[P]] s x /\
       exists Q, [[Q]] t y /\
-        RealStateTran i P Q.
+        RealStateTran i P Q) \/
+    (ReturnAny (exchImpl A) i s (eq x) t (eq y)).
 
 Definition Rely {T A} (i : Name T) : SRelt T A :=
   SRTC (fun s x t y =>
@@ -197,7 +201,7 @@ Ltac set_ext x := extensionality x; apply propositional_extensionality.
 
 (* Helper lemmas *)
 
-Lemma TInvoke_pres_state {T A R} :
+Lemma pres_state {T A R} :
   forall (m : F A R) i s ρ t σ,
   TInvoke (VE:= VE T A) (VF:= VF T A) (exchImpl A) i R m s (eq ρ) t (eq σ) ->
   PState ρ = PState σ /\
@@ -322,6 +326,40 @@ rewrite <- H, <- H0. easy.
 rewrite <- H, <- H0. easy.
 Qed.
 
+(* Lemma Rely_pres_self {T A} :
+  forall i s x t y,
+  Rely (T:=T) (A:=A) i s x t y ->
+  PCalls x i = PCalls y i /\
+  PRets x i = PRets y i.
+unfold Rely. intros.
+induction H. easy.
+clear H0. psimpl.
+rewrite <- H0, <- H1.
+clear H0 H1.
+unfold
+  InvokeAny, TInvoke,
+  ReturnAny, TReturn
+in *.
+elim_disj; psimpl.
+{
+  apply equal_f with (x:=σ) in H3.
+  rewrite refl_triv in H3.
+  apply eq_triv in H3. psimpl.
+  rewrite H7, H8; easy.
+}
+{
+  apply equal_f with (x:=σ) in H3.
+  rewrite refl_triv in H3.
+  apply eq_triv in H3.
+  unfold mapRetPoss in *. psimpl.
+  rewrite H8, H9; easy.
+}
+{
+  unfold Guar in H0.
+  easy.
+}
+Qed. *)
+
 (* Subsidiary proofs *)
 
 Lemma semStableInvoke {T A R} {i} {m : F A R} :
@@ -378,10 +416,30 @@ elim_disj; psimpl.
   psplit. exact H1. exact H0.
 }
 {
-  unfold Guar in *.
-  apply H0 in H1. clear H0.
-  psimpl. eapply IHSRTC. exact H0.
+  unfold Guar in *. destruct H0; psimpl.
+  {
+    apply IHSRTC with (x1:=x2).
+    easy.
+  }
+  {
+    apply IHSRTC with (x1:=x1).
+    unfold ReturnAny in *. psimpl.
+    apply TReturn_pres_state in H0. psimpl.
+    eapply pres_sem. exact H2. exact H0. easy.
+  }
 }
+Qed.
+
+Lemma Precs_stable_Invoke {T A} :
+  forall (i : Name T) R (m : F A R),
+  SStable
+    (fun s x t y => InvokeAny (exchImpl A) i s (eq x) t (eq y))
+    (Precs R m).
+unfold SStable, stableSPrec, ssub, subSPrec.
+unfold Precs in *. intros. psimpl.
+unfold InvokeAny in *. psimpl.
+exists x1. eapply semStableInvoke.
+psplit. exact H. exact H0.
 Qed.
 
 Lemma exch_correct {T A} {i : Name T} :
@@ -391,76 +449,230 @@ Lemma exch_correct {T A} {i : Name T} :
     (exch v)
     (fun v' => LiftSRelt (Posts _ (Exch v) v') ->> PrecToRelt (Returned i (Exch v) v')).
 unfold exch. intros.
+eapply weakenPrec with
+  (P:=fun _ _ =>
+    LiftSPrec (Precs (option A) (Exch v)) <<-
+    TInvoke (exchImpl A) i _ (Exch v)).
+2:{
+  unfold sub, subRelt. intros. psimpl.
+  unfold LiftSRelt, LiftSPrec in *. psimpl.
+  assert (exists x, x0 = eq x).
+  {
+    eapply Invoke_pres_single.
+    exact H1.
+  } psimpl.
+  specialize (H0 x2 eq_refl). psimpl.
+  move H1 after H0. move x2 at top. move x0 at top.
+  admit.
+}
 eapply lemBind.
 {
-  
+  admit.
 }
+Admitted.
 
 (* Result *)
 
 Theorem ticketLockCorrect T A :
-  VerifyImpl (VE T A) (VF T A) Rely Guar (fun _ => Precs) (exchImpl A) (fun _ => Posts).
+  VerifyImpl (VE T A) (VF T A)
+    (fun i => LiftSRelt (Rely i))
+    (fun i => LiftSRelt (Guar i))
+    (fun _ _ m => LiftSPrec (Precs _ m))
+    (exchImpl A)
+    (fun i _ m v' => LiftSRelt (Posts _ m v')  ->> PrecToRelt (Returned i m v'))
+    (TReturn (exchImpl A)).
 constructor.
 {
+  unfold LiftSRelt. intros. psimpl.
+  exists x. split. easy.
   constructor.
 }
 {
   unfold Rely, sub, subRelt. intros. psimpl.
-  apply rtcTrans. psplit. exact H. easy.
+  unfold LiftSRelt in *. intros. psimpl.
+  specialize (H x1 eq_refl). psimpl.
+  specialize (H0 x2 eq_refl). psimpl.
+  exists x0. split. easy.
+  apply srtcTrans. psplit. exact H1. easy.
 }
 {
   unfold Rely, sub, subRelt. intros.
+  unfold LiftSRelt in *. intros. psimpl.
+  specialize (H0 x eq_refl). psimpl.
+  exists x0. split. easy.
+  econstructor. 2: constructor.
+  exists i. split. easy.
+  do 2 right. easy.
+}
+{
+  unfold Rely, sub, subRelt. intros.
+  unfold LiftSRelt in *. intros. psimpl.
+  assert (exists x, σ = eq x).
+  {
+    unfold InvokeAny in *. psimpl.
+    eapply Invoke_pres_single.
+    exact H0.
+  } psimpl.
+  exists x0. split. easy.
   econstructor. 2: constructor.
   exists i. split. easy. left. easy.
 }
 {
   unfold Rely, sub, subRelt. intros.
+  unfold LiftSRelt in *. intros. psimpl.
+  assert (exists x, σ = eq x).
+  {
+    unfold ReturnAny in *. psimpl.
+    eapply Return_pres_single.
+    exact H0.
+  } psimpl.
+  exists x0. split. easy.
   econstructor. 2: constructor.
   exists i. split. easy. right. left. easy.
 }
 {
-  unfold Rely, sub, subRelt. intros.
-  econstructor. 2: constructor.
-  exists i. split. easy. right. right. easy.
+  exists initPoss. split. easy.
+  exists (MkRSP SCleared None).
+  unfold realPrecSem, atomicPrecSem.
+  cbn. easy.
 }
 {
-  exists initPoss. split. easy. left. exists None. easy.
-}
-{
+  intros.
+  apply liftSPrecStable.
   apply Precs_stable.
 }
 {
-  unfold Stable, stableRelt, Posts, sub, subRelt. intros. psimpl.
-  eapply Precs_stable. psplit.
-  exact H. exact H0.
-}
-{
-  unfold sub, subPrec. intros. psimpl.
-  unfold Posts, Precs, CCleared, COffered, CAccepted in *.
-  psimpl.
-  assert (exists τ, ρ = eq τ).
-  eapply Return_pres_single. exact H0. psimpl.
+  unfold Posts, sub, subPrec. intros. psimpl.
+  unfold LiftSPrec, LiftSRelt in *. psimpl.
+  specialize (H1 x3 eq_refl). psimpl.
+  assert (exists x1, ρ = eq x1).
+  {
+    eapply Return_pres_single.
+    exact H0.
+  } psimpl.
+  apply TReturn_pres_state in H0. psimpl.
   exists x0. split. easy.
-  apply TReturn_pres_state in H0. destruct_all.
-  rewrite <- H. clear H4.
-  elim_disj.
-  {
-    left. psimpl. exists x4.
-    rewrite <- H0 at 1. easy.
-  }
-  {
-    right. left. destruct_all.
-    rewrite H0 in H2 at 1.
-    exists x4, x5, x6. easy.
-  }
-  {
-    right. right. destruct_all.
-    rewrite H0 in H3 at 1.
-    exists x4, x5, x6, x7, x8. easy.
-  }
+  clear - H1 H H0.
+  unfold Precs in *. psimpl.
+  exists x1. eapply pres_sem.
+  exact H0. exact H. easy.
 }
 {
   intros. destruct m. cbn.
   apply exch_correct.
+}
+{
+  unfold ReturnStep. intros. psimpl.
+  unfold LiftSRelt, LiftSPrec in *. psimpl.
+  specialize (H1 x1 eq_refl). psimpl.
+  exists (eq x0).
+  split.
+  {
+    exists x0. easy.
+  }
+  split.
+  {
+    intros. subst.
+    exists σ.
+    repeat (easy || constructor).
+  }
+  split.
+  {
+    intros. subst.
+    apply H2; easy.
+  }
+  split.
+  {
+    unfold TReturn.
+    split. easy.
+    split.
+    {
+      split.
+      {
+        constructor; cbn.
+        easy. rewrite eqb_id. easy.
+      }
+      {
+        cbn. intros. rewrite eqb_nid; easy.
+      }
+    }
+    easy.
+  }
+  {
+    intros. apply eq_inj in H. psimpl.
+    exists (retPoss i x2). split.
+    {
+      set_ext y. unfold mapRetPoss, retPoss.
+      split; intros; psimpl.
+      {
+        destruct x, y. cbn in *.
+        f_equal. easy.
+        {
+          extensionality j.
+          dec_eq_nats i j.
+          rewrite eqb_id. easy.
+          rewrite eqb_nid, H8; easy.
+        }
+        {
+          extensionality j.
+          dec_eq_nats i j.
+          rewrite eqb_id. easy.
+          rewrite eqb_nid, H9; easy.
+        }
+      }
+      {
+        exists x2. split. easy.
+        cbn. rewrite eqb_id.
+        apply H2 in H0.
+        specialize (H0 x2 eq_refl). psimpl.
+        repeat split; (easy || apply differ_pointwise_trivial).
+      }
+    }
+    {
+      right.
+      exists _, m, v.
+      split. easy.
+      split.
+      {
+        split.
+        {
+          constructor; cbn.
+          easy. rewrite eqb_id. easy.
+        }
+        {
+          cbn. intros. rewrite eqb_nid; easy.
+        }
+      }
+      split. easy.
+      {
+        set_ext y.
+        unfold retPoss, mapRetPoss.
+        split; intros; psimpl.
+        {
+          exists x2. split. easy.
+          cbn. rewrite eqb_id.
+          apply H2 in H0.
+          specialize (H0 x2 eq_refl). psimpl.
+          repeat split; (easy || apply differ_pointwise_trivial).
+        }
+        {
+          destruct y, x0. cbn in *.
+          f_equal. easy.
+          {
+            extensionality j.
+            dec_eq_nats i j.
+            rewrite eqb_id. easy.
+            rewrite eqb_nid, H8; easy.
+          }
+          {
+            extensionality j.
+            dec_eq_nats i j.
+            rewrite eqb_id. easy.
+            rewrite eqb_nid, H9; easy.
+          }
+        }
+      }
+    }
+  }
 }
 Qed.
