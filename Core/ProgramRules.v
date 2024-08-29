@@ -36,6 +36,45 @@ Context
   {VF : Spec T F}
   {R G : Relt VE VF}.
 
+Lemma weakenPost {A P} {C : Prog E A} :
+  forall Q Q',
+  VerifyProg i R G P C Q ->
+  (forall v, Q v ==> Q' v) ->
+  VerifyProg i R G P C Q'.
+unfold VerifyProg. intros.
+repeat rewrite paco_eqv in *.
+generalize dependent P. generalize dependent C.
+pcofix rec. intros.
+punfold H1. pfold.
+dependent destruction H1.
+{
+  econstructor. unfold sub, subRelt in *.
+  intros. apply H0. apply H. easy.
+}
+{
+  econstructor. exact H. exact H1. easy.
+  intros. specialize (H3 v). destruct_all.
+  split. easy.
+  destruct H4. 2: destruct H4.
+  right. eapply rec. easy.
+}
+{
+  destruct H2. 2: destruct H2.
+  econstructor. exact H. easy.
+  right. apply rec. easy.
+}
+Qed.
+
+Lemma weakenPrec {A Q} {C : Prog E A} :
+  forall P P',
+  VerifyProg i R G P C Q ->
+  P' ==> P ->
+  VerifyProg i R G P' C Q.
+intros.
+eapply weakenSafe.
+exact H0. easy.
+Qed.
+
 Lemma lemNoOp {A Q} {P : Relt VE VF} {C : Prog E A} :
   forall QS,
   Stable R QS ->
@@ -75,30 +114,110 @@ econstructor. unfold sub, subRelt. intros.
 easy.
 Qed.
 
+Lemma lemForget {A} {P Q : Relt VE VF} {S : Post VE VF A} {C : Prog E A} :
+  VerifyProg i R G (fun _ _ t ys => exists s xs, Q s xs t ys) C S ->
+  VerifyProg i R G (P ->> Q) C S.
+intros.
+eapply weakenPrec. exact H.
+unfold sub, subRelt.
+intros. psimpl.
+exists x, x0. easy.
+Qed.
+
+Variant OverPossStep {T F} {VF : Spec T F} i (ρ σ : Poss VF) : Prop :=
+| PPendCall A (m : F A) :
+  ρ.(PState) = σ.(PState) ->
+  ρ.(PCalls) i = CallIdle ->
+  σ.(PCalls) i = CallPoss m ->
+  ρ.(PRets) i = RetIdle ->
+  σ.(PRets) i = RetIdle ->
+  OverPossStep i ρ σ
+| PCommitCall A (m : F A) :
+  VF.(Step) ρ.(PState) (i, CallEv m) σ.(PState) ->
+  ρ.(PCalls) i = CallPoss m ->
+  σ.(PCalls) i = CallDone m ->
+  ρ.(PRets) i = RetIdle ->
+  σ.(PRets) i = RetIdle ->
+  OverPossStep i ρ σ
+| PCommitRet A (m : F A) v :
+  VF.(Step) ρ.(PState) (i, RetEv m v) σ.(PState) ->
+  ρ.(PCalls) i = CallDone m ->
+  σ.(PCalls) i = CallDone m ->
+  ρ.(PRets) i = RetIdle ->
+  σ.(PRets) i = RetPoss m v ->
+  OverPossStep i ρ σ
+| PPendRet A (m : F A) v :
+  ρ.(PState) = σ.(PState) ->
+  ρ.(PCalls) i = CallDone m ->
+  σ.(PCalls) i = CallIdle ->
+  ρ.(PRets) i = RetPoss m v ->
+  σ.(PRets) i = RetIdle ->
+  OverPossStep i ρ σ.
+
+Inductive OverPossSteps {T F} {VF : Spec T F} : Poss VF -> Poss VF -> Prop :=
+| PossStepsRefl ρ :
+    OverPossSteps ρ ρ
+| PossStepsStep i ρ σ τ :
+    OverPossStep i ρ σ ->
+    (forall j, i <> j -> PCalls ρ j = PCalls σ j) ->
+    (forall j, i <> j -> PRets ρ j = PRets σ j) ->
+    OverPossSteps σ τ ->
+    OverPossSteps ρ τ.
+
+Definition CallStep {A} i (m : E A) : Relt VE VF :=
+  fun s xs t ys =>
+    InterUStep i s (Some (CallEv m)) t /\
+    forall y, ys y ->
+      exists x, xs x /\
+        OverPossSteps x y.
+
 Lemma lemCallAtomic {A Q} {P : Relt VE VF} {m : E A} :
   Stable R Q ->
-  IsAtomic VE m ->
-  (forall v, Commit i G P (RetEv m v) (Q v)) ->
-  VerifyProg i R G P (call m) Q.
-
-Lemma lemCallSimp {A Q S} {P : Relt VE VF} {m : E A} :
-  Stable R Q ->
-  Stable R S ->
-  Commit i G P (CallEv m) Q ->
-  (forall v, Commit i G (P ->> Q) (RetEv m v) (S v)) ->
-  VerifyProg i R G P (call m) (fun v _ _ => ReltToPrec (S v)).
+  Stable R (CallStep i m) ->
+  CallStep i m ==> G ->
+  (forall s xs, ReltToPrec P s xs -> exists x, xs x) ->
+  (forall v, Commit i G (P ->> CallStep i m) (RetEv m v) (Q v)) ->
+  VerifyProg i R G P (call m) (fun v => P ->> CallStep i m ->> Q v).
 intros.
-econstructor. exact H. exact H0.
-unfold Commit, id.
-intros. psimpl.
-apply H1.
-exists x, x0.
-easy. easy. easy. easy.
-intros. specialize (H2 v).
-split. easy.
-econstructor. unfold sub, subRelt. intros.
-psimpl.
-exists x1, x2. easy.
+apply lemCall.
+easy. easy.
+{
+  unfold Commit. intros.
+  exists ρs.
+  split.
+  {
+    eapply H2.
+    exact H4.
+  }
+  split.
+  {
+    intros. exists σ.
+    repeat (easy || constructor).
+  }
+  assert (CallStep i m s ρs t ρs).
+  {
+    split.
+    {
+      split. 2: easy.
+      constructor; cbn. easy.
+      intros. rewrite H5; easy.
+    }
+    {
+      intros. exists y.
+      repeat (easy || constructor).
+    }
+  }
+  split.
+  {
+    easy.
+  }
+  {
+    apply H1. easy.
+  }
+}
+{
+  easy.
+}
 Qed.
 
 Lemma lemBind {A B P S} {C : Prog E A} {k : A -> Prog E B} :
@@ -182,46 +301,6 @@ punfold H1. dependent destruction H1.
   eapply rec. exact H0.
   pfold. easy.
 }
-Qed.
-
-
-Lemma weakenPost {A P} {C : Prog E A} :
-  forall Q Q',
-  VerifyProg i R G P C Q ->
-  (forall v, Q v ==> Q' v) ->
-  VerifyProg i R G P C Q'.
-unfold VerifyProg. intros.
-repeat rewrite paco_eqv in *.
-generalize dependent P. generalize dependent C.
-pcofix rec. intros.
-punfold H1. pfold.
-dependent destruction H1.
-{
-  econstructor. unfold sub, subRelt in *.
-  intros. apply H0. apply H. easy.
-}
-{
-  econstructor. exact H. exact H1. easy.
-  intros. specialize (H3 v). destruct_all.
-  split. easy.
-  destruct H4. 2: destruct H4.
-  right. eapply rec. easy.
-}
-{
-  destruct H2. 2: destruct H2.
-  econstructor. exact H. easy.
-  right. apply rec. easy.
-}
-Qed.
-
-Lemma weakenPrec {A Q} {C : Prog E A} :
-  forall P P',
-  VerifyProg i R G P C Q ->
-  P' ==> P ->
-  VerifyProg i R G P' C Q.
-intros.
-eapply weakenSafe.
-exact H0. easy.
 Qed.
 
 Lemma foldProg {A} :

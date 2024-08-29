@@ -1,6 +1,7 @@
 From LHL.Core Require Import
   ProgramRules
   LogicFacts
+  SingConds
   Program
   Traces
   Tensor
@@ -19,7 +20,8 @@ From LHL.Examples Require Import
 From Coq Require Import
   Logic.FunctionalExtensionality
   Logic.PropExtensionality
-  Program.Equality.
+  Program.Equality
+  Relations.Relation_Operators.
 
 From Paco Require Import
   paco.
@@ -81,25 +83,101 @@ Definition exchImpl A : Impl (E A) (F A) :=
 
 (* Conditions *)
 
-Definition Relt T A := Relt (VE T A) (VF T A).
-Definition Prec T A := Prec (VE T A) (VF T A).
-Definition Post T A := Post (VE T A) (VF T A).
+Definition SRelt T A := SRelt (VE T A) (VF T A).
+Definition SPrec T A := SPrec (VE T A) (VF T A).
 
-Definition Precs {A T} R (m : ExchSig A R) : Prec T A :=
-  fun s ρs => _.
+Variant AtomicStatePrec {T A} :=
+| SCleared
+| SOffered (i : Name T) (v : A)
+| SAcceptd (i j : Name T) (v w : A).
+Arguments AtomicStatePrec : clear implicits.
 
-Definition Posts {A T} R (m : ExchSig A R) : Post T A R :=
+Variant AtomicStateTran {T A} i : AtomicStatePrec T A -> AtomicStatePrec T A -> Prop :=
+| STOffer v :
+  AtomicStateTran i
+    (SCleared)
+    (SOffered i v)
+| STRevoke v :
+  AtomicStateTran i
+    (SOffered i v)
+    (SCleared)
+| STAccept v j w :
+  i <> j ->
+  AtomicStateTran i
+    (SOffered j w)
+    (SAcceptd j i w v)
+| STFinish j v w :
+  i <> j ->
+  AtomicStateTran i
+    (SAcceptd j i w v)
+    (SCleared).
+
+Record RealStatePrec {T A} := MkRSP {
+  RSCurr : AtomicStatePrec T A;
+  RSNext : option (AtomicStatePrec T A)
+}.
+Arguments RealStatePrec : clear implicits.
+Arguments MkRSP {T A}.
+
+Variant RealStateTran {T A} i : RealStatePrec T A -> RealStatePrec T A -> Prop :=
+| CallTran s t :
+  AtomicStateTran i s t ->
+  RealStateTran i (MkRSP s None) (MkRSP s (Some t))
+| RetTran s t :
+  RealStateTran i (MkRSP s (Some t)) (MkRSP t None).
+
+Definition CCleared {A T} m : SPrec T A :=
+  fun s ρ =>
+    snd s = CASDef None m /\
+    PState ρ = ExchDef {} {}.
+
+Definition COffered {A T} m (i : Name T) (v : A) : SPrec T A :=
+  fun s ρ =>
+    snd s = CASDef (OFFERED v) m /\
+    PState ρ = ExchDef {i => v} {}.
+
+Definition CAcceptd {A T} m (i j : Name T) (v w : A) : SPrec T A :=
+  fun s ρ =>
+    snd s = CASDef (ACCEPTED v) m /\
+    PState ρ = ExchDef {j => w} {i => v}.
+
+Definition atomicPrecSem {T A} (P : AtomicStatePrec T A) m : SPrec T A :=
+  match P with
+  | SCleared => CCleared m
+  | SOffered i v => COffered m i v
+  | SAcceptd i j v w => CAcceptd m i j v w
+  end.
+
+Definition realPrecSem {T A} (P : RealStatePrec T A) : SPrec T A :=
+  atomicPrecSem P.(RSCurr) match P.(RSNext) with
+  | None | Some SCleared =>
+      None
+  | Some (SOffered i v) =>
+      Some (MkCASPend i (CAS None (OFFERED v)))
+  | Some (SAcceptd i j v w) =>
+      Some (MkCASPend i (CAS (OFFERED v) (ACCEPTED w)))
+  end.
+
+Notation "[[ P ]]" := (realPrecSem P).
+
+Definition Precs {A T} R (m : ExchSig A R) : SPrec T A :=
+  fun s x => exists P, [[P]] s x.
+
+Definition Posts {A T} R (m : ExchSig A R) : R -> SRelt T A :=
   fun _ _ _ => Precs R m.
 
-Definition Guar {T A} (i : Name T) : Relt T A :=
-  fun s ρs t σs => _.
+Definition Guar {T A} (i : Name T) : SRelt T A :=
+  fun s x t y =>
+    forall P, [[P]] s x ->
+      exists Q, [[Q]] t y /\
+        RealStateTran i P Q.
 
-Definition Rely {T A} (i : Name T) : Relt T A :=
-  RTC (fun s ρs t σs =>
-    exists j, i <> j /\ (
-      Guar j s ρs t σs \/
-      InvokeAny (exchImpl A) j s ρs t σs \/
-      ReturnAny (exchImpl A) j s ρs t σs)).
+Definition Rely {T A} (i : Name T) : SRelt T A :=
+  SRTC (fun s x t y =>
+    exists j, i <> j /\
+      (InvokeAny (exchImpl A) j s (eq x) t (eq y) \/
+       ReturnAny (exchImpl A) j s (eq x) t (eq y) \/
+       Guar j s x t y)).
 
 (* Tactics *)
 
@@ -119,145 +197,203 @@ Ltac set_ext x := extensionality x; apply propositional_extensionality.
 
 (* Helper lemmas *)
 
+Lemma TInvoke_pres_state {T A R} :
+  forall (m : F A R) i s ρ t σ,
+  TInvoke (VE:= VE T A) (VF:= VF T A) (exchImpl A) i R m s (eq ρ) t (eq σ) ->
+  PState ρ = PState σ /\
+  snd s = snd t.
+unfold TInvoke. intros. destruct_all.
+assert (σ = invPoss i ρ m).
+{
+  rewrite H2. exists ρ.
+  cbn. rewrite eqb_id.
+  repeat split; (easy || apply differ_pointwise_trivial).
+}
+subst. easy.
+Qed.
+
+Lemma refl_triv {A} {x : A} : (x = x) = True.
+apply propositional_extensionality.
+easy.
+Qed.
+
+Lemma eq_triv {P : Prop} :
+  True = P ->
+  P.
+intros.
+decide_prop P. easy.
+exfalso. apply H0.
+rewrite <- H in H0.
+contradiction.
+Qed.
+
+Lemma TReturn_pres_state {T A R} :
+  forall (m : F A R) v i s ρ t σ,
+  TReturn (VE:= VE T A) (VF:= VF T A) (exchImpl A) i m v s (eq ρ) t (eq σ) ->
+  PState ρ = PState σ /\
+  snd s = snd t.
+unfold TReturn. intros. destruct_all.
+split. 2: easy.
+apply equal_f with (x:=σ) in H2.
+rewrite refl_triv in H2. apply eq_triv in H2.
+unfold mapRetPoss in H2. psimpl.
+easy.
+Qed.
+
+Lemma Invoke_pres_single {T A R} :
+  forall (m : F A R) i s ρ t σs,
+  TInvoke (VE:= VE T A) (VF:= VF T A) (exchImpl A) i R m s (eq ρ) t σs ->
+  exists σ, σs = eq σ.
+intros.
+unfold TInvoke in H. psimpl.
+exists (invPoss i ρ m).
+set_ext σ. split; intros; destruct_all; subst.
+{
+  unfold TIdle in H. destruct_all.
+  specialize (H2 x eq_refl). destruct_all.
+  destruct x, σ. unfold invPoss. cbn in *.
+  f_equal; try easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H6; easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H7; easy.
+}
+{
+  cbn. rewrite eqb_id. exists ρ.
+  repeat split; (easy || apply differ_pointwise_trivial).
+}
+Qed.
+
+Lemma Return_pres_single {T A R} :
+  forall (m : F A R) v i s ρ t σs,
+  TReturn (VE:= VE T A) (VF:= VF T A) (exchImpl A) i m v s (eq ρ) t σs ->
+  exists σ, σs = eq σ.
+intros.
+unfold TReturn, mapRetPoss in H. psimpl.
+exists (retPoss i ρ).
+set_ext σ. split; intros; destruct_all; subst.
+{
+  unfold retPoss. destruct x, σ. cbn in *.
+  f_equal. easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H7; easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H8; easy.
+}
+{
+  cbn. rewrite eqb_id. exists ρ.
+  destruct H0. ddestruct H0. cbn in *.
+  symmetry in x0. apply H in x0.
+  specialize (x0 ρ eq_refl).
+  repeat split; (easy || apply differ_pointwise_trivial).
+}
+Qed.
+
+Lemma eq_inj {A} :
+  forall x y : A, eq x = eq y -> x = y.
+intros.
+assert (forall z, eq x z = eq z y).
+{
+  intros. apply propositional_extensionality.
+  split; intros.
+  rewrite H in H0. easy.
+  rewrite H. easy.
+}
+specialize (H0 x).
+rewrite <- H0. easy.
+Qed.
+
+Lemma pres_sem {T A} :
+  forall s x t y,
+  snd s = snd t ->
+  PState x = PState y ->
+  forall P : RealStatePrec T A,
+  [[P]] s x -> [[P]] t y.
+unfold realPrecSem. intros.
+destruct P, RSCurr0; psimpl;
+unfold CCleared, COffered, CAcceptd in *;
+psimpl.
+rewrite <- H, <- H0. easy.
+rewrite <- H, <- H0. easy.
+rewrite <- H, <- H0. easy.
+Qed.
 
 (* Subsidiary proofs *)
 
+Lemma semStableInvoke {T A R} {i} {m : F A R} :
+  forall P : RealStatePrec T A,
+  SStable
+    (fun s x t y => TInvoke (exchImpl A) i _ m s (eq x) t (eq y))
+    [[P]].
+unfold SStable, stableSPrec, ssub, subSPrec.
+unfold TInvoke. intros. psimpl.
+destruct H1. cbn in *. ddestruct H1.
+eapply pres_sem with (x:=x0). exact H2.
+apply equal_f with (x:=ρ) in H3.
+rewrite refl_triv in H3.
+apply eq_triv in H3. psimpl.
+easy. easy.
+Qed.
+
+Lemma semStableReturn {T A R} {i} {m : F A R} {v} :
+  forall P : RealStatePrec T A,
+  SStable
+    (fun s x t y => TReturn (exchImpl A) i m v s (eq x) t (eq y))
+    [[P]].
+unfold SStable, stableSPrec, ssub, subSPrec.
+unfold TReturn. intros. psimpl.
+destruct H1. cbn in *. ddestruct H1.
+eapply pres_sem with (x:=x0). exact H2.
+apply equal_f with (x:=ρ) in H3.
+rewrite refl_triv in H3.
+apply eq_triv in H3.
+unfold mapRetPoss in *. psimpl.
+easy. easy.
+Qed.
+
+(* Lemma semGuarTran {T A} : *)
+
 Lemma Precs_stable {T A} :
   forall (i : Name T) R (m : F A R),
-  Stable (Rely i) (Precs R m).
+  SStable (Rely i) (Precs R m).
+unfold SStable, stableSPrec, ssub, subSPrec.
+unfold Precs, Rely. intros. psimpl.
+generalize dependent x1.
+induction H0; intros. exists x1. easy.
+clear H0. psimpl.
+unfold InvokeAny, ReturnAny in *.
+elim_disj; psimpl.
+{
+  apply IHSRTC with (x1:=x1).
+  eapply semStableInvoke.
+  psplit. exact H1. exact H0.
+}
+{
+  apply IHSRTC with (x1:=x1).
+  eapply semStableReturn.
+  psplit. exact H1. exact H0.
+}
+{
+  unfold Guar in *.
+  apply H0 in H1. clear H0.
+  psimpl. eapply IHSRTC. exact H0.
+}
 Qed.
 
 Lemma exch_correct {T A} {i : Name T} :
   forall v,
-  VerifyProg i (Rely i) (Guar i)
-    (prComp (Precs (option A) (Exch v)) (TInvoke (exchImpl A) i _ (Exch v)) ->> Rely i)
+  VerifyProg i (LiftSRelt (Rely i)) (LiftSRelt (Guar i))
+    (prComp (LiftSPrec (Precs (option A) (Exch v))) (TInvoke (exchImpl A) i _ (Exch v)) ->> LiftSRelt (Rely i))
     (exch v)
-    (fun v' => Posts _ (Exch v) v' ->> PrecToRelt (Returned i (Exch v))).
+    (fun v' => LiftSRelt (Posts _ (Exch v) v') ->> PrecToRelt (Returned i (Exch v) v')).
 unfold exch. intros.
 eapply lemBind.
 {
-  eapply lemCAS with
-    (PS:=fun (ρs σs : PossSet (VF T A)) =>
-      exists ρ, ρs = eq ρ /\ exists σ, σs = eq σ /\
-      PState ρ = ExchDef {} {} /\
-      (PState σ = ExchDef {i => v} {} \/
-       exists j w,
-        i <> j /\
-        PState σ = ExchDef {j => w} {i => v})).
-  {
-    unfold Precs, CCleared, COffered, CAccepted.
-    intros. psimpl. elim_disj; destruct_all.
-    {
-      admit.
-    }
-    {
-      admit.
-    }
-    {
-      admit.
-    }
-  }
-  {
-    admit.
-  }
-  {
-    admit.
-  }
-  {
-    admit.
-  }
-  {
-    admit.
-  }
-}
-intros. destruct v0.
-{
-  eapply lemBind.
-  {
-    eapply lemCAS with
-      (PS:=fun s ρs => _)
-      (PF:=fun s ρs => _).
-    admit.
-    admit.
-    admit.
-    admit.
-    admit.
-  }
-  intros. destruct v0.
-  {
-    eapply lemRet.
-    admit.
-  }
-  {
-    eapply lemBind.
-    {
-      eapply lemCall.
-      admit.
-      admit.
-      admit.
-      admit.
-    }
-    intros. destruct v0.
-    {
-      destruct o.
-      eapply lemBind.
-      {
-        eapply lemCAS.
-        admit.
-        admit.
-        admit.
-        admit.
-        admit.
-      }
-      {
-        intros.
-        eapply lemRet.
-        admit.
-      }
-    }
-    {
-      eapply lemRet.
-      admit.
-    }
-  }
-}
-{
-  eapply lemBind.
-  {
-    eapply lemCall.
-    admit.
-    admit.
-    admit.
-    admit.
-  }
-  {
-    intros. destruct v0. destruct o.
-    {
-      eapply lemBind.
-      {
-        eapply lemCAS.
-        admit.
-        admit.
-        admit.
-        admit.
-        admit.
-      }
-      {
-        intros. destruct v0.
-        {
-          eapply lemRet.
-          admit.
-        }
-        {
-          eapply lemRet.
-          admit.
-        }
-      }
-    }
-    {
-
-    }
-  }
+  
 }
 
 (* Result *)
