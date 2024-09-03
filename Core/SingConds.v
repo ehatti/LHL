@@ -4,6 +4,10 @@ From LHL.Core Require Import
   Specs
   Logic.
 
+From Coq.Logic Require Import
+  PropExtensionality
+  FunctionalExtensionality.
+
 Definition SPrec {T E F} (VE : Spec T E) (VF : Spec T F) :=
   InterState F VE ->
   Poss VF ->
@@ -134,3 +138,49 @@ match goal with
   split
 | [ |- _ ] => fail "Cannot split on this goal"
 end.
+
+
+Definition SCommit {T E F} {VE : Spec T E} {VF : Spec T F} i
+  (G : SRelt VE VF)
+  (P : SPrec VE VF)
+  (ev : Event E)
+  (Q : SRelt VE VF) :=
+  forall s x t,
+  P s x ->
+  Util.differ_pointwise (fst s) (fst t) i ->
+  UnderThreadStep (fst s i) (Some ev) (fst t i) ->
+  VE.(Step) (snd s) (i, ev) (snd t) ->
+    exists y,
+      PossSteps x y /\
+      Q s x t y /\
+      G s x t y.
+
+Lemma liftSCommit {T E F} {VE : Spec T E} {VF : Spec T F} {i} {G Q : SRelt VE VF} {P : SPrec VE VF} {ev} :
+  SCommit i G P ev Q ->
+  Commit i (LiftSRelt G) (LiftSPrec P) ev (LiftSRelt Q).
+unfold SCommit, Commit, LiftSRelt, LiftSPrec.
+intros. psimpl.
+apply H with (t:=t) in H4. psimpl.
+exists (eq x0).
+split.
+{
+  exists x0. easy.
+}
+split.
+{
+  intros. subst.
+  exists x. easy.
+}
+split.
+{
+  intros.
+  assert (x = x1) by (now rewrite H6).
+  subst. exists x0. easy.
+}
+{
+  intros.
+  assert (x = x1) by (now rewrite H6).
+  subst. exists x0. easy.
+}
+all: easy.
+Qed.
