@@ -137,11 +137,19 @@ Definition atomicPrecSem {T A} (P : AtomicStatePrec T A) m : SPrec T A :=
 
 Notation "[[ P ]]" := (atomicPrecSem P).
 
-Definition Precs {A T} R (m : ExchSig A R) : SPrec T A :=
-  fun s x => exists P m, [[P]] m s x.
+Definition Precs {A T} (i : Name T) : SPrec T A :=
+  fun s x =>
+    exists m,
+    [[SCleared]] m s x \/
+    (exists j v,
+      i <> j /\
+      [[SOffered j v]] m s x) \/
+    (exists j k v w,
+      i <> j /\ i <> k /\ j <> k /\
+      [[SAcceptd j k v w]] m s x).
 
-Definition Posts {A T} R (m : ExchSig A R) : R -> SRelt T A :=
-  fun _ _ _ => Precs R m.
+Definition Posts {A T} (i : Name T) : SRelt T A :=
+  fun _ _ => Precs i.
 
 Definition Guar {T A} (i : Name T) : SRelt T A :=
   fun s x t y =>
@@ -159,6 +167,10 @@ Definition Guar {T A} (i : Name T) : SRelt T A :=
         snd s = CASDef a None /\
         snd t = CASDef a (Some (MkCASPend i (CAS e n))) /\
         PState x = PState y)) \/
+    (exists a e n,
+      x = y /\
+      snd s = CASDef a (Some (MkCASPend i (CAS e n))) /\
+      snd t = CASDef a None) \/
     (ReturnAny (exchImpl A) i s (eq x) t (eq y)).
 
 Definition Rely {T A} (i : Name T) : SRelt T A :=
@@ -383,6 +395,9 @@ elim_disj; psimpl.
     apply H0. easy.
   }
   {
+    easy.
+  }
+  {
     apply equal_f with (x:=σ) in H3.
     rewrite refl_triv in H3.
     apply eq_triv in H3. psimpl.
@@ -485,6 +500,10 @@ elim_disj; psimpl.
   congruence.
 }
 {
+  rewrite H0 in H2.
+  now ddestruct H2.
+}
+{
   unfold ReturnAny, TReturn in H1. psimpl.
   rewrite H3 in H0. apply IHSRTC in H0. psimpl.
   clear IHSRTC. rewrite <- H5.
@@ -500,9 +519,9 @@ Qed.
 (* Lemma semGuarTran {T A} : *)
 
 Lemma Precs_stable {T A} :
-  forall (i : Name T) R (m : F A R),
-  SStable (Rely i) (Precs R m).
-unfold SStable, stableSPrec, ssub, subSPrec.
+  forall (i : Name T),
+  SStable (Rely (A:=A) i) (Precs i).
+(* unfold SStable, stableSPrec, ssub, subSPrec.
 unfold Precs, Rely. intros. psimpl.
 generalize dependent x1.
 generalize dependent x2.
@@ -541,13 +560,26 @@ elim_disj; psimpl.
     }
   }
   {
+    assert (H1' := H1).
+    eapply sem_shows_pend in H1'. psimpl.
+    rewrite H2 in H0. ddestruct H0.
+    eapply IHSRTC with (x2:=None) (x1:=x1).
+    clear - H1 H2 H3.
+    destruct x1; psimpl;
+    unfold CCleared, COffered, CAcceptd in *;
+    psimpl.
+    rewrite H2 in H. now ddestruct H.
+    rewrite H2 in H. now ddestruct H.
+    rewrite H2 in H. now ddestruct H.
+  }
+  {
     apply IHSRTC with (x2:=x2) (x1:=x1).
     unfold ReturnAny in *. psimpl.
     apply TReturn_pres_state in H0. psimpl.
     eapply pres_sem. exact H2. exact H0. easy.
   }
-}
-Qed.
+} *)
+Admitted.
 
 (* Lemma Precs_stable_Invoke {T A} :
   forall (i : Name T) R (m : F A R),
@@ -566,7 +598,9 @@ Definition CallStep {T A} i (e n : option (Offer A)) : SRelt T A :=
     exists a,
       snd s = CASDef a None /\
       snd t = CASDef a (Some (MkCASPend i (CAS e n))) /\
-      PState x = PState y.
+      PState x = PState y /\
+      PCalls x i = PCalls y i /\
+      PRets x i = PRets y i.
 
 Lemma weakenCommitPre {T E F} {VE : Spec T E} {VF : Spec T F} {i G Q P' e} :
   forall P : Prec VE VF,
@@ -583,88 +617,311 @@ easy.
 easy.
 Qed.
 
+Lemma sem_uniq {A T} :
+  forall P Q : AtomicStatePrec T A,
+  forall pm qm s x,
+  [[P]] pm s x ->
+  [[Q]] qm s x ->
+  pm = qm /\
+  P = Q.
+intros.
+destruct P, Q; psimpl;
+unfold CCleared, COffered, CAcceptd in *;
+psimpl.
+{ rewrite H in H0. now ddestruct H0. }
+{ rewrite H in H0. now ddestruct H0. }
+{ rewrite H in H0. now ddestruct H0. }
+{ rewrite H in H0. now ddestruct H0. }
+{
+  rewrite H in H0. rewrite H2 in H1.
+  ddestruct H1. apply insert_cong in x.
+  psimpl. now ddestruct H1.
+}
+{
+  rewrite H in H0. rewrite H1 in H2.
+  ddestruct H1.
+}
+{ rewrite H in H0. now ddestruct H0. }
+{ rewrite H in H0. now ddestruct H0. }
+{
+  rewrite H in H0. ddestruct H0.
+  rewrite H2 in H1. ddestruct H1.
+  apply insert_cong in x1. psimpl.
+  ddestruct H1. clear H2.
+  apply insert_cong in x. psimpl.
+  ddestruct H1. clear H2. easy.
+}
+Qed.
+
 Lemma lemCAS {T A} {P : SPrec T A} :
-  forall (Q : bool -> SRelt T A) i e n,
-  (forall v,
-    SStable (Rely i) (Q v)) ->
-  (forall v,
-    SCommit i
-      (Guar i)
-      (P <<S CallStep i e n)
-      (RetEv (CAS e n) v)
-      (Q v)) ->
+  forall (QT QF : SPrec T A) i e n,
+  SStable (Rely i) QT ->
+  SStable (Rely i) QF ->
+  SCommit i
+    (Guar i)
+    (P <<S CallStep i e n)
+    (RetEv (CAS e n) true)
+    (fun _ _ => QT) ->
+  SCommit i
+    (Guar i)
+    (P <<S CallStep i e n)
+    (RetEv (CAS e n) false)
+    (fun _ _ => QF) ->
   VerifyProg i
     (LiftSRelt (Rely i)) (LiftSRelt (Guar i))
     (fun _ _ => LiftSPrec P)
     (call (CAS e n))
-    (fun v => (fun _ _ => LiftSPrec P) ->> LiftSRelt (CallStep i e n) ->> LiftSRelt (Q v)).
-intros. eapply lemCall.
-{
-  eapply liftSReltStable.
-  unfold SStable, stableSRelt, ssub, subSRelt.
-  unfold CallStep. intros. psimpl.
-  eapply Rely_resp_call in H2.
-  2: exact H3. psimpl.
-  exists x1.
-  rewrite <- H2, <- H5.
+    (fun (v : bool) _ _ => LiftSPrec (if v then QT else QF)).
+intros.
+eapply weakenPost with
+  (Q:=fun (v : bool) =>
+    (fun _ _ => LiftSPrec P) ->>
+    LiftSRelt (CallStep i e n) ->>
+    LiftSRelt (fun _ _ => if v then QT else QF)).
+2:{
+  unfold sub, subRelt, LiftSPrec, LiftSRelt.
+  intros. psimpl.
+  specialize (H4 x3 eq_refl). psimpl.
+  specialize (H5 x0 eq_refl). psimpl.
+  exists x2. split. easy.
   easy.
 }
+apply lemCall.
 {
-  unfold Stable, stablePost.
-  intros. apply liftSReltStable.
-  easy.
+  unfold Stable, stableRelt, sub, subRelt, LiftSRelt.
+  intros. psimpl. unfold CallStep in H3. psimpl.
+  specialize (H3 x eq_refl). psimpl.
+  specialize (H5 x2 eq_refl). psimpl.
+  exists x1. split. easy. exists x3.
+  assert (H5' := H5).
+  eapply Rely_resp_call in H5. psimpl. 2: exact H6.
+  eapply Rely_pres_self in H5'. psimpl.
+  now rewrite <- H10, <- H11, <- H3, <- H5.
 }
 {
-  unfold Commit. intros. ddestruct H3.
-  unfold LiftSPrec in H1. psimpl.
-  exists (eq x3). repeat split.
-  {
-    exists x3. easy.
-  }
+  unfold Stable, stablePost, stableRelt, sub, subRelt.
+  unfold LiftSRelt, LiftSPrec.
+  intros. psimpl.
+  specialize (H3 x eq_refl). psimpl.
+  specialize (H5 x2 eq_refl). psimpl.
+  exists x1. split. easy.
+  destruct v.
+  apply H. psplit. exact H4. easy.
+  apply H0. psplit. exact H4. easy.
+}
+{
+  unfold Commit, LiftSPrec, LiftSRelt.
+  intros. psimpl. exists (eq x1).
+  split.
+  { exists x1. easy. }
+  split. 
   {
     intros. subst. exists σ.
     repeat (easy || constructor).
   }
+  split.
   {
-    unfold LiftSRelt. intros.
-    assert (x3 = x1) by now rewrite H1.
-    subst. exists x1. split. easy.
-    unfold CallStep. ddestruct H4.
+    intros.
+    apply eq_inj in H3. subst.
+    exists x. split. easy.
+    ddestruct H5. ddestruct H6.
     now exists a.
   }
   {
-    unfold LiftSRelt. intros.
-    assert (x3 = x1) by now rewrite H1.
-    subst. exists x1. split. easy.
+    intros.
+    apply eq_inj in H3. subst.
+    exists x. split. easy.
     right. left.
+    ddestruct H5. ddestruct H6.
     split. easy.
-    ddestruct H4.
     now exists a, e, n.
   }
 }
 {
-  intros.
-  apply weakenCommitPre with (P:= LiftSPrec (P <<S CallStep i e n)).
+  intros. destruct v.
   {
+    eapply weakenCommitPre.
+    2:{
+      eapply liftSCommit.
+      exact H1.
+    }
     unfold sub, subPrec, LiftSPrec, LiftSRelt.
-    intros. psimpl. specialize (H2 x3 eq_refl). psimpl.
+    intros. psimpl.
+    specialize (H4 x3 eq_refl). psimpl.
     exists x2. split. easy.
-    psplit. exact H3. easy.
+    psplit. exact H5. easy.
   }
-  now apply liftSCommit.
+  {
+    eapply weakenCommitPre.
+    2:{
+      eapply liftSCommit.
+      exact H2.
+    }
+    unfold sub, subPrec, LiftSPrec, LiftSRelt.
+    intros. psimpl.
+    specialize (H4 x3 eq_refl). psimpl.
+    exists x2. split. easy.
+    psplit. exact H5. easy.
+  }
 }
+Qed.
+
+Unset Printing Records.
+
+Lemma sem_case_cleared {T A} :
+  forall P : AtomicStatePrec T A,
+  forall s x m m',
+  [[P]] m s x ->
+  snd s = CASDef None m' ->
+  m = m' /\
+  P = SCleared.
+unfold atomicPrecSem.
+unfold CCleared, COffered, CAcceptd.
+intros. destruct P; psimpl.
+rewrite H in H0. now ddestruct H0.
+rewrite H in H0. now ddestruct H0.
+rewrite H in H0. now ddestruct H0.
+Qed.
+
+Lemma Rely_is_trans {T A} :
+  forall P : AtomicStatePrec T A,
+  forall i m s x t y,
+  Rely i s x t y ->
+  [[P]] m s x ->
+  exists Q m',
+    [[Q]] m' t y /\
+    clos_refl_trans_1n _
+      (fun P Q =>
+        exists i, AtomicStateTran i P Q)
+      P Q.
+unfold Rely, Guar. intros.
+generalize dependent P.
+generalize dependent m.
+induction H; intros; psimpl.
+{
+  exists P, m.
+  split. easy.
+  constructor.
+}
+{
+  clear H0.
+  cut (
+    (exists Q m',
+      [[Q]] m' t σ /\
+      AtomicStateTran x P Q) \/
+    (exists m',
+      [[P]] m' t σ)
+  ).
+  {
+    intros. psimpl.
+    destruct H0.
+    {
+      psimpl.
+      apply IHSRTC in H0. psimpl.
+      exists x2, x3. split. easy.
+      econstructor.
+      exists x. exact H3.
+      easy.
+    }
+    {
+      psimpl.
+      eapply IHSRTC.
+      exact H0.
+    }
+  }
+  clear IHSRTC.
+  unfold InvokeAny, ReturnAny in H2.
+  elim_disj; psimpl.
+  {
+    right. exists m.
+    apply pres_state in H0. psimpl.
+    eapply pres_sem.
+    exact H2. exact H0.
+    easy.
+  }
+  {
+    left.
+    exists x1, None.
+    split. easy.
+    eapply sem_uniq in H2.
+    2: exact H1. psimpl.
+    easy.
+  }
+  {
+    right. exists (Some (MkCASPend x (CAS x1 x2))).
+    assert (H1' := H1).
+    eapply sem_shows_pend in H1'. psimpl.
+    rewrite H2 in H5. ddestruct H5.
+    clear - H1 H2 H3 H4.
+    destruct P; psimpl;
+    unfold CCleared, COffered, CAcceptd in *;
+    psimpl.
+    {
+      rewrite H in H2.
+      ddestruct H2.
+      now rewrite <- H4.
+    }
+    {
+      rewrite H in H2.
+      ddestruct H2.
+      now rewrite <- H4.
+    }
+    {
+      rewrite H in H2.
+      ddestruct H2.
+      now rewrite <- H4.
+    }
+  }
+  {
+    right. exists None.
+    assert (H1' := H1).
+    eapply sem_shows_pend in H1'. psimpl.
+    rewrite H2 in H0. ddestruct H0.
+    clear - H1 H2 H3.
+    destruct P; psimpl;
+    unfold CCleared, COffered, CAcceptd in *;
+    psimpl.
+    {
+      rewrite H in H2.
+      now ddestruct H2.
+    }
+    {
+      rewrite H in H2.
+      now ddestruct H2.
+    }
+    {
+      rewrite H in H2.
+      now ddestruct H2.
+    }
+  }
+  {
+    apply TReturn_pres_state in H0. psimpl.
+    right. exists m. eapply pres_sem.
+    exact H2. exact H0. easy.
+  }
+}
+Qed.
+
+Lemma float_lift {T A} {PT PF : SPrec T A}:
+  (fun b : bool =>
+    if b then
+      (fun _ _ => LiftSPrec PT) : Relt (VE T A) (VF T A)
+    else
+      (fun _ _ => LiftSPrec PF)) =
+  (fun (b : bool) _ _ => LiftSPrec (if b then PT else PF)).
+extensionality b. now destruct b.
 Qed.
 
 Lemma exch_correct {T A} {i : Name T} :
   forall v,
   VerifyProg i (LiftSRelt (Rely i)) (LiftSRelt (Guar i))
-    (prComp (LiftSPrec (Precs (option A) (Exch v))) (TInvoke (exchImpl A) i _ (Exch v)) ->> LiftSRelt (Rely i))
+    (prComp (LiftSPrec (Precs i)) (TInvoke (exchImpl A) i _ (Exch v)) ->> LiftSRelt (Rely i))
     (exch v)
-    (fun v' => LiftSRelt (Posts _ (Exch v) v') ->> PrecToRelt (Returned i (Exch v) v')).
+    (fun v' => LiftSRelt (Posts i) ->> PrecToRelt (Returned i (Exch v) v')).
 unfold exch. intros.
 eapply weakenPrec with
   (P:=fun _ _ => LiftSPrec (fun s x =>
-    Precs (option A) (Exch v) s x /\
+    Precs i s x /\
     PCalls x i = CallPoss (Exch v) /\
     PRets x i = RetIdle)).
 2:{
@@ -684,8 +941,7 @@ eapply weakenPrec with
     psplit. 2: exact H0.
     apply pres_state in H1. psimpl.
     unfold Precs in *. psimpl.
-    exists x3, x4. eapply pres_sem.
-    exact H1. exact H. easy.
+    exists x3. admit.
   }
   {
     apply Rely_pres_self in H0. psimpl.
@@ -697,13 +953,143 @@ eapply weakenPrec with
     easy.
   }
 }
-eapply lemBind.
+unfold Precs.
+eapply lemIf with
+  (PT:=fun _ _ => LiftSPrec (fun s x =>
+    PCalls x i = CallDone (Exch v) /\
+    PRets x i = RetIdle /\
+    ((exists m, [[SOffered i v]] m s x) \/
+     (exists j w, i <> j /\
+      [[SAcceptd i j v w]] None s x))))
+  (PF:=fun _ _ => LiftSPrec (fun s x =>
+    PCalls x i = CallPoss (Exch v) /\
+    PRets x i = RetIdle /\
+    Precs i s x)).
 {
-  eapply lemCAS.
-  admit.
-  admit.
+  rewrite float_lift at 1.
+  apply lemCAS.
+  {
+    admit.
+  }
+  {
+    admit.
+  }
+  {
+    unfold SCommit, CallStep.
+    intros. psimpl.
+    ddestruct H1. ddestruct H2.
+    elim_disj; psimpl;
+    unfold CCleared, COffered, CAcceptd in *;
+    psimpl.
+    2:{
+      rewrite H1 in H3. ddestruct H3.
+      rewrite H6 in x7. ddestruct x7.
+    }
+    2:{
+      rewrite H10 in H3. ddestruct H3.
+      rewrite H6 in x7. ddestruct x7.
+    }
+    exists (@MkPoss _ _ (VF T A)
+      (ExchDef {i => v} {})
+      (fun j =>
+        if i =? j then
+          CallDone (Exch v)
+        else
+          PCalls x4 j)
+      (PRets x4)).
+    split.
+    {
+      eapply PossStepsStep
+        with (i:=i).
+      4: constructor.
+      2:{ cbn. intros. now rewrite eqb_nid. }
+      2:{ easy. }
+      eapply PCommitCall
+        with (m:= Exch v).
+      {
+        cbn. rewrite <- H7, H1 at 1.
+        constructor.
+      }
+      { now rewrite <- H8 at 1. }
+      { cbn. now rewrite eqb_id. }
+      { now rewrite <- H9 at 1. }
+      { cbn. now rewrite <- H9 at 1. }
+    }
+    split.
+    {
+      cbn. rewrite eqb_id.
+      split. easy.
+      split. now rewrite <- H9.
+      left. now exists None.
+    }
+    {
+      left. split.
+      { cbn. intros. now rewrite eqb_nid. }
+      exists SCleared, (SOffered i v), None, (OFFERED v).
+      split. { cbn. unfold CCleared. now rewrite <- H7. }
+      split. { easy. }
+      constructor.
+    }
+  }
+  {
+    unfold SCommit, CallStep.
+    intros. psimpl.
+    ddestruct H1. ddestruct H2.
+    elim_disj; psimpl;
+    unfold CCleared, COffered, CAcceptd in *;
+    psimpl.
+    {
+      rewrite H in H3. ddestruct H3.
+      rewrite H6 in x7. ddestruct x7.
+      easy.
+    }
+    {
+      exists x4.
+      split. constructor.
+      split.
+      {
+        split. now rewrite <- H8 at 1.
+        split. now rewrite <- H9 at 1.
+        exists None.
+        rewrite H2 in H3. ddestruct H3.
+        rewrite H6 in x7. ddestruct x7.
+        right. left.
+        exists x8, x9.
+        split. easy.
+        now rewrite H7 in H10.
+      }
+      {
+        right. right. left.
+        exists a, None, (OFFERED v).
+        easy.
+      }
+    }
+    {
+      exists x4.
+      split. constructor.
+      split.
+      {
+        split. now rewrite <- H8 at 1.
+        split. now rewrite <- H9 at 1.
+        exists None.
+        rewrite H11 in H3. ddestruct H3.
+        rewrite H6 in x7. ddestruct x7.
+        right. right.
+        exists x8, x9, x10, x11.
+        repeat (split; try easy).
+        congruence.
+      }
+      {
+        right. right. left.
+        exists a, None, (OFFERED v).
+        easy.
+      }
+    }
+  }
 }
-Admitted.
+{
+  
+}
 
 (* Result *)
 

@@ -207,6 +207,17 @@ punfold H1. dependent destruction H1.
 }
 Qed.
 
+Lemma lemIf {A} {B : Prog E bool} {CT CF : Prog E A} {P : Relt VE VF} {Q : Post VE VF A} :
+  forall PT PF : Relt VE VF,
+  VerifyProg i R G P B (fun b => if b then PT else PF) ->
+  VerifyProg i R G PT CT Q ->
+  VerifyProg i R G PF CF Q ->
+  VerifyProg i R G P (b <- B; if b then CT else CF) Q.
+intros.
+eapply lemBind. exact H.
+intros. now destruct v.
+Qed.
+
 Lemma foldProg {A} :
   forall p : Prog E A,
   match p with
