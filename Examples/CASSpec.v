@@ -70,3 +70,4 @@ Lemma lemCAS {T F A} {VF : Spec T F} {i : Name T}
     (fun v s xs t ys =>
       (v = false /\
         snd s = snd t)).
+Admitted.
