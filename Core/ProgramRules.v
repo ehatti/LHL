@@ -86,7 +86,7 @@ econstructor. exact H. easy. easy.
 Qed.
 
 Lemma lemRet {A P Q} {v : A} :
-  (forall v, P ==> Q v) ->
+  P ==> Q v ->
   VerifyProg i R G P (ret v) Q.
 intros.
 constructor.
