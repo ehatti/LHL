@@ -121,12 +121,18 @@ Definition CCleared {A T} m : SPrec T A :=
 Definition COffered {A T} m (i : Name T) (v : A) : SPrec T A :=
   fun s ρ =>
     snd s = CASDef (OFFERED v) m /\
-    PState ρ = ExchDef {i => v} {}.
+    PState ρ = ExchDef {i => v} {} /\
+    PCalls ρ i = CallDone (Exch v) /\
+    PRets ρ i = RetIdle.
 
 Definition CAcceptd {A T} m (i j : Name T) (v w : A) : SPrec T A :=
   fun s ρ =>
     snd s = CASDef (ACCEPTED w) m /\
-    PState ρ = ExchDef {j => w} {i => v}.
+    PState ρ = ExchDef {j => w} {i => v} /\
+    PCalls ρ i = CallDone (Exch v) /\
+    PRets ρ i = RetIdle /\
+    PCalls ρ j = CallDone (Exch w) /\
+    PRets ρ j = RetPoss (Exch w) (Some v).
 
 Definition atomicPrecSem {T A} (P : AtomicStatePrec T A) m : SPrec T A :=
   match P with
@@ -310,11 +316,10 @@ rewrite <- H0. easy.
 Qed.
 
 Lemma pres_sem {T A} :
-  forall s x t y m,
+  forall s x t m,
   snd s = snd t ->
-  PState x = PState y ->
   forall P : AtomicStatePrec T A,
-  [[P]] m s x -> [[P]] m t y.
+  [[P]] m s x -> [[P]] m t x.
 unfold atomicPrecSem. intros.
 destruct P; psimpl;
 unfold CCleared, COffered, CAcceptd in *;
@@ -323,7 +328,6 @@ rewrite <- H, <- H0. easy.
 rewrite <- H, <- H0. easy.
 rewrite <- H, <- H0. easy.
 Qed.
-
 
 Lemma pres_Precs {T A} {i : Name T} :
   forall s x t y,
