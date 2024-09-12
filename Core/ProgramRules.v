@@ -19,6 +19,13 @@ From Paco Require Import paco.
 
 Ltac ddestruct H := dependent destruction H.
 
+Definition IsAtomic {T E A} (VE : Spec T E) (m : E A) :=
+  forall i s t e r,
+    VE.(Step) s (i, CallEv m) t ->
+    VE.(Step) t e r ->
+    exists v,
+      e = (i, RetEv m v).
+
 Section rules.
 
 Context
@@ -28,6 +35,45 @@ Context
   {VE : Spec T E}
   {VF : Spec T F}
   {R G : Relt VE VF}.
+
+Lemma weakenPost {A P} {C : Prog E A} :
+  forall Q Q',
+  VerifyProg i R G P C Q ->
+  (forall v, Q v ==> Q' v) ->
+  VerifyProg i R G P C Q'.
+unfold VerifyProg. intros.
+repeat rewrite paco_eqv in *.
+generalize dependent P. generalize dependent C.
+pcofix rec. intros.
+punfold H1. pfold.
+dependent destruction H1.
+{
+  econstructor. unfold sub, subRelt in *.
+  intros. apply H0. apply H. easy.
+}
+{
+  econstructor. exact H. exact H1. easy.
+  intros. specialize (H3 v). destruct_all.
+  split. easy.
+  destruct H4. 2: destruct H4.
+  right. eapply rec. easy.
+}
+{
+  destruct H2. 2: destruct H2.
+  econstructor. exact H. easy.
+  right. apply rec. easy.
+}
+Qed.
+
+Lemma weakenPrec {A Q} {C : Prog E A} :
+  forall P P',
+  VerifyProg i R G P C Q ->
+  P' ==> P ->
+  VerifyProg i R G P' C Q.
+intros.
+eapply weakenSafe.
+exact H0. easy.
+Qed.
 
 Lemma lemNoOp {A Q} {P : Relt VE VF} {C : Prog E A} :
   forall QS,
@@ -40,7 +86,7 @@ econstructor. exact H. easy. easy.
 Qed.
 
 Lemma lemRet {A P Q} {v : A} :
-  (forall v, P ==> Q v) ->
+  P ==> Q v ->
   VerifyProg i R G P (ret v) Q.
 intros.
 constructor.
@@ -68,24 +114,14 @@ econstructor. unfold sub, subRelt. intros.
 easy.
 Qed.
 
-Lemma lemCallSimp {A Q S} {P : Relt VE VF} {m : E A} :
-  Stable R Q ->
-  Stable R S ->
-  Commit i G P (CallEv m) Q ->
-  (forall v, Commit i G (P ->> Q) (RetEv m v) (S v)) ->
-  VerifyProg i R G P (call m) (fun v _ _ => ReltToPrec (S v)).
+Lemma lemForget {A} {P Q : Relt VE VF} {S : Post VE VF A} {C : Prog E A} :
+  VerifyProg i R G (fun _ _ t ys => exists s xs, Q s xs t ys) C S ->
+  VerifyProg i R G (P ->> Q) C S.
 intros.
-econstructor. exact H. exact H0.
-unfold Commit, id.
+eapply weakenPrec. exact H.
+unfold sub, subRelt.
 intros. psimpl.
-apply H1.
-exists x, x0.
-easy. easy. easy. easy.
-intros. specialize (H2 v).
-split. easy.
-econstructor. unfold sub, subRelt. intros.
-psimpl.
-exists x1, x2. easy.
+exists x, x0. easy.
 Qed.
 
 Lemma lemBind {A B P S} {C : Prog E A} {k : A -> Prog E B} :
@@ -171,44 +207,15 @@ punfold H1. dependent destruction H1.
 }
 Qed.
 
-
-Lemma weakenPost {A P} {C : Prog E A} :
-  forall Q Q',
-  VerifyProg i R G P C Q ->
-  (forall v, Q v ==> Q' v) ->
-  VerifyProg i R G P C Q'.
-unfold VerifyProg. intros.
-repeat rewrite paco_eqv in *.
-generalize dependent P. generalize dependent C.
-pcofix rec. intros.
-punfold H1. pfold.
-dependent destruction H1.
-{
-  econstructor. unfold sub, subRelt in *.
-  intros. apply H0. apply H. easy.
-}
-{
-  econstructor. exact H. exact H1. easy.
-  intros. specialize (H3 v). destruct_all.
-  split. easy.
-  destruct H4. 2: destruct H4.
-  right. eapply rec. easy.
-}
-{
-  destruct H2. 2: destruct H2.
-  econstructor. exact H. easy.
-  right. apply rec. easy.
-}
-Qed.
-
-Lemma weakenPrec {A Q} {C : Prog E A} :
-  forall P P',
-  VerifyProg i R G P C Q ->
-  P' ==> P ->
-  VerifyProg i R G P' C Q.
+Lemma lemIf {A} {B : Prog E bool} {CT CF : Prog E A} {P : Relt VE VF} {Q : Post VE VF A} :
+  forall PT PF : Relt VE VF,
+  VerifyProg i R G P B (fun b => if b then PT else PF) ->
+  VerifyProg i R G PT CT Q ->
+  VerifyProg i R G PF CF Q ->
+  VerifyProg i R G P (b <- B; if b then CT else CF) Q.
 intros.
-eapply weakenSafe.
-exact H0. easy.
+eapply lemBind. exact H.
+intros. now destruct v.
 Qed.
 
 Lemma foldProg {A} :

@@ -1468,14 +1468,16 @@ destruct e.
   assert (H1' := H1). move H1' at top. move H1 at bottom.
   destruct H1. specialize (all_safe0 n).
   rewrite H2 in all_safe0. psimpl. ddestruct H1.
-  assert (ReturnStep n (G n) (Qs n A m n0) m n0 (Cs n A m n0)).
+  assert (ReturnStep n (G n) (Ps n A m <<- Qs n A m n0) m n0 (Cs n A m n0)).
   {
     apply H.(all_return).
   }
   unfold ReturnStep in H9.
-  assert (ReltToPrec (Qs n A m n0) s ρs).
+  assert ((Ps n A m <<- Qs n A m n0) s ρs).
   {
-    exists x4, x5. apply H1.
+    exists x4, x5.
+    split. easy.
+    apply H1.
     psplit. psplit.
     easy. exact H8. easy.
   }
@@ -1748,30 +1750,11 @@ Definition comp_inv {T E F}
         FullPossSteps initPoss l σ /\
         FullPossSteps σ r τ).
 
-Definition comp_post {T E F}
-  (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
-  : Name T -> forall A, F A -> A -> Prec VE VF :=
-  fun i _ m v t σs =>
-  exists p,
-    InterSteps (spec:=VE) M (allIdle, Init VE) p t /\
-    σs = (fun σ =>
-      exists q,
-        projOver p = projOver q /\
-        FullPossSteps initPoss q σ /\
-        PCalls σ i = CallDone m /\
-        PRets σ i = RetPoss m v).
-
 Definition comp_rely {T E F}
   (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
   : Name T -> Relt VE VF :=
   fun i s ρs t σs =>
     comp_inv VE VF M s ρs -> comp_inv VE VF M t σs.
-
-Definition comp_guar {T E F}
-  (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
-  : Name T -> Relt VE VF :=
-  fun i s ρs t σs =>
-    forall j, i <> j -> comp_rely VE VF M j s ρs t σs.
 
 Lemma AllCallEv_cong {T F} :
   forall p q : Trace (ThreadEvent T F),
@@ -2868,21 +2851,21 @@ constructor.
   }
   split.
   {
-    apply H in H4. psimpl.
-    repeat rewrite projOver_app in H4.
-    cbn in H4. symmetry in H4.
-    apply projOver_extract_oev in H4. psimpl.
-    apply FullPossSteps_trans_inv in H5. psimpl.
-    ddestruct H7. ddestruct H7.
-    exists ρ, x2. easy.
+    apply H in H7. psimpl.
+    repeat rewrite projOver_app in H7.
+    cbn in H7. symmetry in H7.
+    apply projOver_extract_oev in H7. psimpl.
+    apply FullPossSteps_trans_inv in H8. psimpl.
+    ddestruct H10. ddestruct H10.
+    exists ρ, x5. easy.
   }
   split.
   {
     intros. psimpl.
-    apply H3 in H6. 2: easy. psimpl.
-    exists x0. split. easy.
+    apply H4 in H9. 2: easy. psimpl.
+    exists x4. split. easy.
     eapply full_to_local.
-    exact H10. easy.
+    exact H13. easy.
   }
   split.
   {
@@ -2897,38 +2880,38 @@ constructor.
     {
       unfold mapRetPoss.
       intros. psimpl.
-      exists (x0 ++ [(i, OEvent (RetEv m v))]).
+      exists (x4 ++ [(i, OEvent (RetEv m v))]).
       split.
       {
         repeat rewrite projOver_app.
-        rewrite H5. easy.
+        rewrite H8. easy.
       }
       {
         apply FullPossSteps_trans.
-        exists x. split. easy.
+        exists x3. split. easy.
         econstructor. 4: constructor.
         constructor; easy.
-        intros. rewrite H10; easy.
-        intros. rewrite H11; easy.
+        intros. rewrite H13; easy.
+        intros. rewrite H14; easy.
       }
     }
     {
       repeat rewrite projOver_app.
-      cbn. intros. symmetry in H5.
-      apply split_projOver in H5. psimpl.
-      apply FullPossSteps_trans_inv in H6. psimpl.
-      ddestruct H8. ddestruct H8.
-      exists σ, (x ++ [(i, OEvent (RetEv m v))]), x0.
-      repeat rewrite projOver_app, H5. cbn.
+      cbn. intros. symmetry in H8.
+      apply split_projOver in H8. psimpl.
+      apply FullPossSteps_trans_inv in H9. psimpl.
+      ddestruct H11. ddestruct H11.
+      exists σ, (x3 ++ [(i, OEvent (RetEv m v))]), x4.
+      repeat rewrite projOver_app, H8. cbn.
       repeat split; try easy.
       {
         unfold mapRetPoss.
         exists ρ. repeat split; try easy.
-        exists x. easy.
+        exists x3. easy.
         unfold differ_pointwise.
-        intros. rewrite H13; easy.
+        intros. rewrite H16; easy.
         unfold differ_pointwise.
-        intros. rewrite H14; easy.
+        intros. rewrite H17; easy.
       }
       {
         apply FullPossSteps_trans.

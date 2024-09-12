@@ -25,7 +25,7 @@ Variant ExchStep {T A} : ExchState T A -> ThreadEvent T (ExchSig A) -> ExchState
 | ExchCall2 i x j y : i <> j -> ExchStep
     (ExchDef {i => x} {})
     (j, CallEv (Exch y))
-    (ExchDef {i => x, j => y} {})
+    (ExchDef {j => y, i => x} {})
 | ExchRet1 i x j y : i <> j -> ExchStep
     (ExchDef {i => x, j => y} {})
     (i, RetEv (Exch x) (Some y))
