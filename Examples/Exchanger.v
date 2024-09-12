@@ -31,17 +31,19 @@ From Paco Require Import
 
 (* Signature *)
 
-Variant Flag := Offered | Accepted.
+Variant Offer {T A} :=
+| Offered (i : Name T) (v : A)
+| Accepted (i j : Name T) (v w : A).
+Arguments Offer : clear implicits.
 
-Definition Offer A : Type := Flag * A.
+Notation OFFERED i v := (Some (Offered i v)).
+Notation ACCEPTED i j v w := (Some (Accepted i j v w)).
+Notation EMPTY := (None (A:= Offer _ _)).
 
-Notation OFFERED v := (Some (Offered, v)).
-Notation ACCEPTED v := (Some (Accepted, v)).
+Definition E T A :=
+  CASSig (Offer T A).
 
-Definition E A :=
-  CASSig (Offer A).
-
-Definition VE T A : Spec T (E A) :=
+Definition VE T A : Spec T (E T A) :=
   casSpec.
 
 Definition F A := ExchSig A.
@@ -51,69 +53,43 @@ Definition VF T A : Spec T (F A) :=
 
 (* Code *)
 
-Definition exch {A} (v : A) : Prog (E A) (option A) :=
-  my_offer_placed <- call (CAS None (OFFERED v));
+Definition exch {T A} (i : Name T) (v : A) : Prog (E T A) (option A) :=
+  my_offer_placed <- call (CAS None (OFFERED i v));
   if my_offer_placed : bool then
-    no_change <- call (CAS (OFFERED v) None);
+    no_change <- call (CAS (OFFERED i v) EMPTY);
     if no_change : bool then
       ret None
     else
       w <- call Get;
-      match w : option (Offer A) with
-      | Some (_, w) =>
-          call (CAS (ACCEPTED w) None);;
-          ret (Some w)
-      | None =>
+      match w : option (Offer T A) with
+      | ACCEPTED _ _ _ w' =>
+          call (CAS w EMPTY);;
+          ret (Some w')
+      | _ =>
           ret None (* impossible *)
       end
   else
     w <- call Get;
-    match w : option (Offer A) with
-    | Some (_, w) =>
-        my_offer_accepted <- call (CAS (OFFERED w) (ACCEPTED v));
+    match w : option (Offer T A) with
+    | OFFERED j w =>
+        my_offer_accepted <- call (CAS (OFFERED j w) (ACCEPTED j i w v));
         if my_offer_accepted : bool then
           ret (Some w)
         else
           ret None
-    | None =>
+    | _ =>
         ret None
     end.
 
-Definition exchImpl A : Impl (E A) (F A) :=
-  fun i m => match m with
-  | Exch v => exch v
+Definition exchImpl {T A} (i : Name T) : Impl (E T A) (F A) :=
+  fun _ m => match m with
+  | Exch v => exch i v
   end.
 
 (* Conditions *)
 
 Definition SRelt T A := SRelt (VE T A) (VF T A).
 Definition SPrec T A := SPrec (VE T A) (VF T A).
-
-Variant AtomicStatePrec {T A} :=
-| SCleared
-| SOffered (i : Name T) (v : A)
-| SAcceptd (i j : Name T) (v w : A).
-Arguments AtomicStatePrec : clear implicits.
-
-Variant AtomicStateTran {T A} : Name T -> AtomicStatePrec T A -> AtomicStatePrec T A -> Prop :=
-| STOffer i v :
-  AtomicStateTran i
-    (SCleared)
-    (SOffered i v)
-| STRevoke i v :
-  AtomicStateTran i
-    (SOffered i v)
-    (SCleared)
-| STAccept i j v w :
-  i <> j ->
-  AtomicStateTran j
-    (SOffered i v)
-    (SAcceptd i j v w)
-| STFinish i j v w :
-  i <> j ->
-  AtomicStateTran i
-    (SAcceptd i j v w)
-    (SCleared).
 
 Definition CCleared {A T} m : SPrec T A :=
   fun s ρ =>
@@ -122,14 +98,14 @@ Definition CCleared {A T} m : SPrec T A :=
 
 Definition COffered {A T} m (i : Name T) (v : A) : SPrec T A :=
   fun s ρ =>
-    snd s = CASDef (OFFERED v) m /\
-    PState ρ = ExchDef {i => v} {} /\
-    PCalls ρ i = CallDone (Exch v) /\
+    snd s = CASDef (OFFERED i v) m /\
+    PState ρ = ExchDef {} {} /\
+    PCalls ρ i = CallPoss (Exch v) /\
     PRets ρ i = RetIdle.
 
 Definition CAcceptd {A T} m (i j : Name T) (v w : A) : SPrec T A :=
   fun s ρ =>
-    snd s = CASDef (ACCEPTED w) m /\
+    snd s = CASDef (ACCEPTED i j v w) m /\
     PState ρ = ExchDef {j => w} {i => v} /\
     PCalls ρ i = CallDone (Exch v) /\
     PRets ρ i = RetIdle.
@@ -184,6 +160,8 @@ Inductive VisPossSteps {T F} {VF : Spec T F} : Poss VF -> Trace (ThreadEvent T F
     VisPossSteps y p z ->
     VisPossSteps x ((i, e) :: p) z.
 
+Notation UnderStep s i e t := (PointStep UnderThreadStep s (i, Some e) t).
+
 Variant ExchTran {T A} : Name T -> InterState (F A) (VE T A) -> Poss (VF T A) -> InterState (F A) (VE T A) -> Poss (VF T A) -> Prop :=
 (* | ExchInvoke i v s x t y :
     TInvoke (exchImpl A) i _ (Exch v) s (eq x) t (eq y) ->
@@ -191,69 +169,73 @@ Variant ExchTran {T A} : Name T -> InterState (F A) (VE T A) -> Poss (VF T A) ->
 | ExchReturn i v w s x t y :
     TReturn (exchImpl A) i (Exch v) w s (eq x) t (eq y) ->
     ExchTran i s x t y *)
-| ExchCall i ths tht a R (m : E A R) x :
-    PointStep UnderThreadStep ths (i, Some (CallEv m)) tht ->
+| ExchCall i ths tht a R (m : E T A R) x :
+    UnderStep ths i (CallEv m) tht ->
     ExchTran i
       (ths, CASDef a None) x
       (tht, CASDef a (Pend i m)) x
-(* | ExchFailAccept i ths tht v w x y :
-    PointStep UnderThreadStep ths (i, Some (RetEv (CAS (OFFERED w) (ACCEPTED v)) false)) tht ->
+| ExchOfferPass i ths tht v x :
+    UnderStep ths i (RetEv (CAS EMPTY (OFFERED i v)) true) tht ->
+    ExchTran i
+      (ths, CASDef EMPTY (Pend i (CAS EMPTY (OFFERED i v)))) x
+      (tht, CASDef (OFFERED i v) None) x
+| ExchRevokePass i ths tht v x y :
     VisPossSteps x [(i, CallEv (Exch v)); (i, RetEv (Exch v) None)] y ->
+    UnderStep ths i (RetEv (CAS (OFFERED i v) EMPTY) true) tht ->
     ExchTran i
-      (ths, CASDef None (Pend i (CAS (OFFERED w) (ACCEPTED v)))) x
-      (tht, CASDef None None) y *)
-| ExchOffer i ths tht (x y : Poss (VF T A)) v :
-    PointStep UnderThreadStep ths (i, Some (RetEv (CAS None (OFFERED v)) true)) tht ->
-    VisPossSteps x [(i, CallEv (Exch v))] y ->
+      (ths, CASDef (OFFERED i v) (Pend i (CAS (OFFERED i v) EMPTY))) x
+      (tht, CASDef EMPTY None) y
+| ExchRevokeFail i ths tht a v x :
+    a <> OFFERED i v ->
+    UnderStep ths i (RetEv (CAS (OFFERED i v) EMPTY) false) tht ->
     ExchTran i
-      (ths, CASDef None (Pend i (CAS None (OFFERED v)))) x
-      (tht, CASDef (OFFERED v) None) y
-| ExchFailOffer i ths tht a v x :
-    a <> None ->
-    PointStep UnderThreadStep ths (i, Some (RetEv (CAS None (OFFERED v)) false)) tht ->
-    ExchTran i
-      (ths, CASDef a (Pend i (CAS None (OFFERED v)))) x
+      (ths, CASDef a (Pend i (CAS (OFFERED i v) EMPTY))) x
       (tht, CASDef a None) x
-| ExchGetPass i ths tht (x : Poss (VF T A)) a :
-  PointStep UnderThreadStep ths (i, Some (RetEv Get a)) tht ->
-  ExchTran i
-    (ths, CASDef a (Pend i Get)) x
-    (tht, CASDef a None) x
-(* | ExchGetPass i ths tht a x :
-    PointStep UnderThreadStep ths (i, Some (RetEv Get a)) tht ->
+| ExchGetAccept i j ths tht v w x :
+    i <> j ->
+    UnderStep ths i (RetEv Get (ACCEPTED i j v w)) tht ->
+    ExchTran i
+      (ths, CASDef (ACCEPTED i j v w) (Pend i Get)) x
+      (tht, CASDef (ACCEPTED i j v w) None) x
+| ExchFinishPass i j ths tht v w x y :
+    i <> j ->
+    VisPossSteps x [(i, CallEv (Exch v)); (j, CallEv (Exch w)); (i, RetEv (Exch v) (Some w)); (j, RetEv (Exch w) (Some v))] y ->
+    UnderStep ths i (RetEv (CAS (ACCEPTED i j v w) EMPTY) true) tht ->
+    ExchTran i
+      (ths, CASDef (ACCEPTED i j v w) (Pend i (CAS (ACCEPTED i j v w) EMPTY))) x
+      (tht, CASDef EMPTY None) y
+| ExchOfferFail i ths tht a v x :
+    a <> EMPTY ->
+    UnderStep ths i (RetEv (CAS EMPTY (OFFERED i v)) false) tht ->
+    ExchTran i
+      (ths, CASDef a (Pend i (CAS EMPTY (OFFERED i v)))) x
+      (tht, CASDef a None) x
+| ExchGetOfferPass i ths tht a x :
+    a <> EMPTY ->
+    UnderStep ths i (RetEv Get a) tht ->
     ExchTran i
       (ths, CASDef a (Pend i Get)) x
-      (tht, CASDef a None) x*)
-| ExchGetFail i v ths tht x y :
-    PointStep UnderThreadStep ths (i, Some (RetEv Get None)) tht ->
+      (tht, CASDef a None) x
+| ExchGetOfferFail i ths tht v x y :
     VisPossSteps x [(i, CallEv (Exch v)); (i, RetEv (Exch v) None)] y ->
+    UnderStep ths i (RetEv Get EMPTY) tht ->
     ExchTran i
-      (ths, CASDef None (Pend i Get)) x
-      (tht, CASDef None None) y
-| ExchRevoke i ths tht (x y : Poss (VF T A)) v :
-    PointStep UnderThreadStep ths (i, Some (RetEv (CAS (OFFERED v) None) true)) tht ->
-    VisPossSteps x [(i, RetEv (Exch v) None)] y ->
+      (ths, CASDef EMPTY (Pend i Get)) x
+      (tht, CASDef EMPTY None) x
+| ExchAcceptPass i j ths tht v w x :
+    i <> j ->
+    UnderStep ths i (RetEv (CAS (OFFERED j w) (ACCEPTED j i w v)) true) tht ->
     ExchTran i
-      (ths, CASDef (OFFERED v) (Pend i (CAS (OFFERED v) None))) x
-      (tht, CASDef None None) y
-| ExchFailRevoke i ths tht (x : Poss (VF T A)) v w :
-    PointStep UnderThreadStep ths (i, Some (RetEv (CAS (OFFERED v) None) false)) tht ->
+      (ths, CASDef (OFFERED j w) (Pend i (CAS (OFFERED j w) (ACCEPTED j i w v)))) x
+      (tht, CASDef (ACCEPTED j i w v) None) x
+| ExchAcceptFail i j ths tht a v w x y :
+    i <> j ->
+    a <> OFFERED j w ->
+    VisPossSteps x [(i, CallEv (Exch v)); (i, RetEv (Exch v) None)] y ->
+    UnderStep ths i (RetEv (CAS (OFFERED j w) (ACCEPTED j i w v)) false) tht ->
     ExchTran i
-      (ths, CASDef (ACCEPTED w) (Pend i (CAS (OFFERED v) None))) x
-      (tht, CASDef (ACCEPTED w) None) x
-(* | ExchAccept i j ths tht (x y : Poss (VF T A)) v w :
-    PointStep UnderThreadStep ths (i, Some (RetEv (CAS (OFFERED v) (ACCEPTED w)) true)) tht ->
-    VisPossSteps x [(j, CallEv (Exch w)); (j, RetEv (Exch w) (Some v))] y ->
-    ExchTran j
-      (ths, CASDef (OFFERED v) (Pend i (CAS (OFFERED v) (ACCEPTED w)))) x
-      (tht, CASDef (ACCEPTED w) None) y*)
-| ExchFinish i ths tht (x y : Poss (VF T A)) v w :
-    PointStep UnderThreadStep ths (i, Some (RetEv (CAS (ACCEPTED w) None) true)) tht ->
-    VisPossSteps x [(i, RetEv (Exch v) (Some w))] y ->
-    ExchTran i
-      (ths, CASDef (ACCEPTED w) (Pend i (CAS (ACCEPTED w) None))) x
-      (tht, CASDef None None) y
-.
+      (ths, CASDef a (Pend i (CAS (OFFERED j w) (ACCEPTED j i w v)))) x
+      (tht, CASDef a None) y.
 
 Definition SomeTran {A T} (R : Name T -> SRelt T A) : SRelt T A :=
   fun s x t y => exists i, R i s x t y.
