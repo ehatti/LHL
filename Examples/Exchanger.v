@@ -475,6 +475,7 @@ Definition CallStep {T A R} i (m : CASSig (Offer T A) R) : SRelt T A :=
       PRets y i = PRets x i /\
       (forall j, i <> j ->
         PCalls x j <> CallIdle ->
+        ~(exists A (m : _ A) v, PRets x j = RetPoss m v) ->
         PCalls y j = PCalls x j /\
         PRets y j = PRets x j).
 
@@ -509,6 +510,74 @@ easy.
 easy.
 Qed.
 
+Lemma sing_elem {A} {P : A -> Prop} :
+  forall x : A,
+  eq x = P ->
+  P x.
+intros. now rewrite <- H.
+Qed.
+
+Lemma call_stable {T} :
+  forall i A R (m : _ R),
+  SStable (Rely (T:=T) (A:=A) i) (CallStep i m).
+begin_stable. unfold ssub. intros. psimpl.
+generalize dependent s.
+generalize dependent ρ.
+induction H0. easy.
+intros. apply IHSRTC. clear - H H1.
+unfold CallStep, OtherTran in *. psimpl.
+exists x. split. easy.
+ddestruct H6.
+{
+  unfold TInvoke, InterOStep in H0.
+  psimpl. ddestruct H7.
+  cbn in *. ddestruct H1.
+  apply sing_elem in H9. psimpl.
+  rewrite <- H8, H13, H14, H9; try easy.
+  do 4 (split;[easy|idtac]). intros.
+  assert (i0 <> j).
+  {
+    unfold not. intros. subst.
+    unfold TIdle in H0. psimpl.
+    specialize (H17 x3 eq_refl). psimpl.
+    apply H10 in H. psimpl.
+    2: congruence. 2: easy.
+    rewrite <- H, H1 in H15. easy.
+  }
+  rewrite H13, H14; try easy.
+  now apply H10.
+}
+{
+  unfold TReturn, InterOStep, mapRetPoss in H0.
+  psimpl. ddestruct H7.
+  cbn in *. ddestruct H1.
+  apply sing_elem in H9. psimpl.
+  rewrite <- H8, H16, H14, H15; try easy.
+  do 4 (split;[easy|idtac]). intros.
+  assert (i0 <> j).
+  {
+    unfold not. intros. subst.
+    apply H10 in H1. psimpl.
+    2: congruence. 2: easy.
+    apply H18. rewrite <- H19.
+    now exists _, (Exch v), w.
+  }
+  rewrite H14, H15; try easy.
+  now apply H10.
+}
+{ easy. }
+{ now ddestruct H2. }
+{ now ddestruct H3. }
+{ now ddestruct H3. }
+{ now ddestruct H3. }
+{ now ddestruct H3. }
+{ now ddestruct H3. }
+{ now ddestruct H3. }
+{ now ddestruct H4. }
+{ now ddestruct H4. }
+{ now ddestruct H5. }
+Qed.
+
 Lemma lemGet {T A} {P : SPrec T A} {i : Name T} :
   forall (Q : option (Offer T A) -> SPrec T A),
   (forall v, SStable (Rely i) (Q v)) ->
@@ -539,7 +608,8 @@ eapply weakenPost with
 }
 apply lemCall.
 {
-  admit.
+  apply liftSReltStable.
+  apply call_stable.
 }
 {
   begin_stable. unfold LiftSRelt in *.
@@ -592,7 +662,7 @@ apply lemCall.
   psplit. exact H3.
   now exists x4.
 }
-Admitted.
+Qed.
 
 Lemma lemCAS {T A} {P : SPrec T A} :
   forall (QT QF : SPrec T A) i e n,
@@ -629,7 +699,8 @@ eapply weakenPost with
 }
 apply lemCall.
 {
-  admit.
+  apply liftSReltStable.
+  apply call_stable.
 }
 {
   begin_stable. unfold LiftSRelt in *.
@@ -886,7 +957,11 @@ eapply lemIf with
         rewrite H7. split. easy.
         apply H10 in H. psimpl.
         now rewrite H, H3.
-        congruence.
+        { congruence. }
+        {
+          unfold not. intros. psimpl.
+          rewrite H13 in H3. ddestruct H3.
+        }
       }
       {
         destruct s, t. psimpl.
@@ -915,6 +990,9 @@ eapply lemIf with
         apply H10 in H. psimpl.
         all: try congruence.
         now rewrite H, H3, H7.
+        {
+          unfold not. intros. psimpl.
+        }
       }
       {
         destruct s, t. psimpl.
@@ -1686,10 +1764,10 @@ Theorem oneCellExchCorrect T A :
   VerifyImpl (VE T A) (VF T A)
     (fun i => LiftSRelt (Rely i))
     (fun i => LiftSRelt (Guar i))
-    (fun _ _ m => LiftSPrec (Precs _ m))
-    (exchImpl i)
-    (fun i _ m v' => LiftSRelt (Posts _ m v')  ->> PrecToRelt (Returned i m v'))
-    (TReturn (exchImpl i)).
+    (fun i _ m => LiftSPrec (Precs i))
+    (exchImpl)
+    (fun i _ m v' => LiftSRelt (Posts i v')  ->> PrecToRelt (Returned i m v'))
+    (fun i => TReturn (exchImpl i) i).
 constructor.
 {
   unfold LiftSRelt. intros. psimpl.
