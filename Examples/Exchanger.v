@@ -1735,6 +1735,16 @@ eapply lemIf with
       Precs i s x /\
       Returned i (Exch v) None s (eq x)))
     (PF:=fun _ _ => LiftSPrec (fun s x =>
+      fst s i = Cont (Exch v) (
+        w <- call Get;
+        match w : option (Offer T A) with
+        | ACCEPTED _ _ _ w' =>
+            call (CAS w EMPTY);;
+            ret (Some w')
+        | _ =>
+            ret None (* impossible *)
+        end
+      ) /\
       exists m j w, i <> j /\
         [[SAcceptd i j v w]] m s x)).
   {
@@ -1754,20 +1764,27 @@ eapply lemIf with
     }
     {
       begin_stable.
-      eapply Rely_trans_self_acceptd in H0.
-      2: exact H. 2:{ exists x1. exact H1. }
-      psimpl. now exists x4, x2, x3.
+      split.
+      {
+        apply Rely_pres_self_ths in H0.
+        now rewrite H0 at 1.
+      }
+      {
+        eapply Rely_trans_self_acceptd in H0.
+        2: exact H1. 2:{ exists x1. exact H2. }
+        psimpl. now exists x4, x2, x3.
+      }
     }
     {
       begin_commit.
       ddestruct H1. ddestruct H2.
-      unfold COffered, CAcceptd in H.
+      unfold COffered, CAcceptd in H4.
       elim_disj; psimpl.
       {
         exists (
           comRetPoss i
             (comInvPoss i
-              x3
+              x6
               (Exch v)
               (ExchDef {i => v} {}))
             (Exch v)
@@ -1776,11 +1793,11 @@ eapply lemIf with
         ).
         assert (
           VisPossSteps
-            x3
+            x6
             ([(i, CallEv (Exch v))] ++ [(i, RetEv (Exch v) None)])
             (comRetPoss i
               (comInvPoss i
-                x3
+                x6
                 (Exch v)
                 (ExchDef {i => v} {}))
               (Exch v)
@@ -1792,18 +1809,18 @@ eapply lemIf with
           apply callStep with (p:=[]).
           constructor.
           {
-            rewrite H6, H7, H5, H1.
+            rewrite H7, H8, H9, H2.
             repeat (easy || constructor).
           }
           {
-            cbn. rewrite eqb_id, H7.
+            cbn. rewrite eqb_id, H9.
             repeat (easy || constructor).
           }
         }
         split.
         {
           eapply erase_vis.
-          exact H10.
+          exact H14.
         }
         split.
         {
@@ -1817,14 +1834,14 @@ eapply lemIf with
         }
         {
           destruct s, t.
-          psimpl. ddestruct x6.
+          psimpl. ddestruct x9.
           apply ExchRevokePass.
           { easy. }
           {
             constructor; cbn.
             {
               econstructor.
-              symmetry. exact x4.
+              symmetry. exact x7.
               easy.
             }
             { intros. now rewrite H0. }
@@ -1832,31 +1849,43 @@ eapply lemIf with
         }
       }
       {
-        rewrite H1 in H3. ddestruct H3.
-        rewrite H4 in x6. ddestruct x6.
+        rewrite H2 in H5. ddestruct H5.
+        rewrite H6 in x9. ddestruct x9.
       }
     }
     {
       begin_commit.
       ddestruct H1. ddestruct H2.
-      unfold COffered, CAcceptd in H.
+      unfold COffered, CAcceptd in H4.
       elim_disj; psimpl.
       {
-        rewrite H in H3. ddestruct H3.
-        rewrite H4 in x6. ddestruct x6.
+        rewrite H2 in H5. ddestruct H5.
+        rewrite H6 in x9. ddestruct x9.
         easy.
       }
-      rewrite H2 in H3. ddestruct H3.
-      rewrite H4 in x6. ddestruct x6.
-      exists x3.
+      rewrite H4 in H5. ddestruct H5.
+      rewrite H6 in x9. ddestruct x9.
+      exists x6.
+      rewrite H in H3. ddestruct H3.
+      rewrite frobProgId in x at 1. psimpl.
+      ddestruct x. rewrite H11 in x7.
+      ddestruct x7. rewrite frobProgId in x8 at 1.
+      cbn in x8.
       split.
       { constructor. }
       split.
       {
-        cbn. unfold CAcceptd.
-        exists None, x8, x9.
-        split. easy.
-        now rewrite H5, H6, H7.
+        cbn in *.
+        split.
+        { now rewrite frobProgId at 1. }
+        {
+          unfold CAcceptd.
+          exists None, x11, x12.
+          rewrite H7, H8, H9.
+          repeat split; try easy.
+          unfold not. intros. psimpl.
+          rewrite H3 in x8 at 1. ddestruct x8.
+        }
       }
       {
         destruct s, t. psimpl.
@@ -1864,9 +1893,8 @@ eapply lemIf with
         {
           constructor; cbn.
           {
-            econstructor.
-            symmetry. exact x4.
-            easy.
+            econstructor. exact H11.
+            now rewrite frobProgId at 1.
           }
           { intros. now rewrite H0. }
         }
@@ -1891,36 +1919,65 @@ eapply lemIf with
     {
       eapply lemGet with
         (Q:=fun w s x =>
+          fst s i = Cont (Exch v) (
+            match w : option (Offer T A) with
+            | ACCEPTED _ _ _ w' =>
+                call (CAS w EMPTY);;
+                ret (Some w')
+            | _ =>
+                ret None (* impossible *)
+            end
+          ) /\
           exists m w' j, i <> j /\
             w = ACCEPTED i j v w' /\
             [[SAcceptd i j v w']] m s x).
       {
         begin_stable.
-        
+        split.
+        {
+          apply Rely_pres_self_ths in H0.
+          now rewrite H0 at 1.
+        }
+        {
+          eapply Rely_trans_self_acceptd in H0.
+          2: exact H1. 2:{ exists x1. exact H3. }
+          psimpl. now exists x4, x2, x3.
+        }
       }
       {
         begin_commit.
-        unfold CAcceptd in H9. psimpl.
+        unfold CAcceptd in H12. psimpl.
         ddestruct H1. ddestruct H2.
-        rewrite H9 in H3. ddestruct H3.
-        rewrite H4 in x9. ddestruct x9.
-        exists x6.
+        rewrite H12 in H5. ddestruct H5.
+        rewrite H6 in x12. ddestruct x12.
+        rewrite H in H3. ddestruct H3.
+        rewrite frobProgId in x at 1.
+        cbn in x. ddestruct x.
+        rewrite H11 in x10. ddestruct x10.
+        rewrite frobProgId in x11 at 1. cbn in x11.
+        exists x9.
         split. constructor.
         split.
         {
-          exists None, x5, x4.
-          unfold CAcceptd.
-          split. easy.
-          now rewrite H5, H6, H7.
+          split.
+          { now rewrite frobProgId at 1. }
+          {
+            exists None, x8, x7.
+            unfold CAcceptd.
+            split. easy.
+            rewrite H9, H8, H7.
+            repeat split; try easy.
+            unfold not. intros. psimpl.
+            rewrite H1 in x11 at 1. ddestruct x11.
+          }
         }
         {
           destruct s, t. psimpl.
           apply ExchGetAccept. easy.
           constructor; cbn.
           {
-            econstructor.
-            symmetry. exact x7.
-            easy.
+            econstructor. exact H11.
+            now rewrite frobProgId at 1.
           }
           { intros. now rewrite H0. }
         }
@@ -1945,11 +2002,19 @@ eapply lemIf with
             (QF:=fun _ _ => False).
           {
             begin_stable.
-            
+            split.
+            {
+              eapply Rely_pres_precs.
+              exact H0. easy.
+            }
+            {
+              eapply Rely_pres_returned.
+              exact H0. easy.
+            }
           }
           {
             begin_stable.
-            admit.
+            easy.
           }
           {
             begin_commit.
