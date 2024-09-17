@@ -1036,17 +1036,197 @@ Lemma Rely_trans_self_offered :
   (exists m, COffered m i v s x) ->
   (exists m, COffered m i v t y) \/
   (exists m j w, i <> j /\ CAcceptd m i j v w t y).
-intros.
-induction H. now left.
-clear H1. do 2 destruct H.
+intros H v.
+cut (
+  (exists m, COffered m i v s x) \/
+  (exists m j w, i <> j /\ CAcceptd m i j v w s x) ->
+  (exists m, COffered m i v t y) \/
+  (exists m j w, i <> j /\ CAcceptd m i j v w t y)
+).
+{ intros. apply H0. now left. }
+induction H. easy.
+clear H0. do 2 destruct H.
+intros. apply IHSRTC. clear IHSRTC.
 ddestruct H0.
 {
-  unfold TInvoke in H0. psimpl.
-  apply sing_elem in H3. psimpl.
-  left.
-  admit.
+  unfold TInvoke, InterOStep in H0. psimpl.
+  ddestruct H2. ddestruct H1. cbn in *.
+  apply sing_elem in H4. psimpl.
+  unfold COffered, CAcceptd in *.
+  rewrite H8, H9, H4, <- H2.
+  setoid_rewrite <- H3.
+  all: easy.
 }
-Admitted.
+{
+  unfold TReturn, InterOStep in H0. psimpl.
+  ddestruct H2. ddestruct H1. cbn in *.
+  unfold mapRetPoss in H4.
+  apply sing_elem in H4. psimpl.
+  unfold COffered, CAcceptd in *.
+  rewrite H9, H10, H11, <- H2.
+  setoid_rewrite <- H3.
+  all: easy.
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  {
+    left.
+    ddestruct H1. ddestruct H0.
+    cbn in *. rewrite <- H1.
+    exists (Pend i0 m). all: easy.
+  }
+  {
+    right.
+    ddestruct H0. ddestruct H3.
+    cbn in *. rewrite <- H1.
+    exists (Pend i0 m), x1, x2.
+    all: easy.
+  }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  { ddestruct H1. }
+  { ddestruct H2. }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  { now ddestruct H2. }
+  { ddestruct H3. }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  {
+    left.
+    ddestruct H2. ddestruct H1.
+    cbn in *. rewrite <- H2.
+    exists None. all: easy.
+  }
+  {
+    right.
+    ddestruct H3. ddestruct H1.
+    cbn in *. rewrite <- H2.
+    exists None, x1, x2.
+    all: easy.
+  }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  { ddestruct H2. }
+  { now ddestruct H3. }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  { ddestruct H2. }
+  { now ddestruct H3. }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  {
+    left.
+    ddestruct H2. ddestruct H1.
+    cbn in *. rewrite <- H2.
+    exists None. all: easy.
+  }
+  {
+    right.
+    ddestruct H3. ddestruct H1.
+    cbn in *. rewrite <- H2.
+    exists None, x1, x2.
+    all: easy.
+  }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  {
+    left.
+    ddestruct H2. ddestruct H1.
+    cbn in *. rewrite <- H2.
+    exists None. all: easy.
+  }
+  { ddestruct H3. }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  {
+    left.
+    ddestruct H3. destruct_big_steps.
+    cbn in *. exists None.
+    rewrite <- H16, H13, H14, H7, H6.
+    all: try easy. repeat split; try easy.
+    rewrite H17 in H1. destruct_all_steps.
+    2:{ now apply disj_cons in x2. }
+    easy.
+  }
+  {
+    right.
+    ddestruct H4. destruct_big_steps.
+    cbn in *. exists None, x1, x2.
+    rewrite H14, H13, H7, H6, <- H16.
+    all: try easy. repeat split; try easy.
+    rewrite H18 in H1. destruct_all_steps.
+    2:{ now apply disj_cons in x4. }
+    easy.
+  }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  {
+    right.
+    ddestruct H3. ddestruct H2.
+    cbn in *. exists None, i0, v.
+    destruct_big_steps. rewrite <- H30.
+    repeat split; try easy. 2: easy.
+    rewrite H31 in H1. ddestruct H1.
+    2: now apply disj_cons in x2.
+    rewrite <- x in H8. ddestruct H8.
+    symmetry in x3. now apply disj_cons in x3.
+    rewrite <- x in H15. ddestruct H15.
+    2: now apply disj_cons in x10.
+    rewrite <- x in H22. ddestruct H22.
+    symmetry in x13. now apply disj_cons in x13.
+    easy.
+  }
+  { ddestruct H4. }
+}
+{
+  unfold COffered, CAcceptd in *.
+  elim_disj; psimpl.
+  {
+    left.
+    ddestruct H4. ddestruct H3.
+    cbn in *. exists None.
+    destruct_big_steps.
+    rewrite H14, H15, H7, H8, <- H17.
+    all: try easy.
+    rewrite H18 in H2. ddestruct H2.
+    2: now apply disj_cons in x2.
+    rewrite <- x in H9. ddestruct H9.
+    easy.
+  }
+  {
+    right.
+    ddestruct H5. ddestruct H3.
+    cbn in *. exists None, x1, x2.
+    destruct_big_steps.
+    rewrite H14, H15, H7, H8, <- H17.
+    all: try easy.
+    rewrite H19 in H2. ddestruct H2.
+    2: now apply disj_cons in x4.
+    rewrite <- x in H9. ddestruct H9.
+    easy.
+  }
+}
+Qed.
 
 End Rely_lemmas.
 
@@ -1141,6 +1321,38 @@ Lemma Rely_pres_precs :
   Rely i s x t y ->
   Precs i s x ->
   Precs i t y.
+intros. induction H. easy.
+apply IHSRTC. clear IHSRTC H1.
+unfold Precs, OtherTran in *. psimpl.
+unfold CCleared, COffered, CAcceptd in *.
+elim_disj; psimpl.
+{
+  ddestruct H1.
+  {
+    unfold TInvoke, InterOStep in H0.
+    psimpl. ddestruct H3. psimpl.
+    apply sing_elem in H5. psimpl.
+    exists x0. left. now rewrite H7, <- H4.
+  }
+  {
+    unfold TReturn, InterOStep in H0.
+    psimpl. ddestruct H3. psimpl.
+    apply sing_elem in H5. psimpl.
+    unfold mapRetPoss in *. psimpl.
+    exists x0. left. now rewrite H12, <- H4.
+  }
+  {
+    ddestruct H1. ddestruct H0.
+    exists (Pend i0 m). now left.
+  }
+  {
+    ddestruct H1. ddestruct H0.
+    exists None. right. left.
+    exists i0, v. cbn.
+    admit.
+  }
+  all: admit.
+}
 Admitted.
 
 Lemma Invoke_pres_precs :
@@ -1733,7 +1945,7 @@ eapply lemIf with
             (QF:=fun _ _ => False).
           {
             begin_stable.
-            admit.
+            
           }
           {
             begin_stable.
