@@ -881,13 +881,43 @@ Qed.
 
 (* Rely lemmas *)
 
+Lemma conj_assoc {A B C : Prop} :
+  (A /\ B /\ C) = ((A /\ B) /\ C).
+now apply propositional_extensionality.
+Qed.
+
+Ltac destruct_big_steps :=
+repeat (match goal with
+| [ H : VisPossSteps ?x ?p ?y |- _ ] =>
+    ddestruct H
+| [ H : VisPossStep ?x ?e ?y |- _ ] =>
+    ddestruct H
+| [ H : UnderStep ?s ?i ?e ?t |- _] =>
+    ddestruct H
+| [ H : UnderThreadStep ?s ?e ?t |- _ ] =>
+    ddestruct H
+end; cbn in *).
+
+
+Ltac destruct_all_steps :=
+repeat (match goal with
+| [ H : VisPossSteps ?x ?p ?y |- _ ] =>
+    ddestruct H
+| [ H : VisPossStep ?x ?e ?y |- _ ] =>
+    ddestruct H
+| [ H : UnderStep ?s ?i ?e ?t |- _] =>
+    ddestruct H
+| [ H : UnderThreadStep ?s ?e ?t |- _ ] =>
+    ddestruct H
+| [ H : ExchStep ?x ?e ?y |- _ ] =>
+    ddestruct H
+end; cbn in *).
+
 Section Rely_lemmas.
 
-Context
-  {T A}
-  {i : Name T}
-  {s t : InterState (F A) (VE T A)}
-  {x y : Poss (VF T A)}.
+Variables (T : nat) (A : Type) (i : Name T).
+Variables s t : InterState (F A) (VE T A).
+Variables x y : Poss (VF T A).
 
 Lemma Rely_pres_self_ths :
   Rely i s x t y ->
@@ -917,27 +947,98 @@ do 2 destruct H. ddestruct H0.
 { ddestruct H3. now rewrite H4. }
 Qed.
 
+Lemma Rely_trans_self_acceptd :
+  Rely i s x t y ->
+  forall j v w,
+  i <> j ->
+  (exists m, CAcceptd m i j v w s x) ->
+  (exists m, CAcceptd m i j v w t y).
+intros.
+induction H. easy.
+apply IHSRTC. clear - H H1.
+unfold OtherTran, CAcceptd in *.
+psimpl. ddestruct H5.
+{
+  unfold TInvoke, InterOStep in H0.
+  psimpl. ddestruct H6. ddestruct H1.
+  apply sing_elem in H8. psimpl.
+  rewrite <- H2, H12, H13, <- H7, H8; try easy.
+  now exists x2.
+}
+{
+  unfold TReturn, InterOStep in H0.
+  psimpl. ddestruct H6. ddestruct H1.
+  apply sing_elem in H8.
+  unfold mapRetPoss in H8. psimpl.
+  rewrite <- H7, H15, H13, H14, <- H2; try easy.
+  now exists x2.
+}
+{
+  ddestruct H1. ddestruct H0.
+  eexists. split. easy.
+  now rewrite <- H1.
+}
+{ ddestruct H1. }
+{
+  ddestruct H1. ddestruct H1.
+  exists None. split. easy.
+  now rewrite <- H2.
+}
+{
+  ddestruct H1. ddestruct H3.
+  eexists. split. easy.
+  now rewrite <- H2.
+}
+{
+  ddestruct H1. ddestruct H3.
+  eexists. split. easy.
+  now rewrite <- H2.
+}
+{
+  ddestruct H1. ddestruct H3.
+  exists None. split. easy.
+  now rewrite <- H2.
+}
+{
+  ddestruct H1. ddestruct H3.
+  exists None. split. easy.
+  now rewrite <- H2.
+}
+{ ddestruct H1. ddestruct H3. }
+{
+  destruct_all_steps; ddestruct H17.
+  2:{
+    rewrite <- x in x5. ddestruct x5.
+    apply insert_cong in x. destruct x.
+    exfalso. eapply disj_cons.
+    symmetry. exact H15.
+  }
+  eexists. split. easy.
+  now rewrite <- x5, H13, H14, H6, H7, <- H16.
+}
+{ ddestruct H3. }
+{
+  ddestruct H4. destruct_all_steps.
+  2:{
+    rewrite <- x in x5. ddestruct x5.
+    apply insert_cong in x. destruct x.
+    exfalso. eapply disj_cons.
+    symmetry. exact H16.
+  }
+  eexists. split. easy.
+  now rewrite <- x5, H14, H15, H7, H8, <- H17.
+}
+Qed.
+
 Lemma Rely_trans_self_offered :
   Rely i s x t y ->
   forall v,
   (exists m, COffered m i v s x) ->
   (exists m, COffered m i v t y) \/
   (exists m j w, i <> j /\ CAcceptd m i j v w t y).
-intros H v.
-cut (
-  (exists m, COffered m i v s x) \/
-  (exists m j w, i <> j /\
-    CAcceptd m i j v w s x) ->
-  (exists m, COffered m i v t y) \/
-  (exists m j w, i <> j /\
-    CAcceptd m i j v w t y)
-).
-{
-  intros. apply H0.
-  now left.
-}
-induction H. easy.
-clear H0. do 2 destruct H.
+intros.
+induction H. now left.
+clear H1. do 2 destruct H.
 ddestruct H0.
 {
   unfold TInvoke in H0. psimpl.
@@ -947,40 +1048,92 @@ ddestruct H0.
 }
 Admitted.
 
-Lemma Rely_trans_self_acceptd :
-  Rely i s x t y ->
-  forall j v w m,
-  i <> j ->
-  CAcceptd m i j v w s x ->
-  CAcceptd m i j v w t y.
-intros. psimpl.
-induction H. easy.
-apply IHSRTC. clear - H H1.
-unfold OtherTran, CAcceptd in *.
-psimpl. ddestruct H5.
-{
-  unfold TInvoke, InterOStep in H0.
-  psimpl. ddestruct H6. ddestruct H1.
-  apply sing_elem in H8. psimpl.
-  now rewrite <- H2, H12, H13, <- H7, H8.
-}
-{
-  unfold TReturn, InterOStep in H0.
-  psimpl. ddestruct H6. ddestruct H1.
-  apply sing_elem in H8.
-  unfold mapRetPoss in H8. psimpl.
-  now rewrite <- H7, H15, H13, H14, <- H2.
-}
-{
-  cbn in *.
-}
+End Rely_lemmas.
+
+Section Rely_lemmas.
+
+Variables (T : nat) (A : Type) (i : Name T).
+Variables s t : InterState (F A) (VE T A).
+Variables x y : Poss (VF T A).
+
 
 Lemma Rely_pres_waiting_poss :
   Rely i s x t y ->
+  ~((exists m v,
+      snd s = CASDef (OFFERED i v) m)(* \/
+    (exists m v j w,
+      i <> j /\
+      snd s = CASDef ())*)) ->
   forall v,
   (PCalls x i = CallPoss (Exch v) /\ PRets x i = RetIdle) ->
   (PCalls y i = CallPoss (Exch v) /\ PRets y i = RetIdle).
-Admitted.
+intros. induction H. easy.
+apply IHSRTC.
+clear IHSRTC H2.
+{
+  clear H1. unfold not.
+  intros. psimpl.
+  clear - H0 H H1.
+  do 2 destruct H. ddestruct H2.
+  {
+    apply H1.
+    unfold TInvoke in H0.
+    psimpl. rewrite H4.
+    now exists x0, x1.
+  }
+  {
+    apply H1.
+    unfold TReturn in H0.
+    psimpl. rewrite H4.
+    now exists x0, x1.
+  }
+  {
+    apply H1.
+    cbn in *. ddestruct H2.
+    repeat eexists.
+  }
+  {
+    cbn in *.
+  }
+}
+clear H2 IHSRTC.
+do 2 destruct H. ddestruct H2.
+{
+  unfold TInvoke in H0. psimpl.
+  apply sing_elem in H6. psimpl.
+  now rewrite H10, H11.
+}
+{
+  unfold TReturn in H0. psimpl.
+  apply sing_elem in H6.
+  unfold mapRetPoss in H6. psimpl.
+  now rewrite H11, H12.
+}
+all: try easy.
+{
+  destruct_big_steps.
+  now rewrite H12, H13, H5, H6.
+}
+{
+  destruct_big_steps.
+  now rewrite H13, H14, H6, H7.
+}
+{
+  do 2 ddestruct H2. cbn in *.
+  assert (i <> j).
+  {
+    unfold not. intro. subst.
+    exfalso. apply H4.
+    repeat eexists.
+  }
+  destruct_big_steps.
+  now rewrite H28, H27, H21, H20, H14, H13, H7, H6.
+}
+{
+  do 2 ddestruct H3. cbn in *.
+  destruct_big_steps.
+  now rewrite H14, H15, H8, H7.
+}
 
 Lemma Rely_pres_precs :
   Rely i s x t y ->
@@ -1016,19 +1169,59 @@ setoid_rewrite H3.
 }
 Qed.
 
+End Rely_lemmas.
+
+Section Rely_lemmas.
+
+Variables (T : nat) (A : Type) (i : Name T).
+Variables s t : InterState (F A) (VE T A).
+Variables x y : Poss (VF T A).
+
 Lemma Rely_pres_returned :
   Rely i s x t y ->
   forall v w,
   Returned i (Exch v) w s (eq x) ->
   Returned i (Exch v) w t (eq y).
-Admitted.
+unfold Returned. intros. psimpl.
+assert (H' := H).
+apply Rely_pres_self_ths in H'.
+rewrite H' in H1 at 1.
+eapply H0 in H1. 2: easy.
+clear - H1 H. induction H. easy.
+apply IHSRTC. clear IHSRTC H0.
+do 2 destruct H. ddestruct H0.
+{
+  unfold TInvoke in H0. psimpl.
+  apply sing_elem in H5. psimpl.
+  now rewrite H9, H10.
+}
+{
+  unfold TReturn in H0. psimpl.
+  apply sing_elem in H5.
+  unfold mapRetPoss in H5. psimpl.
+  now rewrite H10, H11.
+}
+all: try easy.
+{ destruct_big_steps. now rewrite H12, H13, H5, H6. }
+{ destruct_big_steps. now rewrite H13, H14, H6, H7. }
+{
+  assert (i <> j).
+  {
+    unfold not. intros. subst.
+    ddestruct H1. ddestruct H1.
+    destruct H10. rewrite H2 in H11.
+    ddestruct H11.
+  }
+  destruct_big_steps.
+  now rewrite H27, H28, H20, H21, H14, H13, H7, H6.
+}
+{
+  destruct_big_steps.
+  now rewrite H15, H14, H8, H7.
+}
+Qed.
 
 End Rely_lemmas.
-
-Lemma conj_assoc {A B C : Prop} :
-  (A /\ B /\ C) = ((A /\ B) /\ C).
-now apply propositional_extensionality.
-Qed.
 
 Lemma exch_correct {T A} {i : Name T} :
   forall v,
