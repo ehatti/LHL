@@ -1072,29 +1072,30 @@ apply IHSRTC.
 clear IHSRTC H2.
 {
   clear H1. unfold not.
-  intros. psimpl.
-  clear - H0 H H1.
-  do 2 destruct H. ddestruct H2.
+  intros. psimpl. apply H0.
+  clear - H1 H.
+  do 2 destruct H. ddestruct H0.
   {
-    apply H1.
     unfold TInvoke in H0.
-    psimpl. rewrite H4.
+    psimpl. rewrite H3.
     now exists x0, x1.
   }
   {
-    apply H1.
     unfold TReturn in H0.
-    psimpl. rewrite H4.
+    psimpl. rewrite H3.
     now exists x0, x1.
   }
-  {
-    apply H1.
-    cbn in *. ddestruct H2.
-    repeat eexists.
-  }
-  {
-    cbn in *.
-  }
+  { cbn in *. ddestruct H1. repeat eexists. }
+  { cbn in *. ddestruct H1. easy. }
+  { cbn in *. ddestruct H2. }
+  { cbn in *. ddestruct H2. repeat eexists. }
+  { cbn in *. ddestruct H2. }
+  { cbn in *. ddestruct H2. }
+  { cbn in *. ddestruct H2. repeat eexists. }
+  { cbn in *. ddestruct H2. repeat eexists. }
+  { cbn in *. ddestruct H3. repeat eexists. }
+  { cbn in *. ddestruct H3. }
+  { cbn in *. ddestruct H4. repeat eexists. }
 }
 clear H2 IHSRTC.
 do 2 destruct H. ddestruct H2.
@@ -1134,6 +1135,7 @@ all: try easy.
   destruct_big_steps.
   now rewrite H14, H15, H8, H7.
 }
+Qed.
 
 Lemma Rely_pres_precs :
   Rely i s x t y ->
@@ -1266,7 +1268,17 @@ eapply weakenPrec with
   }
   {
     eapply Rely_pres_waiting_poss.
-    exact H5. easy.
+    exact H5. 2: easy.
+    {
+      unfold not. intros. psimpl.
+      rewrite <- H3 in H0.
+      unfold Precs in *. psimpl.
+      unfold CCleared, COffered, CAcceptd in H2.
+      elim_disj; psimpl.
+      { rewrite H2 in H0. ddestruct H0. }
+      { rewrite H10 in H0. ddestruct H0. easy. }
+      { rewrite H11 in H0. ddestruct H0. }
+    }
   }
 }
 unfold Precs.
@@ -1339,7 +1351,16 @@ eapply lemIf with
       split.
       {
         eapply Rely_pres_waiting_poss.
-        exact H0. easy.
+        exact H0. 2: easy.
+        {
+          unfold not. intros. psimpl.
+          unfold Precs in *. psimpl.
+          unfold CCleared, COffered, CAcceptd in H3.
+          elim_disj; psimpl.
+          { rewrite H3 in H4. ddestruct H4. }
+          { rewrite H5 in H4. ddestruct H4. easy. }
+          { rewrite H6 in H4. ddestruct H4. }
+        }
       }
       {
         eapply Rely_pres_precs.
