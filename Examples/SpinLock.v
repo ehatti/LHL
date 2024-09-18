@@ -249,110 +249,671 @@ Definition Post T := Post (VE T) (VF T).
 Definition UState T := State (VFU T).
 
 Ltac elim_corece :=
+  unfold E in *; unfold F in *;
   repeat match goal with
   | H : context[(CASState ?T bool)] |- _ =>
       change (CASState T bool) with (@State T (CASSig bool) (VE T)) in H
   | |- context[(CASState ?T bool)] =>
       change (CASState T bool) with (@State T (CASSig bool) (VE T))
-  | H : context[(ThreadsSt ?T E ?F)] |- _ =>
-    unfold E in H
-  | |- context[(ThreadsSt ?T E ?F)] =>
-    unfold E
-  | H : context[(ThreadsSt ?T ?E F)] |- _ =>
-    unfold F in H
-  | |- context[(ThreadsSt ?T ?E F)] =>
-    unfold F
-  | H : context[@PState ?T F (VFU ?T)] |- _ =>
-      unfold F in H
-  | |- context[@PState ?T F (VFU ?T)] =>
-      unfold F
   | H : context[(forall _ : Name ?T, ThreadState (CASSig bool) F)] |- _ =>
-      change ((forall _ : Name T, ThreadState (CASSig bool) F)) with (ThreadsSt T E LockSig) in H
-  | |- context[(forall _ : Name ?T, ThreadState (CASSig bool) F)] =>
-      change ((forall _ : Name T, ThreadState (CASSig bool) F)) with (ThreadsSt T E LockSig)
+      change ((forall _ : Name T, ThreadState (CASSig bool) F)) with (forall _ : Name T, ThreadState (CASSig bool) LockSig) in H
+  | H : context[(forall _ : Name ?T, ThreadState (CASSig bool) LockSig)] |- _ =>      
+      change (forall _ : Name ?T, ThreadState (CASSig bool) LockSig) with (ThreadsSt T (CASSig bool) LockSig) in H
+  | |- context [(forall _ : Name ?T, ThreadState (CASSig bool) F)] =>
+      change (forall _ : Name ?T, ThreadState (CASSig bool) F) with (forall _ : Name T, ThreadState (CASSig bool) LockSig)
+  | |- context [(forall _ : Name ?T, ThreadState (CASSig bool) LockSig)] =>
+      change (forall _ : Name ?T, ThreadState (CASSig bool) LockSig) with (ThreadsSt T (CASSig bool) LockSig)
   end.
 
+Definition CAS_i_acq {T} (i : Name T) : option (@CASPend T bool) :=
+  (Some (MkCASPend i (CAS None (Some true)))).
+
+Definition CAS_i_rel {T} (i : Name T) : option (@CASPend T bool) :=
+  (Some (MkCASPend i (CAS (Some true) None))).
+
 Definition i_owns {T} (i : Name T) (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
-  PState ρ = inl (LockOwned i) /\ snd s = CASDef (Some true) None.
+  PState ρ = inl (LockOwned i) /\ (snd s = CASDef (Some true) None \/ (exists j, j <> i /\ snd s = CASDef (Some true) (CAS_i_acq j))).
+
+Definition other_owns{T} (i : Name T) (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
+  exists j, j <> i /\ i_owns j s ρ.
+
+Definition unowns {T} (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
+  PState ρ = inl LockUnowned /\ snd s = CASDef None None.
+
+Definition unowns_acq {T} (i : Name T) (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
+  PState ρ = inl LockUnowned /\ snd s = CASDef None (CAS_i_acq i).
+
+Definition i_owns_rel {T} (i : Name T) (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
+  PState ρ = inl (LockOwned i) /\ snd s = CASDef (Some true) (CAS_i_rel i).
+
+Definition other_owns_rel {T} (i : Name T) (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
+  exists j, j <> i /\ i_owns_rel j s ρ.
+
+Definition is_ub_state {T} (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
+  exists a, PState ρ = inr (UBState_, a) /\ exists o m, snd s = CASDef o m.
 
 Definition i_not_owns {T} (i : Name T) (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
-  (PState ρ = inl LockUnowned /\ snd s = CASDef None None) \/ 
-  (exists j, j <> i /\ i_owns j s ρ).
+  (other_owns i s ρ \/ unowns s ρ \/ (exists j, j <> i /\ unowns_acq j s ρ) \/ (other_owns_rel i s ρ)).
+
+Definition other_owns_acq {T} (i : Name T) (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
+  exists j, j <> i /\ PState ρ = inl (LockOwned j) /\ snd s = CASDef (Some true) (CAS_i_acq i).
 
 Definition valid_state {T} (i : Name T) (s: InterState F (VE T)) (ρ: Poss (VFU T)) :=
-  i_owns i s ρ \/ i_not_owns i s ρ.
-
-Definition is_ub_state {T} (ρ: Poss (VFU T)) :=
-  exists a, PState ρ = inr (UBState_, a).
-
-Definition ub_and_idle {T} i (ρ: Poss (VFU T)) :=
-  exists a, PState ρ = inr (UBState_, a) /\ a i = None.
+  i_owns i s ρ \/ other_owns i s ρ \/ unowns s ρ \/ (exists j, unowns_acq j s ρ) \/ i_owns_rel i s ρ \/ other_owns_rel i s ρ.
 
 Definition Precs {T} i A (m : LockSig A) : PrecU T :=
   fun s ρs => exists ρ, ρs = eq ρ /\
     match m with
     | Acq =>
-        (valid_state i s ρ \/ is_ub_state ρ) /\
+        (valid_state i s ρ \/ is_ub_state s ρ) /\
         StateWithUB_acf _ (acf T) (PState ρ) i = None
     | Rel =>
-        (valid_state i s ρ \/ is_ub_state ρ) /\
+        (valid_state i s ρ \/ is_ub_state s ρ) /\
         StateWithUB_acf _ (acf T) (PState ρ) i = None
     end.
 
 Definition Posts {T} i A (m : LockSig A) : PostU T A :=
-  fun v s ρs t σs => exists ρ σ, ρs = eq ρ /\ σs = eq σ /\
+  fun v _ _ t σs => exists σ, σs = eq σ /\
     match m with
     | Acq =>
-        PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt /\
-        ((i_not_owns i s ρ /\ i_owns i t σ /\ fst t i = Cont m (Return v)) \/
-         (Precs i unit Acq s ρs /\ ub_and_idle i σ))
+        (PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt /\
+         i_owns i t σ /\ fst t i = Cont m (Return v)) \/
+        (((PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle) \/
+          (PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt)) /\
+         is_ub_state t σ /\ StateWithUB_acf _ (acf T) (PState σ) i = None)
     | Rel =>
-        PCalls σ i = CallDone Rel /\ PRets σ i = RetPoss Rel tt /\
-        ((i_owns i s ρ /\ i_not_owns i t σ /\ fst t i = Cont m (Return v)) \/
-         (Precs i unit Rel s ρs /\ ub_and_idle i σ))
+        (PCalls σ i = CallDone Rel /\ PRets σ i = RetPoss Rel tt /\
+         i_not_owns i t σ /\ fst t i = Cont m (Return v)) \/
+        (((PCalls σ i = CallPoss Rel /\ PRets σ i = RetIdle) \/
+          (PCalls σ i = CallDone Rel /\ PRets σ i = RetPoss Rel tt)) /\
+         is_ub_state t σ /\ StateWithUB_acf _ (acf T) (PState σ) i = None)
     end.
 
 Definition CSs {T} i A (m : LockSig A) : PostU T A :=
   fun v s ρs t σs => exists ρ σ, ρs = eq ρ /\ σs = eq σ /\
     match m with
     | Acq =>
-        t = (fun j => if i =? j then Idle else fst s j, snd s) /\ 
-        mapRetPoss i m v ρ σ
+        (t = (fun j => if i =? j then Idle else fst s j, snd s) /\ mapRetPoss i m v ρ σ) \/ 
+        (is_ub_state t σ /\ StateWithUB_acf _ (acf T) (PState σ) i = None)
     | Rel =>
-        t = (fun j => if i =? j then Idle else fst s j, snd s) /\ 
-        mapRetPoss i m v ρ σ
+        (t = (fun j => if i =? j then Idle else fst s j, snd s) /\ mapRetPoss i m v ρ σ) \/
+        (is_ub_state t σ /\ StateWithUB_acf _ (acf T) (PState σ) i = None)
     end.
 
 Definition Rely {T} i : ReltU T :=
   fun s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\
     fst s i = fst t i /\
-    (i_owns i s ρ -> i_owns i t σ \/ is_ub_state σ) /\ 
-    (i_not_owns i s ρ -> i_not_owns i t σ \/ is_ub_state σ) /\
-    (is_ub_state ρ -> is_ub_state σ) /\
+    (i_owns i s ρ -> i_owns i t σ \/ is_ub_state t σ) /\ 
+    (i_not_owns i s ρ -> i_not_owns i t σ \/ is_ub_state t σ) /\
+    (i_owns_rel i s ρ -> i_owns_rel i t σ \/ is_ub_state t σ) /\
+    (unowns_acq i s ρ -> unowns_acq i t σ \/ is_ub_state t σ) /\
+    (other_owns_acq i s ρ -> other_owns_acq i t σ \/ is_ub_state t σ) /\
+    (is_ub_state s ρ -> is_ub_state t σ) /\
     PCalls ρ i = PCalls σ i /\
     PRets ρ i = PRets σ i /\ 
-    StateWithUB_acf _ (acf T) (PState ρ) i = StateWithUB_acf _ (acf T) (PState σ) i /\
-    ((exists a e m, snd s = CASDef a (Some (MkCASPend i (CAS e m)))) -> s = t /\ ρ = σ).
+    StateWithUB_acf _ (acf T) (PState ρ) i = StateWithUB_acf _ (acf T) (PState σ) i.
 
 Definition Guar {T} i : ReltU T :=
   fun s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\
     (forall j, j <> i -> fst s j = fst t j) /\
-    (forall j, j <> i -> i_owns j s ρ -> (i_owns j t σ \/ is_ub_state σ)) /\
-    (forall j, j <> i -> i_not_owns j s ρ -> (i_not_owns j t σ \/ is_ub_state σ)) /\
-    (is_ub_state ρ -> is_ub_state σ) /\
+    (forall j, j <> i -> i_owns j s ρ -> (i_owns j t σ \/ is_ub_state t σ)) /\
+    (forall j, j <> i -> i_not_owns j s ρ -> (i_not_owns j t σ \/ is_ub_state t σ)) /\
+    (forall j, j <> i -> i_owns_rel j s ρ -> (i_owns_rel j t σ \/ is_ub_state t σ)) /\
+    (forall j, j <> i -> unowns_acq j s ρ -> (unowns_acq j t σ \/ is_ub_state t σ)) /\
+    (forall j, j <> i -> other_owns_acq j s ρ -> (other_owns_acq j t σ \/ is_ub_state t σ)) /\
+    (is_ub_state s ρ -> is_ub_state t σ) /\
     (forall j, j <> i -> PCalls ρ j = PCalls σ j /\ PRets ρ j = PRets σ j) /\
-    (forall j, j <> i -> StateWithUB_acf _ (acf T) (PState ρ) j = StateWithUB_acf _ (acf T) (PState σ) j) /\
-    (forall j, j <> i -> (exists a e m, snd s = CASDef a (Some (MkCASPend j (CAS e m))) )-> s = t /\ ρ = σ).
+    (forall j, j <> i -> StateWithUB_acf _ (acf T) (PState ρ) j = StateWithUB_acf _ (acf T) (PState σ) j).
 
-Lemma valid_state_idle {T} i s ρ: valid_state i s ρ -> StateWithUB_acf _ (acf T) (PState ρ) i = None.
+Lemma valid_state_idle {T} i s ρ :
+  valid_state i s ρ ->
+  StateWithUB_acf _ (acf T) (PState ρ) i = None.
 Proof.
   intros.
   unfold valid_state in H.
+  destruct H as [Howns | [Howns | [Howns | [Howns | [Howns | Howns]]]]].
+  { destruct Howns as [Howns ?]. rewrite Howns. easy. }
+  { destruct Howns as [j [Hneq Howns]]. unfold i_owns in Howns. destruct Howns as [Howns ?]. rewrite Howns. easy. }
+  { destruct Howns as [Howns ?]. rewrite Howns. easy. }
+  { destruct Howns as [j [Howns ?]]. rewrite Howns. easy. }
+  { destruct Howns as [Howns ?]. rewrite Howns. easy. }
+  { destruct Howns as [j [Hneq [Howns ?]]]. rewrite Howns. easy. }
+Qed.
+
+Lemma i_owns_easy {T} : forall (i : Name T) s ρ t σ, 
+  snd s = snd t ->
+  PState ρ = PState σ ->
+  i_owns i s ρ ->
+  i_owns i t σ.
+Proof.
+  intros.
+  unfold i_owns in *.
+  destruct H1 as [Howns Hstate].
+  rewrite <- H0.
+  split; [easy |].
+  destruct Hstate as [Hstate | [j [Hneq Hstate]]].
+  { left. rewrite <- H. easy. }
+  { right. exists j. split; [easy |]. elim_corece. rewrite <- H. easy. }
+Qed.
+
+Lemma other_owns_easy {T} : forall (i : Name T) s ρ t σ, 
+  snd s = snd t ->
+  PState ρ = PState σ ->
+  other_owns i s ρ ->
+  other_owns i t σ.
+Proof.
+  intros.
+  unfold other_owns in *.
+  destruct H1 as [j [Hneq Howns]].
+  exists j. split; [easy |].
+  apply i_owns_easy with (s := s)(ρ := ρ); easy.
+Qed.
+
+Lemma unowns_easy {T} : forall s ρ t (σ: Poss (VFU T)), 
+  snd s = snd t ->
+  PState ρ = PState σ ->
+  unowns s ρ ->
+  unowns t σ.
+Proof.
+  intros.
+  unfold unowns in *.
+  rewrite <- H0.
+  rewrite <- H.
+  easy.
+Qed.
+
+Lemma unowns_acq_easy {T} : forall (i : Name T) s ρ t σ, 
+  snd s = snd t ->
+  PState ρ = PState σ ->
+  unowns_acq i s ρ ->
+  unowns_acq i t σ.
+Proof.
+  intros.
+  unfold unowns_acq in *.
+  destruct H1 as [Howns Hstate].
+  rewrite <- H0.
+  split; [easy |].
+  rewrite <- H.
+  easy.
+Qed.
+
+Lemma i_owns_rel_easy {T} : forall (i : Name T) s ρ t σ, 
+  snd s = snd t ->
+  PState ρ = PState σ ->
+  i_owns_rel i s ρ ->
+  i_owns_rel i t σ.
+Proof.
+  intros.
+  unfold i_owns_rel in *.
+  destruct H1 as [Howns Hstate].
+  rewrite <- H0.
+  split; [easy |].
+  rewrite <- H.
+  easy.
+Qed.
+
+Lemma other_owns_rel_easy {T} : forall (i : Name T) s ρ t σ, 
+  snd s = snd t ->
+  PState ρ = PState σ ->
+  other_owns_rel i s ρ ->
+  other_owns_rel i t σ.
+Proof.
+  intros.
+  unfold other_owns_rel in *.
+  destruct H1 as [j [Hneq Howns_rel]].
+  exists j. split; [easy |].
+  apply i_owns_rel_easy with (s := s)(ρ := ρ); easy.
+Qed.
+
+Lemma is_ub_state_easy {T} : forall s ρ t (σ: Poss (VFU T)), 
+  PState ρ = PState σ ->
+  is_ub_state s ρ ->
+  is_ub_state t σ.
+Proof.
+  intros.
+  unfold is_ub_state in *.
+  destruct H0 as [a [Hstate [o [m HH]]]].
+  exists a. split; [rewrite <- H; easy |].
+  destruct (snd t).
+  eexists. eexists. reflexivity.
+Qed.
+
+Lemma is_ub_state_easy2 {T} : forall s (ρ : Poss (VFU T)), 
+  (exists a, PState ρ = inr(UBState_, a)) ->
+  is_ub_state s ρ.
+Proof.
+  intros.
+  unfold is_ub_state in *.
+  destruct H as [a Hstate].
+  exists a. split; [easy |].
+  destruct (snd s).
+  eexists. eexists. reflexivity.
+Qed.
+
+Lemma i_not_owns_easy {T} : forall (i : Name T) s ρ t σ, 
+  snd s = snd t ->
+  PState ρ = PState σ ->
+  i_not_owns i s ρ ->
+  i_not_owns i t σ.
+Proof.
+  intros.
+  unfold i_not_owns in *.
+  destruct H1 as [Howns | [Hunowns | [Hunowns_acq | Howns_rel]]].
+  { left. apply other_owns_easy with (s := s)(ρ := ρ); easy. }
+  { right. left. apply unowns_easy with (s := s)(ρ := ρ); easy. }
+  { right. right. left. destruct Hunowns_acq as [j [Hneq Hunowns_acq]]. exists j. split; [easy |]. apply unowns_acq_easy with (s := s)(ρ := ρ); easy. }
+  { right. right. right. apply other_owns_rel_easy with (s := s)(ρ := ρ); easy. }
+Qed.
+
+Lemma other_owns_acq_easy {T} : forall (i : Name T) s ρ t σ, 
+  snd s = snd t ->
+  PState ρ = PState σ ->
+  other_owns_acq i s ρ ->
+  other_owns_acq i t σ.
+Proof.
+  intros.
+  unfold other_owns_acq in *.
+  destruct H1 as [j [Hneq [Howns Hstate]]].
+  exists j. split; [easy |]. 
+  rewrite <- H. rewrite <- H0. easy.
+Qed.
+
+Lemma valid_state_easy {T} : forall (i : Name T) s ρ t σ, 
+  snd s = snd t ->
+  PState ρ = PState σ ->
+  valid_state i s ρ ->
+  valid_state i t σ.
+Proof.
+  intros.
+  unfold valid_state in *.
+  destruct H1 as [Howns | [Howns | [Howns | [Howns | [Howns | Howns]]]]].
+  { left. apply i_owns_easy with (s := s)(ρ := ρ); easy. }
+  { right. left. apply other_owns_easy with (s := s)(ρ := ρ); easy. }
+  { right. right. left. apply unowns_easy with (s := s)(ρ := ρ); easy. }
+  { right. right. right. left. destruct Howns as [j Howns]. exists j. apply unowns_acq_easy with (s := s)(ρ := ρ); easy. }
+  { right. right. right. right. left. apply i_owns_rel_easy with (s := s)(ρ := ρ); easy. }
+  { right. right. right. right. right. apply other_owns_rel_easy with (s := s)(ρ := ρ); easy. }
+Qed.
+
+Lemma i_not_owns_valid {T} : forall (i : Name T) s ρ, 
+  i_not_owns i s ρ ->
+  valid_state i s ρ.
+Proof.
+  intros.
+  unfold i_not_owns, valid_state in *.
+  destruct H as [Howns | [Hunowns | [Hunowns_acq | Howns_rel]]].
+  { right. left. easy. }
+  { right. right. left. easy. }
+  { right. right. right. left. destruct Hunowns_acq as [j [Hneq Hunowns_acq]]. exists j. easy. }
+  { right. right. right. right. right. easy. }
+Qed.
+
+Lemma i_owns_unowns_exclusive {T} : forall (i : Name T) s ρ, 
+  i_owns i s ρ ->
+  unowns s ρ ->
+  False.
+Proof.
+  intros.
+  unfold i_owns, unowns in *.
+  destruct H as [HP1 ?]. destruct H0 as [HP2 ?].
+  rewrite HP1 in HP2. inversion HP2.
+Qed.
+
+Lemma iowns_inotowns_exclusive {T} : forall (i : Name T) s ρ, 
+  i_owns i s ρ ->
+  i_not_owns i s ρ ->
+  False.
+Proof.
+  intros.
+  unfold i_not_owns in H0.
+  destruct H0 as [Howns | [Hunowns | [Hunowns_acq | Howns_rel]]].
+  { destruct Howns as [j [Hneq Howns]].
+    unfold i_owns in *.
+    destruct H as [HP1 ?]. destruct Howns as [HP2 ?].
+    rewrite HP1 in HP2. inversion HP2.
+    subst j. contradiction.
+  }
+  { destruct H as [HP1 ?]. destruct Hunowns as [HP2 ?].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+  { destruct H as [HP1 ?]. destruct Hunowns_acq as [j [Hneq [HP2 ?]]].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+  { destruct H as [HP1 ?]. destruct Howns_rel as [j [Hneq [HP2 ?]]].
+    rewrite HP1 in HP2. inversion HP2. subst j. contradiction.
+  }
+Qed.
+
+Lemma iowns_unownsacq_exclusive {T} : forall (i : Name T) s ρ, 
+  i_owns i s ρ ->
+  unowns_acq i s ρ ->
+  False.
+Proof. 
+  intros.
+  unfold i_owns, unowns_acq in *.
+  destruct H as [HP1 ?]. destruct H0 as [HP2 ?].
+  rewrite HP1 in HP2. inversion HP2.
+Qed.
+
+Lemma iowns_iownsrel_exclusive {T} : forall (i : Name T) s ρ, 
+  i_owns i s ρ ->
+  i_owns_rel i s ρ ->
+  False.
+Proof.
+  intros.
+  unfold i_owns, i_owns_rel in *.
+  destruct H as [HP1 ?]. destruct H0 as [HP2 ?].
   destruct H.
-  + unfold i_owns in H. destruct H. rewrite H. easy.
-  + unfold i_not_owns in H. destruct H.
-    { destruct H. rewrite H. easy. }
-    { destruct H as [j [? ?]]. destruct H0. rewrite H0. easy. }
+  { rewrite H in H0. inversion H0. }
+  { destruct H as [j [Hneq H]]. rewrite H in H0. inversion H0. }
+Qed.
+
+Lemma iowns_isub_exclusive {T} : forall (i : Name T) s ρ, 
+  i_owns i s ρ ->
+  is_ub_state s ρ ->
+  False.
+Proof.
+  intros.
+  unfold i_owns, is_ub_state in *.
+  destruct H as [HP1 ?]. destruct H0 as [a [HP2 [o [m ?]]]].
+  rewrite HP1 in HP2. inversion HP2.
+Qed.
+
+Lemma inotowns_unownsacq_exclusive {T} : forall (i : Name T) s ρ, 
+  i_not_owns i s ρ ->
+  unowns_acq i s ρ ->
+  False.
+Proof.
+  intros.
+  unfold i_not_owns, unowns_acq in *.
+  destruct H as [Howns | [Hunowns | [Hunowns_acq | Howns_rel]]].
+  { destruct Howns as [j [Hneq Howns]].
+    unfold i_owns in *.
+    destruct Howns as [HP1 ?]. destruct H0 as [HP2 ?].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+  { destruct Hunowns as [HP1 ?]. destruct H0 as [HP2 ?].
+    rewrite H in H0. inversion H0.
+  }
+  { destruct Hunowns_acq as [j [Hneq [HP2 ?]]]. destruct H0 as [HP1 ?].
+    rewrite H in H0. inversion H0. subst j. contradiction. 
+  }
+  { destruct H0 as [HP1 ?]. destruct Howns_rel as [j [Hneq [HP2 ?]]].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+Qed.
+
+Lemma inotowns_iownsrel_exclusive {T} : forall (i : Name T) s ρ, 
+  i_not_owns i s ρ ->
+  i_owns_rel i s ρ ->
+  False.
+Proof.
+  intros.
+  unfold i_not_owns, i_owns_rel in *.
+  destruct H as [Howns | [Hunowns | [Hunowns_acq | Howns_rel]]].
+  { destruct Howns as [j [Hneq Howns]].
+    unfold i_owns in *.
+    destruct H0 as [HP1 ?]. destruct Howns as [HP2 ?].
+    rewrite HP1 in HP2. inversion HP2. subst j. contradiction.
+  }
+  { destruct Hunowns as [HP1 ?]. destruct H0 as [HP2 ?].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+  { destruct Hunowns_acq as [j [Hneq [HP2 ?]]]. destruct H0 as [HP1 ?].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+  { destruct H0 as [HP1 ?]. destruct Howns_rel as [j [Hneq [HP2 ?]]].
+    rewrite HP1 in HP2. inversion HP2. subst j. contradiction.
+  }
+Qed.
+
+Lemma inotowns_isub_exclusive {T} : forall (i : Name T) s ρ, 
+  i_not_owns i s ρ ->
+  is_ub_state s ρ ->
+  False.
+Proof.
+  intros.
+  unfold i_not_owns, is_ub_state in *.
+  destruct H as [Howns | [Hunowns | [Hunowns_acq | Howns_rel]]].
+  { destruct H0 as [a [HP1 [o [m ?]]]]. destruct Howns as [? [? Howns]].
+    unfold i_owns in *.
+    destruct Howns as [HP2 ?].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+  { destruct Hunowns as [HP1 ?]. destruct H0 as [a [HP2 [o [m ?]]]].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+  { destruct Hunowns_acq as [j [Hneq [HP2 ?]]]. destruct H0 as [a [HP1 [o [m ?]]]].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+  { destruct H0 as [a [HP1 [o [m ?]]]]. 
+    destruct Howns_rel as [j [Hneq [HP2 ?]]].
+    rewrite HP1 in HP2. inversion HP2.
+  }
+Qed.
+
+Lemma unownsacq_iownsrel_exclusive {T} : forall (i : Name T) s ρ, 
+  unowns_acq i s ρ ->
+  i_owns_rel i s ρ ->
+  False.
+Proof.
+  intros.
+  unfold unowns_acq, i_owns_rel in *.
+  destruct H as [Howns Hstate]. destruct H0 as [Howns_rel Hstate_rel].
+  rewrite Hstate in Hstate_rel. inversion Hstate_rel.
+Qed.
+
+Lemma isub_iownsrel_exclusive {T} : forall (i : Name T) s ρ, 
+  is_ub_state s ρ ->
+  i_owns_rel i s ρ ->
+  False.
+Proof.
+  intros.
+  unfold is_ub_state, i_owns_rel in *.
+  destruct H as [a [HP1 [o [m ?]]]]. destruct H0 as [HP2 ?].
+  rewrite HP1 in HP2. inversion HP2.
+Qed.
+
+Lemma iownsrel_unownsacq_exclusive {T} : forall (i : Name T) s ρ, 
+  i_owns_rel i s ρ ->
+  unowns_acq i s ρ ->
+  False.
+Proof.
+  intros.
+  unfold i_owns_rel, unowns_acq in *.
+  destruct H as [Howns Hstate]. destruct H0 as [Howns_acq Hstate_acq].
+  rewrite Hstate in Hstate_acq. inversion Hstate_acq.
+Qed.
+
+Lemma isub_unownsacq_exclusive {T} : forall (i : Name T) s ρ, 
+  is_ub_state s ρ ->
+  unowns_acq i s ρ ->
+  False.
+Proof.
+  intros.
+  unfold is_ub_state, unowns_acq in *.
+  destruct H as [a [HP1 [o [m ?]]]]. destruct H0 as [Howns Hstate].
+  rewrite HP1 in Howns. inversion Howns.
+Qed.
+
+Lemma unownsacq_isub_exclusive {T} : forall (i : Name T) s ρ, 
+  unowns_acq i s ρ ->
+  is_ub_state s ρ ->
+  False.
+Proof.
+  intros.
+  unfold unowns_acq, is_ub_state in *.
+  destruct H as [Howns Hstate]. destruct H0 as [a [HP1 [o [m ?]]]].
+  rewrite HP1 in Howns. inversion Howns.
+Qed.
+
+Lemma iownsrel_isub_exclusive {T} : forall (i : Name T) s ρ, 
+  i_owns_rel i s ρ ->
+  is_ub_state s ρ ->
+  False.
+Proof.
+  intros.
+  unfold i_owns_rel, is_ub_state in *.
+  destruct H as [Howns Hstate]. destruct H0 as [a [HP1 [o [m ?]]]].
+  rewrite HP1 in Howns. inversion Howns.
+Qed.
+
+Lemma isub_otherownsacq_exclusive {T} : forall (i : Name T) s ρ, 
+  is_ub_state s ρ ->
+  other_owns_acq i s ρ ->
+  False.
+Proof.
+  intros.
+  unfold is_ub_state, other_owns_acq in *.
+  destruct H as [a [HP1 [o [m ?]]]]. destruct H0 as [j [Hneq [Howns Hstate]]].
+  rewrite HP1 in Howns. inversion Howns.
+Qed.
+
+Definition stateStepToUBPre {T A} (ρ : Poss (VFU T)) (m: F A) i :=
+  MkPoss T F (VFU T) 
+         (inr (UBState_, fun j => if i =? j then (Some (existT (fun A => F A) A m))
+                                  else (StateWithUB_acf LockStep (acf T) (PState ρ)) j))
+         (fun j => if i =? j then CallDone m else PCalls ρ j)
+         (fun j => if i =? j then RetIdle else PRets ρ j).
+
+Definition stateStepToUB {T A} (ρ : Poss (VFU T)) i (m: F A) (v: A) :=
+  MkPoss T F (VFU T) (inr (UBState_, StateWithUB_acf LockStep (acf T) (PState ρ)))
+         (fun j => if i =? j then CallDone m else PCalls ρ j)
+         (fun j => if i =? j then RetPoss m v else PRets ρ j).
+
+Lemma stateStepToUBPreErrorStep {T A} (ρ : Poss (VFU T)) (m: F A) i:
+  (exists s, PState ρ = inl s /\ acf T s i = None /\ (forall s', ~Step (VF T) s (i, CallEv m) s')) ->
+  Step (VFU T) (PState ρ) (i, CallEv m) (PState (stateStepToUBPre ρ m i)).
+Proof.
+  intros.
+  unfold stateStepToUBPre. simpl.
+  destruct H as [s [Hs Hstep]].
+  rewrite Hs.
+  eapply ErrorStep.
+  + easy.
+  + constructor.
+    - easy.
+    - rewrite eqb_id. easy.
+    - apply differ_pointwise_trivial.
+Qed.
+
+Lemma stateStepToUBPreUBStep {T A} (ρ : Poss (VFU T)) (m: F A) i:
+  (exists a, PState ρ = inr (UBState_, a)) ->
+  StateWithUB_acf LockStep (acf T) (PState ρ) i = None ->
+  Step (VFU T) (PState ρ) (i, CallEv m) (PState (stateStepToUBPre ρ m i)).
+Proof.
+  intros.
+  unfold stateStepToUBPre. simpl.
+  intros.
+  destruct H as [a Hs].
+  rewrite Hs in H0. simpl in H0.
+  rewrite Hs. simpl.
+  eapply UBStep. constructor.
+  + easy.
+  + rewrite eqb_id. easy.
+  + unfold differ_pointwise.
+    intros. rewrite eqb_nid; easy.
+Qed.
+
+Lemma stateStepToUBPrePossStep {T A} (ρ : Poss (VFU T)) (m: F A) i:
+  PCalls ρ i = CallPoss m ->
+  PRets ρ i = RetIdle ->
+  Step (VFU T) (PState ρ) (i, CallEv m) (PState (stateStepToUBPre ρ m i)) ->
+  PossStep i ρ (stateStepToUBPre ρ m i).
+Proof.
+  intros.
+  eapply Logic.PCommitCall with (i := i)(m := m).
+  { easy. }
+  { easy. }
+  { unfold stateStepToUBPre. simpl. rewrite eqb_id. easy. }
+  { easy. }
+  { unfold stateStepToUBPre. simpl. rewrite eqb_id. easy. }
+Qed.
+
+Lemma stateStepToUBPreCall {T A} (ρ : Poss (VFU T)) (m: F A) i:
+  forall j : Name T, i <> j -> PCalls ρ j = PCalls (stateStepToUBPre ρ m i) j.
+Proof.
+  intros.
+  unfold stateStepToUBPre. simpl. rewrite eqb_nid; easy.
+Qed.
+
+Lemma stateStepToUBPreRet {T A} (ρ : Poss (VFU T)) (m: F A) i:
+  forall j : Name T, i <> j -> PRets ρ j = PRets (stateStepToUBPre ρ m i) j.
+Proof.
+  intros.
+  unfold stateStepToUBPre. simpl. rewrite eqb_nid; easy.
+Qed.
+
+Lemma stateStepToUBStep {T A} (ρ : Poss (VFU T)) i (m: F A) (v: A):
+  StateWithUB_acf LockStep (acf T) (PState ρ) i = None ->
+  Step (VFU T) (PState (stateStepToUBPre ρ m i)) (i, RetEv m v) (PState (stateStepToUB ρ i m v)).
+Proof.
+  unfold stateStepToUBPre, stateStepToUB. simpl.
+  econstructor. econstructor.
+  + rewrite eqb_id. easy.
+  + easy.
+  + unfold differ_pointwise. intros j Hneq. rewrite eqb_nid; easy.
+Qed.
+
+Lemma stateStepToUBPossStep {T A} (ρ : Poss (VFU T)) i (m: F A) (v: A):
+  PCalls ρ i = CallPoss m ->
+  PRets ρ i = RetIdle ->
+  StateWithUB_acf LockStep (acf T) (PState ρ) i = None ->
+  PossStep i (stateStepToUBPre ρ m i) (stateStepToUB ρ i m v).
+Proof.
+  intros.
+  eapply Logic.PCommitRet with (i := i)(m := m)(v := v).
+  { apply stateStepToUBStep. easy. }
+  { unfold stateStepToUBPre. simpl. rewrite eqb_id. easy. }
+  { unfold stateStepToUB. simpl. rewrite eqb_id. easy. }
+  { unfold stateStepToUBPre. simpl. rewrite eqb_id. easy. }
+  { unfold stateStepToUBPre. simpl. rewrite eqb_id. easy. }
+Qed.
+
+Lemma stateStepToUBCall {T A} (ρ : Poss (VFU T)) (m: F A) v i:
+  forall j : Name T, i <> j -> PCalls (stateStepToUBPre ρ m i) j = PCalls (stateStepToUB ρ i m v) j.
+Proof.
+  intros.
+  unfold stateStepToUBPre. simpl. rewrite eqb_nid; easy.
+Qed.
+
+Lemma stateStepToUBRet {T A} (ρ : Poss (VFU T)) (m: F A) v i:
+  forall j : Name T, i <> j -> PRets (stateStepToUBPre ρ m i) j = PRets (stateStepToUB ρ i m v) j.
+Proof.
+  intros.
+  unfold stateStepToUBPre. simpl. rewrite eqb_nid; easy.
+Qed.
+
+Lemma stateStepToUBPossSteps {T A} (ρ : Poss (VFU T)) i (m: F A) (v: A):
+  PCalls ρ i = CallPoss m ->
+  PRets ρ i = RetIdle ->
+  StateWithUB_acf LockStep (acf T) (PState ρ) i = None ->
+  Step (VFU T) (PState ρ) (i, CallEv m) (PState (stateStepToUBPre ρ m i)) ->
+  PossSteps ρ (stateStepToUB ρ i m v).
+Proof.
+  intros.
+  eapply Logic.PossStepsStep with (i := i)(σ := stateStepToUBPre ρ m i).
+  { apply stateStepToUBPrePossStep; try easy. }
+  { apply stateStepToUBPreCall. }
+  { apply stateStepToUBPreRet. }
+  eapply Logic.PossStepsStep with (i := i). 4: apply Logic.PossStepsRefl.
+  { apply stateStepToUBPossStep; easy. }
+  { apply stateStepToUBCall. }
+  { apply stateStepToUBRet. }
+Qed.
+
+(* Lemma stateStepToUBResult {T A} (ρ : Poss (VFU T)) i (m: F A) (v: A):
+PCalls (stateStepToUB ρ i m v) i = CallDone Acq /\
+PRets (stateStepToUB ρ i m v) i = RetPoss Acq tt /\
+is_ub_state t (stateStepToUB ρ i m v). *)
+
+Lemma differ_pointwise_other {A State : Type} (ist ist' : A -> State) i :
+  differ_pointwise ist ist' i -> (forall j , j <> i -> ist j = ist' j).
+Proof.
+  intros.
+  unfold differ_pointwise in H.
+  specialize (H j H0).
+  easy.
 Qed.
 
 Lemma SpinLock_R_refl {T} : forall (i : Name T) s ρ, Rely i s ρ s ρ.
@@ -363,7 +924,10 @@ Proof.
   repeat split; try easy.
   + intros. left. easy.
   + intros. left. easy.
-Qed.    
+  + intros. left. easy.
+  + intros. left. easy.
+  + intros. left. easy.   
+Qed.
 
 Lemma SpinLock_R_trans {T} : 
   forall (i : Name T), Rely i ->> Rely i ==> Rely i.
@@ -379,35 +943,51 @@ Proof.
   destruct_all.
   exists x0.
   repeat split; try easy.
-  + rewrite H2, H10. easy.
+  + rewrite H2, H12. easy.
   + intros Howns.
     specialize (H3 Howns).
     destruct H3 as [Howns' | Hub].
-    { specialize (H11 Howns'). destruct H11.
+    { specialize (H13 Howns'). destruct H13.
       { left. easy. }
       { right. easy. }
     }
-    { specialize (H13 Hub). right. easy. }
+    { specialize (H18 Hub). right. easy. }
   + intros Hunowns.
     specialize (H4 Hunowns).
     destruct H4 as [Hunowns' | Hub].
-    { specialize (H12 Hunowns'). destruct H12.
+    { specialize (H14 Hunowns'). destruct H14.
       { left. easy. }
       { right. easy. }
     }
-    { specialize (H13 Hub). right. easy. }
-  + intros. apply H13. apply H5. easy.
-  + rewrite H6, H14. easy.
-  + rewrite H7, H15. easy.
-  + rewrite H8, H16. easy.
-  + specialize (H9 H18).
-    destruct H9. subst s'.
-    specialize (H17 H18).
-    easy.
-  + specialize (H9 H18).
-    destruct H9. subst s'.
-    specialize (H17 H18).
-    rewrite H19. easy.
+    { specialize (H18 Hub). right. easy. }
+  + intros Howns_rel.
+    specialize (H5 Howns_rel).
+    destruct H5 as [Howns' | Hub].
+    { specialize (H15 Howns'). destruct H15.
+      { left. easy. }
+      { right. easy. }
+    }
+    { specialize (H18 Hub). right. easy. }
+  + intros Hunowns_acq.
+    specialize (H6 Hunowns_acq).
+    destruct H6 as [Hunowns' | Hub].
+    { specialize (H16 Hunowns'). destruct H16.
+      { left. easy. }
+      { right. easy. }
+    }
+    { specialize (H18 Hub). right. easy. }
+  + intros Hother_owns_acq.
+    specialize (H7 Hother_owns_acq).
+    destruct H7 as [Hother_owns_acq' | Hub].
+    { specialize (H17 Hother_owns_acq'). destruct H17.
+      { left. easy. }
+      { right. easy. }
+    }
+    { specialize (H18 Hub). right. easy. }
+  + intros Hub. specialize (H8 Hub). specialize(H18 H8). easy.
+  + rewrite H9, H19. easy.
+  + rewrite H10, H20. easy.
+  + rewrite H11, H21. easy.
 Qed.
 
 Lemma SpinLock_G_in_R {T} : 
@@ -421,13 +1001,13 @@ Proof.
   assert(j <> i) as Hneq by easy.
   specialize (H2 _ Hneq).
   specialize (H3 _ Hneq).
+  specialize (H5 _ Hneq).
   specialize (H4 _ Hneq).
   specialize (H6 _ Hneq).
   specialize (H7 _ Hneq).
-  specialize (H8 _ Hneq).
+  specialize (H9 _ Hneq).
+  specialize (H10 _ Hneq).
   repeat split; try easy.
-  specialize (H8 H9). easy.
-  specialize (H8 H9). easy.
 Qed.
 
 Lemma Poss_eq_inv: forall {T F} {VF: Spec T F} (i: Name T) (ρ0: Poss VF)  pcall pret,
@@ -594,16 +1174,29 @@ Proof.
   split.
   { intros. unfold i_owns in *. simpl in *. left. elim_corece. rewrite <- H2. easy. }
   split.
-  { intros. unfold i_not_owns, i_owns in *. simpl in *. left. elim_corece. rewrite <- H2. easy. }
+  { intros. unfold i_not_owns in H7.
+    destruct H7 as [Hother_owns | [Hunowns | [Hunowns_acq | Hother_owns_rel]]].
+    { left. left. apply other_owns_easy with (s := s)(ρ := ρ0); easy. }
+    { left. right. left. apply unowns_easy with (s := s)(ρ := ρ0); easy. }
+    { left. right. right. left. destruct Hunowns_acq as [j0 [Hneq Hunowns_acq]]. 
+      exists j0. split; [easy |]. apply unowns_acq_easy with (s := s)(ρ := ρ0); easy. }
+    { left. do 3 right. apply other_owns_rel_easy with (s := s)(ρ := ρ0); easy. }
+  }
   split.
-  { intros. unfold is_ub_state in *. simpl in *. apply H7. }
+  { intros. left. apply i_owns_rel_easy with (s := s)(ρ := ρ0); easy. }
+  split.
+  { intros. left. apply unowns_acq_easy with (s := s)(ρ := ρ0); easy. }
+  split.
+  { intros. simpl. left.  apply other_owns_acq_easy with (s := s)(ρ := ρ0); easy. }
+  split.
+  { intros. unfold is_ub_state in *. destruct H7 as [a [Hstate [o [mm Hsnd]]]].
+    exists a. split; [easy |]. exists o, mm. elim_corece. rewrite <- H2. easy.
+  }
   split.
   { simpl. rewrite (eqb_nid i j H). easy. }
   split.
   { simpl. rewrite (eqb_nid i j H). easy. }
-  split.
-  { simpl. easy. }
-  
+  { easy. }
 Qed.
 
 Lemma SpinLock_Ret_in_R {T} : 
@@ -638,10 +1231,29 @@ Proof.
   split.
   { intros. unfold i_owns in *. simpl in *. left. elim_corece. rewrite <- H2. easy. }
   split.
-  { intros. unfold i_not_owns, i_owns in *. simpl in *. left. elim_corece. rewrite <- H2. easy. }
+  { intros. unfold i_not_owns in H6.
+    destruct H6 as [Hother_owns | [Hunowns | [Hunowns_acq | Hother_owns_rel]]].
+    { left. left. apply other_owns_easy with (s := s)(ρ := ρ0); easy. }
+    { left. right. left. apply unowns_easy with (s := s)(ρ := ρ0); easy. }
+    { left. right. right. left. destruct Hunowns_acq as [j0 [Hneq Hunowns_acq]]. 
+      exists j0. split; [easy |]. apply unowns_acq_easy with (s := s)(ρ := ρ0); easy. }
+    { left. do 3 right. apply other_owns_rel_easy with (s := s)(ρ := ρ0); easy. }
+  }
   split.
-  { intros. unfold is_ub_state in *. simpl in *. apply H6. } 
+  { intros. left. apply i_owns_rel_easy with (s := s)(ρ := ρ0); easy. }
+  split.
+  { intros. left. apply unowns_acq_easy with (s := s)(ρ := ρ0); easy. }
+  split.
+  { intros. simpl. left.  apply other_owns_acq_easy with (s := s)(ρ := ρ0); easy. }
+  split.
+  { intros. unfold is_ub_state in *. destruct H6 as [a [Hstate [o [mm Hsnd]]]].
+    exists a. split; [easy |]. exists o, mm. elim_corece. rewrite <- H2. easy.
+  }
+  split.
   { simpl. rewrite (eqb_nid i j H). easy. }
+  split.
+  { simpl. rewrite (eqb_nid i j H). easy. }
+  { easy. }
 Qed.
 
 Lemma SpinLock_init_in_P {T} : 
@@ -654,10 +1266,10 @@ Proof.
   unfold valid_state, i_not_owns, initPoss.
   destruct m. simpl.
   + split. 
-    { left. right. left. easy. }
+    { left. right. right. left. easy. }
     easy.
   + split. 
-    { left. right. left. easy. }
+    { left. right. right. left. easy. }
     easy.
 Qed.
 
@@ -675,55 +1287,52 @@ Proof.
   destruct_all.
   exists ρ.
   split; [easy |].
-  destruct m.
+  assert((valid_state i s' ρ' \/ is_ub_state s' ρ') /\ (StateWithUB_acf LockStep (acf T) (PState ρ') i = None)) as Htmp.
+  { destruct m; easy. }
+  clear H1. pose proof Htmp as H1. clear Htmp.
+  cut((valid_state i s ρ \/ is_ub_state s ρ) /\ StateWithUB_acf LockStep (acf T) (PState ρ) i = None).
+  { destruct m; easy. }
   + destruct H1 as [[Hvalid | Hub] HIdle].
-    - destruct Hvalid as [Howns | Hunowns].
+    - split.
+      2: { rewrite <- H11. apply valid_state_idle with (s := s'). easy. }
+      destruct Hvalid as [Howns | [Hother_owns | [Hunowns | [Hunowns_acq | [Howns_rel | Hother_owns_rel]]]]].
       * specialize (H3 Howns). destruct H3 as [Howns' | Hub'].
-        { split.
-          { left. left. easy. }
-          { rewrite <- H8. apply HIdle. }
+        { left. left. easy. }
+        { right. easy. }
+      * assert(i_not_owns i s' ρ') as Hnot_owns.
+        { unfold i_not_owns. left. easy. }
+        specialize (H4 Hnot_owns). destruct H4 as [Hnotowns' | Hub'].
+        { left. apply i_not_owns_valid. easy. }
+        { right. easy. }
+      * assert(i_not_owns i s' ρ') as Hnot_owns.
+        { unfold i_not_owns. right. left. easy. }
+        specialize (H4 Hnot_owns). destruct H4 as [Hnotowns' | Hub'].
+        { left. apply i_not_owns_valid. easy. }
+        { right. easy. }
+      * destruct Hunowns_acq as [j Hunowns_acq].
+        destruct (classicT (i = j)).
+        { subst j. specialize (H6 Hunowns_acq). destruct H6 as [Hunowns_acq' | Hub].
+          { left. right. right. right. left. exists i. easy. }
+          { right. easy. }
         }
-        { split.
-          { right. unfold is_ub_state in Hub'. easy. }
-          { rewrite <- H8. apply HIdle. }
+        { assert(i_not_owns i s' ρ') as Hnot_owns.
+          { unfold i_not_owns. right. right. left. exists j. easy. }
+          specialize (H4 Hnot_owns). destruct H4 as [Hnotowns' | Hub'].
+          { left. apply i_not_owns_valid. easy. }
+          { right. easy. }
         }
-      * specialize (H4 Hunowns). destruct H4 as [Hunowns' | Hub'].
-        { split.
-          { left. right. easy. }
-          { rewrite <- H8. apply HIdle. }
-        }
-        { split.
-          { right. unfold is_ub_state in Hub'. easy. }
-          { rewrite <- H8. apply HIdle. }
-        }
-    - specialize (H5 Hub).
+      * specialize (H5 Howns_rel). destruct H5 as [Howns_rel' | Hub'].
+        { left. right. right. right. right. left. easy. }
+        { right. easy. }
+      * assert(i_not_owns i s' ρ') as Hnot_owns.
+        { unfold i_not_owns. right. right. right. easy. }
+        specialize (H4 Hnot_owns). destruct H4 as [Hnotowns' | Hub'].
+        { left. apply i_not_owns_valid. easy. }
+        { right. easy. }
+    - specialize (H8 Hub).
       split.
       { right. easy. }
-      { rewrite <- H8. apply HIdle. }
-  + destruct H1 as [[Hvalid | Hub] HIdle].
-    - destruct Hvalid as [Howns | Hunowns].
-      * specialize (H3 Howns). destruct H3 as [Howns' | Hub'].
-        { split.
-          { left. left. easy. }
-          { rewrite <- H8. apply HIdle. }
-        }
-        { split.
-          { right. unfold is_ub_state in Hub'. easy. }
-          { rewrite <- H8. apply HIdle. }
-        }
-      * specialize (H4 Hunowns). destruct H4 as [Hunowns' | Hub'].
-        { split.
-          { left. right. easy. }
-          { rewrite <- H8. apply HIdle. }
-        }
-        { split.
-          { right. unfold is_ub_state in Hub'. easy. }
-          { rewrite <- H8. apply HIdle. }
-        }
-    - specialize (H5 Hub).
-      split.
-      { right. easy. }
-      { rewrite <- H8. apply HIdle. }
+      { rewrite <- H11. apply HIdle. }
 Qed.
 
 Lemma SpinLock_switch_code {T} : 
@@ -737,61 +1346,45 @@ Proof.
   destruct H as [s1 [ρs1 [? ?]]].
   unfold Precs, Posts, CSs in *.
   destruct H as [ρ1 [? ?]].
-  destruct H1 as [ρ1' [ρ2 [? [? ?]]]].
-  pose proof Poss_eq_unique2 _ _ _ H H1 as Htmp. subst ρ1'.
+  destruct H1 as [ρ2 [? ?]].
   destruct H0 as [ρ2' [ρ [? [? ?]]]].
-  pose proof Poss_eq_unique2 _ _ _ H0 H3 as Htmp. subst ρ2'.
+  pose proof Poss_eq_unique2 _ _ _ H0 H1 as Htmp. subst ρ2'.
   exists ρ. split; [easy |].
-  cut((valid_state i s ρ \/ is_ub_state ρ) /\ StateWithUB_acf LockStep (acf T) (PState ρ) i = None).
+  cut((valid_state i s ρ \/ is_ub_state s ρ) /\ StateWithUB_acf LockStep (acf T) (PState ρ) i = None).
   { destruct m2; easy. }
   assert(
       exists v: A,
-      PCalls ρ2 i = CallDone m1 /\
-      PRets ρ2 i = RetPoss m1 v /\
-      ((valid_state i s2 ρ2 /\ fst s2 i = Cont m1 (Return v)) \/ 
-       (ub_and_idle i ρ2))) as Hpost.
+      (PCalls ρ2 i = CallDone m1 /\ PRets ρ2 i = RetPoss m1 v /\ valid_state i s2 ρ2) \/
+      (((PCalls ρ2 i = CallPoss m1 /\ PRets ρ2 i = RetIdle) \/
+        (PCalls ρ2 i = CallDone m1 /\ PRets ρ2 i = RetPoss m1 v)) /\
+        (is_ub_state s2 ρ2 /\ StateWithUB_acf LockStep (acf T) (PState ρ2) i = None))) as Hpost.
   { destruct m1; exists tt; destruct v.
-    { repeat split; try easy.
-      destruct H4 as [? [? Hpost]].
-      destruct Hpost as [HH | HH].
-      { left. split; [| easy]. left. easy. }
-      { right. easy. }
+    { destruct H3; destruct_all.
+      { left. repeat split; try easy. left. easy. }
+      { right. repeat split; try easy. }
     }
-    { repeat split; try easy.
-      destruct H4 as [? [? Hpost]].
-      destruct Hpost as [HH | HH].
-      { left. split; [| easy]. right. easy. }
-      { right. easy. }
+    { destruct H3; destruct_all.
+      { left. repeat split; try easy. apply i_not_owns_valid. easy. }
+      { right. repeat split; try easy. }
     }
   }
+  clear H3 H2.
   destruct Hpost as [v' Hpost].
-  assert(s = (fun j : Name T => if i =? j then Idle else fst s2 j, snd s2) /\ mapRetPoss i m1 v ρ2 ρ) as HCs.
+  assert((s = (fun j : Name T => if i =? j then Idle else fst s2 j, snd s2) /\ mapRetPoss i m1 v ρ2 ρ) \/
+         (is_ub_state s ρ /\ StateWithUB_acf LockStep (acf T) (PState ρ) i = None)) as HCs.
   { destruct m1; easy. }
+  destruct HCs as [HCs | HCs].
+  2: { split; [right |]; easy. }
   destruct HCs as [Hs Hret].
   assert(PState ρ = PState ρ2) as Hρ2. { unfold mapRetPoss in Hret. easy. }
-  destruct Hpost as [? [? [[Hvalid Hfst] | HH]]].
-  { split.
-    { left.
-      unfold valid_state in Hvalid.
-      destruct Hvalid as [Howns | Hunowns].
-      { left. unfold i_owns in *. subst s. simpl. unfold mapRetPoss in Hret.
-        split. 
-        { destruct_all. rewrite Hρ2. easy. }
-        { easy. }
-      }
-      { right. unfold i_not_owns in *. unfold i_owns in *. subst s. simpl. 
-        destruct Hunowns as [Hunowns | [j [? ?]]].
-        { left. destruct Hunowns. rewrite Hρ2. split; easy. }
-        { right. exists j. rewrite Hρ2. split; easy. }
-      }
-    }
+  destruct Hpost as [Hpost | Hub].
+  { destruct Hpost as [? [? Hvalid]].
+    split.
+    { left. apply valid_state_easy with (s := s2)(ρ := ρ2); subst s; easy. }
     { rewrite Hρ2. eapply valid_state_idle. apply Hvalid. }
   }
-  { unfold is_ub_state. unfold ub_and_idle in HH.
-    destruct HH as [a [Hacf Hnone]].
-    split.
-    { right. exists a. rewrite Hρ2. easy. }
-    { rewrite Hρ2. rewrite Hacf. simpl. easy. }
+  { destruct Hub as [Hub ?]. rewrite Hρ2. split; [| easy].
+    right. apply is_ub_state_easy with (s := s2)(ρ := ρ2); subst s; easy.
   }
 Qed.
 
@@ -856,55 +1449,225 @@ Proof.
   unfold ReturnStep.
   intros.
   destruct H as [s0 [ρs0 ?]].
-  destruct H as [ρ0 [ρ [? [? ?]]]].
-  exists ρs.
-  split.
-  { exists ρ. rewrite H1. reflexivity. }
-  split.
-  { intros. exists σ. split; [easy | constructor]. }
-  split.
-  { intros.
-    pose proof Poss_eq_unique _ _ _ H1 H3 as Htmp. subst ρ.
-    destruct m; simpl in *; destruct v; easy.
+  unfold Posts in H.
+  destruct H as [ρ [? ?]].
+  assert(
+    (match m with
+    | Acq => (PCalls ρ i = CallDone Acq /\ PRets ρ i = RetPoss Acq tt /\ i_owns i s ρ /\ fst s i = Cont m (Return v))
+    | Rel => (PCalls ρ i = CallDone Rel /\ PRets ρ i = RetPoss Rel tt /\ i_not_owns i s ρ /\ fst s i = Cont m (Return v))
+    end) 
+    \/ 
+    (match m with
+    | Acq =>
+      (((PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle) \/
+            (PCalls ρ i = CallDone Acq /\ PRets ρ i = RetPoss Acq tt)) /\
+          is_ub_state s ρ /\ StateWithUB_acf _ (acf T) (PState ρ) i = None)
+    | Rel =>
+      (((PCalls ρ i = CallPoss Rel /\ PRets ρ i = RetIdle) \/
+            (PCalls ρ i = CallDone Rel /\ PRets ρ i = RetPoss Rel tt)) /\
+          is_ub_state s ρ /\ StateWithUB_acf _ (acf T) (PState ρ) i = None)
+    end)) as HH.
+  { destruct m; simpl in *.
+    { destruct H1.
+      { left. easy. }
+      { right. easy. }
+    }
+    { destruct H1.
+      { left. easy. }
+      { right. easy. }
+    }
   }
-  split.
-  { unfold CSs.
-    exists ρ.
-    exists (MkmapRetPoss i m ρ).
-    split; [easy |].
-    split. 
-    { apply MkmapRetPoss_eq. 
-      { easy. }
-      { destruct m; easy. }
-      { destruct m; destruct v; easy. }
+  clear H1. rename HH into H2. 
+  destruct H2.
+  {
+    exists ρs.
+    split.
+    { exists ρ. rewrite H. reflexivity. }
+    split.
+    { intros. exists σ. split; [easy | constructor]. }
+    split.
+    { intros.
+      pose proof Poss_eq_unique _ _ _ H H2 as Htmp. subst σ.
+      destruct m; destruct v; destruct H1; try easy.
     }
-    assert(mapRetPoss i m v ρ (MkmapRetPoss i m ρ)).
-    { unfold mapRetPoss, MkmapRetPoss. simpl. rewrite eqb_id.
-      destruct m; repeat split; try destruct v; try apply differ_pointwise_trivial; try easy.
+    split.
+    { unfold CSs.
+      exists ρ.
+      exists (MkmapRetPoss i m ρ).
+      split; [easy |].
+      split. 
+      { apply MkmapRetPoss_eq. 
+        { easy. }
+        { destruct m; easy. }
+        { destruct m; destruct v; easy. }
+      }
+      assert(mapRetPoss i m v ρ (MkmapRetPoss i m ρ)).
+      { unfold mapRetPoss, MkmapRetPoss. simpl. rewrite eqb_id.
+        destruct m; repeat split; try destruct v; try apply differ_pointwise_trivial; try easy.
+      }
+      destruct m; left; easy.
     }
-    destruct m; easy.
+    { unfold Guar.
+      intros.
+      pose proof Poss_eq_unique2 _ _ _ H H2 as Htmp. subst ρ0.
+      exists (MkmapRetPoss i m ρ).
+      split.
+      { apply MkmapRetPoss_eq. 
+        { easy. }
+        { destruct m; easy. }
+        { destruct m; destruct v; easy. }
+      }
+      split.
+      { intros. simpl. assert(i <> j) as n by easy. rewrite (eqb_nid _ _ n). easy. }
+      split.
+      { intros. left. unfold i_owns in *. simpl in *. easy. }
+      split.
+      { intros. left. unfold i_not_owns, i_owns in *. simpl in *. easy. }
+      split.
+      { intros. left. apply i_owns_rel_easy with (s := s)(ρ := ρ); easy. }
+      split.
+      { intros. left. apply unowns_acq_easy with (s := s)(ρ := ρ); easy. }
+      split.
+      { intros. left. apply other_owns_acq_easy with (s := s)(ρ := ρ); easy. }
+      split.
+      { intros. apply is_ub_state_easy with (s := s)(ρ := ρ); easy. }
+      split.
+      { intros. simpl. assert(i <> j) as n by easy. rewrite (eqb_nid _ _ n). easy. }
+      { intros. simpl. easy. }
+    }
   }
-  { unfold Guar.
-    intros.
-    pose proof Poss_eq_unique2 _ _ _ H1 H3 as Htmp. subst ρ1.
-    exists  (MkmapRetPoss i m ρ).
-    split.
-    { apply MkmapRetPoss_eq. 
-      { easy. }
-      { destruct m; easy. }
-      { destruct m; destruct v; easy. }
+  { assert (exists v', ((PCalls ρ i = CallPoss m /\ PRets ρ i = RetIdle) \/
+          (PCalls ρ i = CallDone m /\ PRets ρ i = RetPoss m v')) /\
+        is_ub_state s ρ).
+    { destruct m.
+      { exists tt. easy. }
+      { exists tt. easy. }
     }
-    split.
-    { intros. simpl. assert(i <> j) as n by easy. rewrite (eqb_nid _ _ n). easy. }
-    split.
-    { intros. left. unfold i_owns in *. simpl in *. easy. }
-    split.
-    { intros. left. unfold i_not_owns, i_owns in *. simpl in *. easy. }
-    split.
-    { intros. unfold is_ub_state in *. simpl in *. easy. }
-    split.
-    { intros. simpl. assert(i <> j) as n by easy. rewrite (eqb_nid _ _ n). easy. }
-    { intros. simpl. easy. }
+    destruct H2 as [v' [HPos Hub]].
+    destruct HPos.
+    { exists (eq (stateStepToUB ρ i m v')).
+      split. { eexists. reflexivity. }
+      split.
+      { intros. exists ρ.
+        split; [subst ρs; easy |].
+        subst σ.
+        apply stateStepToUBPossSteps; try easy.
+        { destruct m; easy. }
+        { apply stateStepToUBPreUBStep.
+          { destruct Hub. exists x. easy. }
+          { destruct m; easy. }
+        }
+      }
+      split.
+      { intros. subst σ. unfold stateStepToUB. simpl. rewrite eqb_id.
+        destruct m; destruct v; destruct v'; easy.
+      }
+      split.
+      { unfold CSs.
+        exists ρ.
+        exists (MkmapRetPoss i m (stateStepToUB ρ i m v')).
+        split; [subst ρs; easy |].
+        split.
+        { apply MkmapRetPoss_eq. 
+          { easy. }
+          { unfold stateStepToUB. simpl. rewrite eqb_id. easy. }
+          { unfold stateStepToUB. simpl. rewrite eqb_id. destruct m; destruct v; destruct v'; easy. }
+        }
+        { destruct m.
+          { right. split.
+            { apply is_ub_state_easy2. eexists. unfold MkmapRetPoss, stateStepToUB. simpl. reflexivity. }
+            { unfold MkmapRetPoss, stateStepToUB. simpl. easy. }
+          }
+          { right. split.
+            { apply is_ub_state_easy2. eexists. unfold MkmapRetPoss, stateStepToUB. simpl. reflexivity. }
+            { unfold MkmapRetPoss, stateStepToUB. simpl. easy. }
+          }
+        }
+      }
+      { unfold Guar.
+        intros.
+        pose proof Poss_eq_unique2 _ _ _ H H3 as Htmp. subst ρ0.
+        exists (MkmapRetPoss i m (stateStepToUB ρ i m v')).
+        split.
+        { apply MkmapRetPoss_eq. 
+          { easy. }
+          { unfold stateStepToUB. simpl. rewrite eqb_id. easy. }
+          { unfold stateStepToUB. simpl. rewrite eqb_id. destruct m; destruct v; destruct v'; easy. }
+        }
+        split.
+        { intros. simpl. assert(i <> j) as n by easy. rewrite (eqb_nid _ _ n). easy. }
+        split.
+        { intros. pose proof iowns_isub_exclusive _ _ _ H5 Hub. easy. }
+        split.
+        { intros. pose proof inotowns_isub_exclusive _ _ _ H5 Hub. easy. }
+        split.
+        { intros. pose proof iownsrel_isub_exclusive _ _ _ H5 Hub. easy. }
+        split.
+        { intros. pose proof unownsacq_isub_exclusive _ _ _ H5 Hub. easy. }
+        split.
+        { intros. pose proof isub_otherownsacq_exclusive _ _ _ Hub H5. easy. }
+        split.
+        { intros. apply is_ub_state_easy2. unfold MkmapRetPoss, stateStepToUB. simpl. eexists. reflexivity. }
+        split.
+        { intros. simpl. assert(i <> j) as n by easy. rewrite (eqb_nid _ _ n). easy. }
+        { intros. simpl. easy. }
+      }
+    }
+    { exists (eq ρ).
+      split; [exists ρ; easy |].
+      split.
+      { intros. subst. exists σ. split; [easy | constructor]. }
+      split.
+      { intros. subst. destruct m; destruct v; destruct v'; easy. }
+      split.
+      { unfold CSs.
+        exists ρ, (MkmapRetPoss i m ρ).
+        split; [easy |].
+        split.
+        { apply MkmapRetPoss_eq. 
+          { easy. }
+          { destruct m; easy. }
+          { destruct m; destruct v; destruct v'; easy. }
+        }
+        { destruct m.
+          { right. split.
+            { unfold MkmapRetPoss. apply is_ub_state_easy with (s := s) (ρ := ρ); easy. }
+            { unfold MkmapRetPoss. simpl. easy. }
+          }
+          { right. split.
+            { unfold MkmapRetPoss. apply is_ub_state_easy with (s := s) (ρ := ρ); easy. }
+            { unfold MkmapRetPoss. simpl. easy. }
+          }
+        }
+      }
+      { unfold Guar. intros.
+        pose proof Poss_eq_unique2 _ _ _ H H3 as Htmp. subst ρ0.
+        exists (MkmapRetPoss i m ρ).
+        split.
+        { apply MkmapRetPoss_eq. 
+          { easy. }
+          { destruct m; easy. }
+          { destruct m; destruct v; destruct v'; easy. }
+        }
+        split.
+        { intros. simpl. assert(i <> j) as n by easy. rewrite (eqb_nid _ _ n). easy. }
+        split.
+        { intros. pose proof iowns_isub_exclusive _ _ _ H5 Hub. easy. }
+        split.
+        { intros. pose proof inotowns_isub_exclusive _ _ _ H5 Hub. easy. }
+        split.
+        { intros. pose proof iownsrel_isub_exclusive _ _ _ H5 Hub. easy. }
+        split.
+        { intros. pose proof unownsacq_isub_exclusive _ _ _ H5 Hub. easy. }
+        split.
+        { intros. pose proof isub_otherownsacq_exclusive _ _ _ Hub H5. easy. }
+        split.
+        { intros. unfold MkmapRetPoss. apply is_ub_state_easy with (s := s) (ρ := ρ); easy. }
+        split.
+        { intros. simpl. assert(i <> j) as n by easy. rewrite (eqb_nid _ _ n). easy. }
+        { intros. simpl. easy. }
+      }
+    }
   }
 Qed.
 
@@ -923,7 +1686,9 @@ Lemma SpinLock_verify_aux' {T} (i: Name T) A (m : LockSig A):
     differ_pointwise (PRets ρ) (PRets σ) i /\
     ((i_owns i s ρ /\ i_owns i t σ) \/ 
      (i_not_owns i s ρ /\ i_not_owns i t σ) \/
-     (is_ub_state ρ /\ is_ub_state σ)).
+     (unowns_acq i s ρ /\ unowns_acq i t σ) \/
+     (i_owns_rel i s ρ /\ i_owns_rel i t σ) \/
+     (is_ub_state s ρ /\ is_ub_state t σ)).
 Proof.
   extensionality s. extensionality ρs.
   extensionality t. extensionality σs.
@@ -931,7 +1696,7 @@ Proof.
   split; intros.
   { destruct H as [H1 H2].
     destruct H1 as [ρ [Hρ Htmp]].
-    assert((valid_state i s ρ \/ is_ub_state ρ) /\ StateWithUB_acf LockStep (acf T) (PState ρ) i = None) as HPrecs. {
+    assert((valid_state i s ρ \/ is_ub_state s ρ) /\ StateWithUB_acf LockStep (acf T) (PState ρ) i = None) as HPrecs. {
       destruct m; easy.
     }
     clear Htmp.
@@ -953,16 +1718,44 @@ Proof.
     rewrite eqb_id.
     repeat split; try easy; try apply differ_pointwise_trivial.
     { unfold differ_pointwise. intros j Hneq. specialize (H0 j Hneq). easy. }
-    { destruct HPrecs as [[Howns | Hunowns] | Hub].
-      { left. unfold i_owns in *. 
-        elim_corece. rewrite <- Hsnd.
-        repeat split; try easy.
+    { destruct HPrecs as [Hvalid | Hub].
+      { destruct Hvalid as [Howns | [Hother_owns | [Hunowns | [Hunowns_acq | [Howns_rel | Hother_owns_rel]]]]].
+        { left. split; [easy |]. apply i_owns_easy with (s := s)(ρ := ρ); easy. }
+        { right. left.
+          assert(i_not_owns i s ρ) as Hnotowns.
+          { left. easy. } 
+          split; [easy |]. apply i_not_owns_easy with (s := s)(ρ := ρ); easy.
+        } 
+        { right. left. 
+          assert(i_not_owns i s ρ) as Hnotowns.
+          { right. left. easy. } 
+          split; [easy |]. apply i_not_owns_easy with (s := s)(ρ := ρ); easy.
+        }
+        { right.
+          destruct Hunowns_acq as [j Hunowns_acq].
+          destruct (classicT (i = j)).
+          { subst j.
+            right. left. 
+            split; [easy |]. apply unowns_acq_easy with (s := s)(ρ := ρ); easy.
+          } 
+          { left. 
+            assert(i_not_owns i s ρ) as Hnotowns.
+            { right. right. left. exists j. easy. }
+            split; [easy |]. apply i_not_owns_easy with (s := s)(ρ := ρ); easy.
+          }
+        }
+        { right. right. right. left. 
+          split; [easy |]. apply i_owns_rel_easy with (s := s)(ρ := ρ); easy.
+        }
+        { right. left. 
+          assert(i_not_owns i s ρ) as Hnotowns.
+          { right. right. right. easy. } 
+          split; [easy |]. apply i_not_owns_easy with (s := s)(ρ := ρ); easy.
+        }
       }
-      { right. left. unfold i_not_owns, i_owns in *.
-        elim_corece. rewrite <- Hsnd.
-        repeat split; try easy.
+      { right. right. right. right. 
+        split; [easy |]. apply is_ub_state_easy with (s := s)(ρ := ρ); easy.
       }
-      { right. right. unfold is_ub_state in *. easy. }
     }
   }
   { destruct H as [ρ [σ [Hρ [Hσ H]]]].
@@ -970,12 +1763,14 @@ Proof.
     split.
     { unfold Precs.
       exists ρ. split; [easy |].
-      cut((valid_state i s ρ \/ is_ub_state ρ) /\ StateWithUB_acf LockStep (acf T) (PState ρ) i = None).
+      cut((valid_state i s ρ \/ is_ub_state s ρ) /\ StateWithUB_acf LockStep (acf T) (PState ρ) i = None).
       { destruct m; easy. }
       { destruct_all. split; [| easy].
-        destruct H11 as [Howns | [Hunowns | Hub]].
+        destruct H11 as [Howns | [Hnotowns | [Hunowns_acq | [Howns_rel | Hub]]]].
         { left. left. easy. }
-        { left. right. easy. }
+        { left. apply i_not_owns_valid. easy. }
+        { left. right. right. right. left. exists i. easy. }
+        { left. right. right. right. right. left. easy. }
         { right. easy. }
       }
     }
@@ -1023,9 +1818,12 @@ Lemma SpinLock_verify_aux {T} (i: Name T) A (m : LockSig A):
     StateWithUB_acf _ (acf T) (PState σ) i = None /\
     PCalls ρ i = CallIdle /\ PRets ρ i = RetIdle /\
     PCalls σ i = CallPoss m /\ PRets σ i = RetIdle /\
-    ((i_owns i s ρ /\ (i_owns i t σ \/ is_ub_state σ)) \/ 
-     (i_not_owns i s ρ /\ (i_not_owns i t σ \/ is_ub_state σ)) \/
-     (is_ub_state ρ /\ is_ub_state σ)).
+    ((i_owns i s ρ /\ (i_owns i t σ \/ is_ub_state t σ)) \/ 
+     (i_not_owns i s ρ /\ (i_not_owns i t σ \/ is_ub_state t σ)) \/
+     (unowns_acq i s ρ /\ (unowns_acq i t σ \/ is_ub_state t σ)) \/
+     (i_owns_rel i s ρ /\ (i_owns_rel i t σ \/ is_ub_state t σ)) \/
+     (is_ub_state s ρ /\ is_ub_state t σ)) /\
+    (other_owns_acq i s ρ -> other_owns_acq i t σ \/ is_ub_state t σ).
 Proof.
   rewrite SpinLock_verify_aux'.
   extensionality s. extensionality ρs.
@@ -1040,21 +1838,18 @@ Proof.
     exists ρ, σ.
     repeat split; try easy.
     { destruct_all. elim_corece. rewrite <- H0. easy. }
-    { destruct_all. rewrite <- H6. rewrite <- H11. easy. }
-    { destruct_all. rewrite <- H4. easy. }
-    { destruct_all. rewrite <- H5. easy. }
-    { destruct_all. destruct H18 as [Howns | [Hunowns | Hub]].
-      { specialize (H1 (proj2 Howns)).
-        destruct H1 as [Howns' | Hub'].
-        { left. split; [| left]; easy. }
-        { left. split; [| right]; easy. }
-      }
-      { specialize (H2 (proj2 Hunowns)).
-        destruct H2 as [Hunowns' | Hub'].
-        { right. left. split; [| left]; easy. }
-        { right. left. split; [| right]; easy. }
-      }
-      { specialize (H3 (proj2 Hub)). right. right. easy. }
+    { destruct_all. rewrite <- H9. rewrite <- H14. easy. }
+    { destruct_all. rewrite <- H7. easy. }
+    { destruct_all. rewrite <- H8. easy. }
+    { destruct_all. destruct H21 as [Howns | [Hnotowns | [Hunowns_acq | [Howns_rel | Hub]]]].
+      { left. split; [easy |]. apply H1. easy. }
+      { right. left. split; [easy |]. apply H2. easy. }
+      { right. right. left. split; [easy |]. apply H4. easy. }
+      { right. right. right. left. split; [easy |]. apply H3. easy. }
+      { right. right. right. right. split; [easy |]. apply H6. easy. }
+    }
+    { intros. assert(other_owns_acq i s' ρ'). { apply other_owns_acq_easy with (s := s)(ρ := ρ); easy. }
+      destruct_all. apply H7. easy.
     }
   }
   { unfold ReltCompose.
@@ -1069,66 +1864,121 @@ Proof.
       subst ρ'. simpl. rewrite eqb_id.
       repeat split; try easy; try apply differ_pointwise_trivial.
       destruct_all.
-      destruct H7 as [Howns | [Hunowns | Hub]].
-      { left. unfold i_owns in *. easy. }
-      { right. left. unfold i_not_owns, i_owns in *. easy. }
-      { right. right. unfold is_ub_state in *. easy. }
+      destruct H7 as [Howns | [Hnotowns | [Hunowns_acq | [Howns_rel | Hub]]]].
+      { left. split; [easy |]. apply i_owns_easy with (s := s)(ρ := ρ); easy. }
+      { right. left. split; [easy |]. apply i_not_owns_easy with (s := s)(ρ := ρ); easy. }
+      { right. right. left. split; [easy |]. apply unowns_acq_easy with (s := s)(ρ := ρ); easy. }
+      { right. right. right. left. split; [easy |]. apply i_owns_rel_easy with (s := s)(ρ := ρ); easy. }
+      { right. right. right. right. split; [easy |]. apply is_ub_state_easy with (s := s)(ρ := ρ); easy. }
     }
     { unfold Rely. intros ρ0 Hρ0.
       pose proof Poss_eq_unique3 _ _ Hρ0 as Htmp. subst ρ0. clear Hρ0.
       exists σ.
       simpl. rewrite eqb_id.
-      assert(PState ρ = PState ρ') as Hρ'. { subst ρ'. reflexivity. } 
+      destruct H as [? [? [? [? [? [? [? [? [Hpos Hother_owns_acq]]]]]]]]].
+      assert(PState ρ = PState ρ') as Hρ'. { subst ρ'. reflexivity. }
+      assert(i_owns i s ρ \/ i_not_owns i s ρ \/ unowns_acq i s ρ \/ i_owns_rel i s ρ \/ is_ub_state s ρ) as HH.
+      { destruct Hpos as [Howns | [Hnotowns | [Hunowns_acq | [Howns_rel | Hub]]]].
+        { left. easy. }
+        { right. left. easy. }
+        { right. right. left. easy. }
+        { right. right. right. left. easy. } 
+        { right. right. right. right. easy. }
+      }
       repeat split; try easy.
-      { intros Honws. unfold i_owns in *. simpl in *. destruct_all. destruct H9. easy.
-        destruct H9.
-        { elim_corece. rewrite H0 in Hρ'. unfold i_not_owns in H9. destruct_all.
-          destruct H9; destruct_all.
-          { rewrite H9 in Hρ'. inversion Hρ'. }
-          { unfold i_owns in H11. destruct H11. rewrite H11 in Hρ'. inversion Hρ'. subst i. contradiction. }
+      { intros Howns. 
+        assert(i_owns i s ρ) as Howns'.
+        { eapply i_owns_easy. 3: apply Howns. easy. easy. }
+        clear Howns.
+        destruct Hpos as [Howns | [Hunowns | [Hunowns_acq | [Howns_rel | Hub]]]].
+        { destruct Howns as [Howns ?]. easy. }
+        { destruct Hunowns as [Hunowns ?].
+          pose proof iowns_inotowns_exclusive _ _ _ Howns'. contradiction.
         }
-        { right. easy. }
+        { destruct Hunowns_acq as [Hunowns_acq ?].
+          pose proof iowns_unownsacq_exclusive _ _ _ Howns'. contradiction.
+        }
+        { destruct Howns_rel as [Howns_rel ?].
+          pose proof iowns_iownsrel_exclusive _ _ _ Howns'. contradiction.
+        }
+        { destruct Hub as [Hub ?].
+          pose proof iowns_isub_exclusive _ _ _ Howns'. contradiction.
+        }
       }
       { intros Hnotowns.
-        destruct H as [? [? [? [? [? [? [? [? Hpos]]]]]]]].
-        destruct Hpos as [Howns | [Hunowns | Hub]].
+        assert(i_not_owns i s ρ) as Hnotowns'.
+        { eapply i_not_owns_easy. 3: apply Hnotowns. easy. easy. }
+        destruct Hpos as [Howns | [Hunowns | [Hunowns | [Howns_rel | Hub]]]].
         { destruct Howns as [Howns ?].
-          unfold i_not_owns, i_owns in *.
-          elim_corece. rewrite <- Hρ' in Hnotowns.
-          assert(PState ρ <> inl (LockOwned i)) as Hneq. 
-          { destruct Hnotowns.
-            { destruct H8. rewrite H8. easy. }
-            { destruct H8 as [j [n [H8 ?]]]. rewrite H8. intro HH. inversion HH. subst j. contradiction. } 
-          }
-          destruct Howns.
-          rewrite H8 in Hneq. contradiction.
+          pose proof iowns_inotowns_exclusive _ _ _ Howns. contradiction.
         }
         { easy. }
-        { right. easy. }
-      }
-      { intros Hub. destruct H as [? [? [? [? [? [? [? [? Hpos]]]]]]]].
-        destruct Hpos as [Howns | [Hunowns | Hub']].
-        { destruct Howns as [Howns ?].
-          unfold i_owns in Howns.
-          destruct Howns as [Howns ?].
-          rewrite Howns in Hρ'. 
-          unfold is_ub_state in Hub. destruct Hub as [a Hub].
-          elim_corece. rewrite Hub in Hρ'. inversion Hρ'.
-        }
         { destruct Hunowns as [Hunowns ?].
-          unfold i_not_owns in Hunowns.
-          destruct Hunowns as [Hunowns | Hunowns].
-          { destruct Hunowns as [Hunowns ?].
-            rewrite Hunowns in Hρ'. 
-            unfold is_ub_state in Hub. destruct Hub as [a Hub].
-            elim_corece. rewrite Hub in Hρ'. inversion Hρ'.
-          }
-          { destruct Hunowns as [j [n [Hunowns ?]]].
-            rewrite Hunowns in Hρ'. 
-            unfold is_ub_state in Hub. destruct Hub as [a Hub].
-            elim_corece. rewrite Hub in Hρ'. inversion Hρ'.
-           }
+          pose proof inotowns_unownsacq_exclusive _ _ _ Hnotowns'. contradiction.
         }
+        { destruct Howns_rel as [Howns_rel ?].
+          pose proof inotowns_iownsrel_exclusive _ _ _ Hnotowns'. contradiction.
+        }
+        { destruct Hub as [Hub ?].
+          pose proof inotowns_isub_exclusive _ _ _ Hnotowns'. contradiction.
+        }
+      }
+      { intros Howns_rel.
+        assert(i_owns_rel i s ρ) as Howns_rel'.
+        { eapply i_owns_rel_easy. 3: apply Howns_rel. easy. easy. }
+        clear Howns_rel.
+        destruct Hpos as [Howns | [Hunowns | [Hunowns | [Howns_rel | Hub]]]].
+        { destruct Howns as [Howns ?]. pose proof iowns_iownsrel_exclusive _ _ _ Howns. contradiction. }
+        { destruct Hunowns as [Hunowns ?]. pose proof inotowns_iownsrel_exclusive _ _ _ Hunowns. contradiction. }
+        { destruct Hunowns as [Hunowns ?]. pose proof unownsacq_iownsrel_exclusive _ _ _ Hunowns. contradiction. }
+        { easy. }
+        { destruct Hub as [Hub ?]. pose proof isub_iownsrel_exclusive i _ _ Hub. contradiction. }
+      }
+      { intros Hunowns_acq.
+        assert(unowns_acq i s ρ) as Hunowns_acq'.
+        { eapply unowns_acq_easy. 3: apply Hunowns_acq. easy. easy. }
+        clear Hunowns_acq.
+        destruct Hpos as [Howns | [Hunowns | [Hunowns | [Howns_rel | Hub]]]].
+        { destruct Howns as [Howns ?]. pose proof iowns_unownsacq_exclusive _ _ _ Howns. contradiction. }
+        { destruct Hunowns as [Hunowns ?]. pose proof inotowns_unownsacq_exclusive _ _ _ Hunowns. contradiction. }
+        { easy. }
+        { destruct Howns_rel as [Howns_rel ?]. pose proof iownsrel_unownsacq_exclusive _ _ _ Howns_rel. contradiction. }
+        { destruct Hub as [Hub ?]. pose proof isub_unownsacq_exclusive i _ _ Hub. contradiction. }
+      }
+      { intros Hother_owns_acq''.
+        assert(i_not_owns i s ρ) as Hnotowns'.
+        { left. unfold other_owns. unfold other_owns_acq in Hother_owns_acq''.
+          destruct Hother_owns_acq'' as [j [Hneq [Hstate Hsnds]]].
+          exists j. split; [easy |]. unfold i_owns. 
+          split. { elim_corece. rewrite Hρ'. easy. }
+          right. exists i. easy. 
+        }
+        assert(other_owns_acq i s ρ) as Hother_owns_acq'.
+        { eapply other_owns_acq_easy. 3: apply Hother_owns_acq''. easy. easy. }
+        destruct Hpos as [Howns | [Hunowns | [Hunowns | [Howns_rel | Hub]]]].
+        { destruct Howns as [Howns ?].
+          pose proof iowns_inotowns_exclusive _ _ _ Howns. contradiction.
+        }
+        { apply Hother_owns_acq. easy. }
+        { destruct Hunowns as [Hunowns ?].
+          pose proof inotowns_unownsacq_exclusive _ _ _ Hnotowns'. contradiction.
+        }
+        { destruct Howns_rel as [Howns_rel ?].
+          pose proof inotowns_iownsrel_exclusive _ _ _ Hnotowns'. contradiction.
+        }
+        { destruct Hub as [Hub ?].
+          pose proof inotowns_isub_exclusive _ _ _ Hnotowns'. contradiction.
+        }
+      }
+      { intros Hub.
+        assert(is_ub_state s ρ) as Hub'.
+        { eapply is_ub_state_easy. 2: apply Hub. easy. }
+        clear Hub.
+        destruct Hpos as [Howns | [Hunowns | [Hunowns | [Howns_rel | Hub]]]].
+        { destruct Howns as [Howns ?]. pose proof iowns_isub_exclusive _ _ _ Howns. contradiction. }
+        { destruct Hunowns as [Hunowns ?]. pose proof inotowns_isub_exclusive _ _ _ Hunowns. contradiction. }
+        { destruct Hunowns as [Hunowns ?]. pose proof unownsacq_isub_exclusive _ _ _ Hunowns. contradiction. }
+        { destruct Howns_rel as [Howns_rel ?]. pose proof iownsrel_isub_exclusive _ _ _ Howns_rel. contradiction. }
         { easy. }
       }
       { subst ρ'. simpl. rewrite eqb_id. easy. }
@@ -1151,10 +2001,13 @@ Proof.
   rewrite SpinLock_verify_aux.
   apply weakenPrec with (P := 
     fun _ _ s ρs => exists (ρ: Poss (VFU T)), ρs = eq ρ /\
-      fst s i = Cont Acq (SpinLockImpl unit Acq) /\
       StateWithUB_acf _ (acf T) (PState ρ) i = None /\
-      PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\
-      (i_owns i s ρ \/ i_not_owns i s ρ \/ is_ub_state ρ)).
+      (((PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle) /\
+        (fst s i = Cont Acq (SpinLockImpl unit Acq)) /\
+        (i_owns i s ρ \/ i_not_owns i s ρ \/ unowns_acq i s ρ \/ i_owns_rel i s ρ)) \/ 
+      (((PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle) \/
+           (PCalls ρ i = CallDone Acq /\ PRets ρ i = RetPoss Acq tt)) /\
+          is_ub_state s ρ))).
   2: {
     unfold sub, subRelt.
     intros.
@@ -1164,90 +2017,71 @@ Proof.
     exists σ.
     repeat split; try easy.
     destruct_all.
-    destruct H9 as [Howns | [Hunowns | Hub]].
+    destruct H9 as [Howns | [Hunowns | [Hunowns_acq | [Howns_rel | Hub]]]].
     { destruct Howns as [Howns HT].
       destruct HT.
-      { left. easy. }
-      { right. right. easy. }
+      { left. split; [easy |]. split; [easy |]. left. easy. }
+      { right. split; [| easy]. left. easy. }
     }
     { destruct Hunowns as [Hunowns HT].
       destruct HT.
-      { right. left. easy. }
-      { right. right. easy. }
+      { left. split; [easy |]. split; [easy |]. right. left. easy. }
+      { right. split; [| easy]. left. easy. }
     }
-    { right. right. easy. }
+    { destruct Hunowns_acq as [Hunowns_acq HT].
+      destruct HT.
+      { left. split; [easy |]. split; [easy |]. right. right. left. easy. }
+      { right. split; [| easy]. left. easy. }
+    }
+    { destruct Howns_rel as [Howns_rel HT].
+      destruct HT.
+      { left. split; [easy |]. split; [easy |]. right. right. right. easy. }
+      { right. split; [| easy]. left. easy. }
+    }
+    { right. split; [| easy]. left. easy. }
   }
   eapply weakenPost.
   {
     eapply (lemWhileSkip2
-      (I := (fun v s ρs t σs => exists (ρ σ: Poss (VFU T)), ρs = eq ρ /\ σs = eq σ /\
-        fst s i = Cont Acq (SpinLockImpl unit Acq) /\
-        StateWithUB_acf _ (acf T) (PState ρ) i = None /\
+      (I := (fun v _ _ t σs => exists (σ: Poss (VFU T)), σs = eq σ /\
         StateWithUB_acf _ (acf T) (PState σ) i = None /\
-        PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\
         ((v = true /\ 
             fst t i = Cont Acq (NoOp (SpinLockImpl unit Acq)) /\
             PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle /\
-            ((i_owns i s ρ /\ (i_owns i t σ \/ is_ub_state σ)) \/
-            (i_not_owns i s ρ /\ (i_not_owns i t σ \/ is_ub_state σ)) \/
-            (is_ub_state ρ /\ is_ub_state σ))) \/
+            (i_owns i t σ \/ i_not_owns i t σ)) \/
          (v = false /\
             fst t i = Cont Acq (Return tt) /\
             PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt /\
-            ((i_not_owns i s ρ /\ (i_owns i t σ \/ is_ub_state σ)) \/
-             (is_ub_state ρ /\ is_ub_state σ)))
-        )
-      ))).
+            (i_owns i t σ)) \/
+         (((PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle) \/
+           (PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt)) /\
+          is_ub_state t σ))))).
     { apply SpinLock_R_refl. }
     { apply SpinLock_R_trans. } 
     { apply calcSilentPostGuar.
       intros.
       unfold calcSilentPost.
+      split. { apply H. }
       repeat split; try easy.
       unfold Guar. intros. exists ρ. simpl.
       repeat split; try easy.
       { intros. simpl. unfold differ_pointwise in H0. specialize (H0 j (ltac:(easy))). easy. }
-      { intros. do 4 destruct H. destruct_all.
-        destruct H11.
-        2: { destruct H11. congruence. }
-        destruct_all.
-        destruct H15 as [Howns | [Hunowns | Hub]].
-        { destruct Howns as [Howns HT].
-          destruct HT.
-          { left. easy. }
-          { left. easy. }
-        }
-        { destruct Hunowns as [Hunowns HT].
-          destruct HT.
-          { left. easy. }
-          { left. easy. }
-        }
-        { left. easy. }
-      }
-      { intros. do 4 destruct H. destruct_all.
-        destruct H11.
-        2: { destruct H11. congruence. }
-        destruct_all.
-        destruct H15 as [Howns | [Hunowns | Hub]].
-        { destruct Howns as [Howns HT].
-          destruct HT.
-          { left. easy. }
-          { left. easy. }
-        }
-        { destruct Hunowns as [Hunowns HT].
-          destruct HT.
-          { left. easy. }
-          { left. easy. }
-        }
-        { left. easy. }
-      }
+      { intros. left. apply i_owns_easy with (s := (ths, s))(ρ := ρ); easy. }
+      { intros. left. apply i_not_owns_easy with (s := (ths, s))(ρ := ρ); easy. }
+      { intros. left. apply i_owns_rel_easy with (s := (ths, s))(ρ := ρ); easy. }
+      { intros. left. apply unowns_acq_easy with (s := (ths, s))(ρ := ρ); easy. }
+      { intros. left. apply other_owns_acq_easy with (s := (ths, s))(ρ := ρ); easy. }
     }
     { eapply subReltTrans with (R2 :=
       (fun (_ : InterState F (VE T)) (_ : PossSet (VFU T)) (s : (Name T -> ThreadState (CASSig bool) F) * State (VE T))(ρs : Poss (VFU T) -> Prop) =>
-        exists ρ : Poss (VFU T), ρs = eq ρ /\ fst s i = Cont Acq (SpinLockImpl unit Acq) /\ 
+        exists ρ : Poss (VFU T), ρs = eq ρ /\ 
           StateWithUB_acf LockStep (acf T) (PState ρ) i = None /\ 
-          PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\ 
-          (i_owns i s ρ \/ i_not_owns i s ρ \/ is_ub_state ρ)) ->> Rely i).
+          (((PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle) /\ 
+              (fst s i = Cont Acq (SpinLockImpl unit Acq)) /\ 
+              (i_owns i s ρ \/ i_not_owns i s ρ \/ unowns_acq i s ρ \/ i_owns_rel i s ρ)) \/ 
+           (((PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle) \/
+             (PCalls ρ i = CallDone Acq /\ PRets ρ i = RetPoss Acq tt)) /\
+            is_ub_state s ρ))) ->> Rely i).
       {
         rewrite <- reltCompAssoc.
         apply reltComposeMono1.
@@ -1255,31 +2089,27 @@ Proof.
         rename ρ into ρs.
         rename σ into σs.
         destruct H as [s' [ρs' [? ?]]].
-        destruct H as [ρ [ρ' [Hρ [Hρ' ?]]]].
+        destruct H as [ρ' [Hρ' ?]].
         destruct_all.
         unfold calcSilentPost in H0.
-        destruct H0. destruct H0 as [s1 [ρs1 [ρ1 [ρ'' [Hρ1 [Hρ'' ?]]]]]].
+        destruct H0. destruct H0 as [_ [_ [ρ'' [Hρ'' ?]]]].
         pose proof Poss_eq_unique2 ρs' ρ' ρ'' (ltac:(easy)) Hρ''. subst ρ''. clear Hρ''.
-        destruct H6. subst σs.
+        destruct H2. subst σs.
         exists ρ'.
-        destruct_all. destruct H14.
-        2: { destruct H14. congruence. }
-        destruct_all.
         repeat split; try easy.
-        { rewrite H15 in H8. inversion H8. subst. dependent destruction H19.
-          unfold E. unfold F. rewrite H20. reflexivity. }
-        { destruct H18 as [Howns | [Hunowns | Hub]].
-          { destruct Howns as [? HT].
-            destruct HT.
-            { left. unfold i_owns. unfold i_owns in H19. elim_corece. rewrite H6 in H19. easy. }
-            { right. right. easy. }
-          }
-          { destruct Hunowns as [? HT].
-            destruct HT.
-            { right. left. unfold i_not_owns, i_owns. unfold i_not_owns, i_owns in H19. elim_corece. rewrite H6 in H19. easy. }
-            { right. right. easy. }
-          }
-          { right. right. easy. }
+        destruct_all. destruct H6 as [H6 | [H6 | H6]].
+        2: { destruct H6. congruence. }
+        { destruct_all.
+          left. repeat split; try easy.
+          { rewrite H7 in H4. inversion H4. subst. dependent destruction H11.
+            unfold E. unfold F. rewrite H12. reflexivity. }
+          { destruct H10 as [Howns | Hnotowns].
+            { left. apply i_owns_easy with (s := s')(ρ := ρ'); easy. }
+            { right. left. apply i_not_owns_easy with (s := s')(ρ := ρ'); easy. }
+          } 
+        }
+        { destruct_all. right. split; [easy |].
+          apply is_ub_state_easy with (s := s')(ρ := ρ'); easy.
         }
       }
       { unfold sub, subRelt.
@@ -1294,127 +2124,581 @@ Proof.
         exists σ.
         destruct_all.
         repeat split; try easy.
-        { elim_corece. rewrite <- H0. easy. }
-        { rewrite <- H6. easy. }
-        { rewrite <- H4. easy. }
-        { rewrite <- H5. easy. }
-        { destruct H10 as [Howns | [Hunowns | Hub]].
+        { rewrite <- H9. easy. }
+        destruct H10 as [H10 | Hub].
+        { destruct_all.
+          rewrite <- H7, <- H8, <- H11.
+          destruct H12 as [Howns | [Hnotowns | [Hunowns | Howns_rel]]].
           { specialize (H1 Howns). destruct H1.
-            { left. easy. }
-            { right. right. easy. }
+            { left. repeat split; try easy. left. easy. }
+            { right. split; [| easy]. left. easy. }
           }
-          { specialize (H2 Hunowns). destruct H2.
-            { right. left. easy. }
-            { right. right. easy. }
+          { specialize (H2 Hnotowns). destruct H2.
+            { left. repeat split; try easy. right. left. easy. }
+            { right. split; [| easy]. left. easy. }
           }
-          { specialize (H3 Hub). right. right. easy. }
+          { specialize (H4 Hunowns). destruct H4.
+            { left. repeat split; try easy. right. right. left. easy. }
+            { right. split; [| easy]. left. easy. }
+          }
+          { specialize (H3 Howns_rel). destruct H3.
+            { left. repeat split; try easy. right. right. right. easy. }
+            { right. split; [| easy]. left. easy. }
+          }
         }
+        { destruct Hub as [? Hub]. specialize (H6 Hub). right. split; [| easy]. rewrite <- H7, <- H8. easy. }
       }
     }
-    {
-      eapply lemBind.
+    { eapply lemBind.
       { eapply (lemCall
           (Q := fun s ρs t σs => exists (ρ σ: Poss (VFU T)), ρs = eq ρ /\ σs = eq σ /\
-                  fst s i = Cont Acq (SpinLockImpl unit Acq) /\
-                  fst t i = UCall Acq (CAS None (Some true))
-                              (fun x : bool =>
-                              whileAux (tmp <- call (CAS None (Some true)); ret (negb tmp)) skip
-                                       (tmp <- Return x; ret (negb tmp)) skip) /\
                   StateWithUB_acf _ (acf T) (PState ρ) i = None /\
                   StateWithUB_acf _ (acf T) (PState σ) i = None /\
-                  PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\
-                  PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle /\
-                  ((i_owns i s ρ /\ (i_owns i t σ \/ is_ub_state σ)) \/
-                   (i_not_owns i s ρ /\ (i_not_owns i t σ \/ is_ub_state σ)) \/
-                   (is_ub_state ρ /\ is_ub_state σ)))
+                  ((PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\
+                    PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle /\
+                    fst s i = Cont Acq (SpinLockImpl unit Acq) /\
+                    fst t i = UCall Acq (CAS None (Some true))
+                                (fun x : bool =>
+                                whileAux (tmp <- call (CAS None (Some true)); ret (negb tmp)) skip
+                                        (tmp <- Return x; ret (negb tmp)) skip) /\
+                    ((unowns s ρ /\ unowns_acq i t σ) \/ (other_owns i s ρ /\ other_owns_acq i t σ))) \/
+                  (((PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle) \/
+                    (PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt)) /\
+                    is_ub_state t σ)))
           (S := fun v s ρs t σs => exists (ρ σ: Poss (VFU T)), ρs = eq ρ /\ σs = eq σ /\
-                  fst s i = UCall Acq (CAS None (Some true))
+                  StateWithUB_acf _ (acf T) (PState ρ) i = None /\
+                  StateWithUB_acf _ (acf T) (PState σ) i = None /\                  
+                  (((fst s i = UCall Acq (CAS None (Some true))
                               (fun x : bool =>
                               whileAux (tmp <- call (CAS None (Some true)); ret (negb tmp)) skip
-                                       (tmp <- Return x; ret (negb tmp)) skip) /\
-                  StateWithUB_acf _ (acf T) (PState ρ) i = None /\
-                  StateWithUB_acf _ (acf T) (PState σ) i = None /\
-                  PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\
-                  PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt /\
-                  ((v = true /\ i_owns i s ρ /\ (i_owns i t σ \/ is_ub_state σ)) \/
-                   (v = false /\ 
-                    ((i_not_owns i s ρ /\ (i_owns i t σ \/ is_ub_state σ)) \/
-                     (is_ub_state ρ /\ is_ub_state σ)))))).
-        { admit. }
-        { admit. }
-        { unfold Commit. intros.
-          destruct H as [s0 [ρs0 [ρ [Hρ [Hfsts [HIdle [HCall [HRet HPrec]]]]]]]].
-          exists ρs.
-          split.
-          { exists ρ. rewrite Hρ. reflexivity. }
-          split.
-          { intros. exists σ. split; [easy | constructor]. }
-          split.
-          { exists ρ, ρ.
-            repeat split; try easy.
-            { elim_corece. rewrite Hfsts in H1.
-              inversion H1; subst. dependent destruction H3.
-              unfold while in x.
-              rewrite frobProgId in x at 1. cbn in x.
-              dependent destruction x.
-              easy.
+                                       (tmp <- Return x; ret (negb tmp)) skip)) /\
+                    ((v = true /\ PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\
+                        PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt /\
+                        fst t i = Cont Acq (Return tt) /\
+                        ((unowns_acq i s ρ /\ i_owns i t σ))) \/
+                     (v = false /\ PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\
+                        PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle /\
+                        fst t i = Cont Acq (NoOp (SpinLockImpl unit Acq)) /\
+                        ((other_owns_acq i s ρ /\ i_not_owns i t σ))))) \/
+                   (((PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle) \/
+                     (PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt)) /\
+                     is_ub_state t σ)))).
+        { unfold Stable, stableRelt, sub, subRelt.
+          intros.
+          rename ρ into ρs.
+          rename σ into σs.
+          destruct H as [s' [ρs' [? ?]]].
+          destruct H as [ρ [ρ' [Hρ [Hρ' ?]]]].
+          destruct H as [Hstateρ [Hstateρ' Hpos]].
+          unfold Rely in H0.
+          specialize (H0 _ Hρ').
+          destruct H0 as [σ [Hσ H0]].
+          destruct H0 as [Hfstt [Howns [Hnotowns [Howns_rel [Howns_acq [Hother_owns_acq Hub]]]]]].
+          destruct Hub as [Hub [HPcallρ' [HPretρ' Hstateσ]]].
+          exists ρ, σ.
+          elim_corece. rewrite <- Hstateσ.
+          repeat split; try easy.
+          destruct Hpos as [HH | HH].
+          { destruct HH as [HPcallρi [HRetsρi [HCallsρ [HRetsρ [Hfsts [Hfsts' HH]]]]]].
+            elim_corece. rewrite <- Hfstt, <- HPcallρ', <- HPretρ'. 
+            destruct HH as [HH | HH].
+            { destruct HH as [Hunownsρ Hunowns_acqρ'].
+              specialize (Howns_acq Hunowns_acqρ'). destruct Howns_acq as [Howns_acq | Hub']. 
+              { left. do 6 (split; [easy |]). left. easy. }
+              { right. split; [| easy]. left. easy. }
             }
-            { destruct HPrec as [Howns | [Hunowns | Hub]].
-              { left. split; [| left]. easy. }
-              { right. left. split; [| left]; easy. }
-              { right. right. easy. }
-              { right. left. easy. }
-              { right. right. easy. }
+            { destruct HH as [Hother_ownsρ Hother_ownsρ'].
+              specialize (Hother_owns_acq Hother_ownsρ'). destruct Hother_owns_acq as [Hother_owns_acq | Hub'].
+              { left. do 6 (split; [easy |]). right. easy. }
+              { right. split; [| easy]. left. easy. }
+            }
+          }
+          { right. destruct HH as [? HH]. specialize (Hub HH). split;[| easy]. 
+            rewrite <- HPcallρ', <- HPretρ'. easy. }
+        }
+        { unfold Stable, stablePost, stableRelt, sub, subRelt. 
+          intros.
+          rename ρ into ρs.
+          rename σ into σs.
+          destruct H as [s' [ρs' [? ?]]].
+          destruct H as [ρ [ρ' [Hρ [Hρ' ?]]]].
+          destruct H as [Hstateρ [Hstateρ' Hpos]].
+          unfold Rely in H0.
+          specialize (H0 _ Hρ').
+          destruct H0 as [σ [Hσ H0]].
+          destruct H0 as [Hfstt [Howns [Hnotowns [Howns_rel [Howns_acq [Hother_owns_acq Hub]]]]]].
+          destruct Hub as [Hub [HPcallρ' [HPretρ' Hstateσ]]].
+          exists ρ, σ.
+          elim_corece. rewrite <- Hstateσ, <- HPcallρ', <- HPretρ', <- Hfstt.
+          do 4 (split; [easy |]).
+          destruct Hpos as [HH | HH].
+          { destruct HH as [Hfsts HH].
+            destruct HH as [HH | HH].
+            {
+            destruct HH as [Hv [HCallρ [HRetρ [HCallsρ' [HRetsρ' [Hfsts' HH]]]]]].
+            destruct HH as [Hsρ HH].
+            specialize (Howns HH). destruct Howns. 
+              { left. split; [easy |]. left. easy. }
+              { right. split; [| easy]. right. easy. }
+            }
+            { destruct HH as [Hv [HCallρ [HRetρ [HCallsρ' [HRetsρ' [Hfsts' HH]]]]]].
+              destruct HH as [Hsρ HH].
+              specialize (Hnotowns HH). destruct Hnotowns.
+              { left. split; [easy |]. right. easy. }
+              { right. split; [| easy]. left. easy. }
+            }
+          }
+          { right. destruct HH as [? HH]. specialize (Hub HH). split; easy. }
+        }
+        { unfold Commit. intros.
+          destruct H as [s0 [ρs0 [ρ [Hρ [Hstateρ HPrec]]]]].
+          destruct HPrec as [HPrec | HH].
+          { destruct HPrec as [[HPcallρ HPRetsρ] [Hfsts HPrec]].
+            assert(fst t i = UCall Acq (CAS None (Some true))
+                                (fun x : bool =>
+                                whileAux (tmp <- call (CAS None (Some true)); ret (negb tmp)) skip
+                                        (tmp <- Return x; ret (negb tmp)) skip)) as Hfstt.
+            { elim_corece. rewrite Hfsts in H1. inversion H1. subst.
+              dependent destruction H3. rewrite frobProgId in x at 1. cbn in x. dependent destruction x. easy.
+            }
+            assert(
+              (PState ρ = inl (LockOwned i) /\ snd s = CASDef (Some true) None) \/
+              (PState ρ = inl (LockUnowned) /\ snd s = CASDef None None) \/
+              (exists j, j <> i /\ PState ρ = inl (LockOwned j) /\ snd s = CASDef (Some true) None)) as HCases.
+            {
+              destruct HPrec as [Howns | [Hunowns | [Hunowns_acq | Howns_rel]]].
+              { left. unfold i_owns in Howns. destruct Howns as [Howns Hsnds].
+                destruct Hsnds.
+                { easy. }
+                { destruct H as [j [Hneq Hsnds]].
+                  elim_corece. rewrite Hsnds in H2. inversion H2.
+                }
+              }
+              { unfold i_not_owns in Hunowns.
+                destruct Hunowns as [Hother_owns | [Hunowns | [Hunowns_acq | Hother_owns_rel]]].
+                { unfold other_owns in Hother_owns. destruct Hother_owns as [j [Hneq Hother_owns]].
+                  destruct Hother_owns as [Howns Hsnds].
+                  destruct Hsnds.
+                  { right. right. exists j. easy. }
+                  { destruct H as [j0 [Hneq' Hsnds]].
+                    elim_corece. rewrite Hsnds in H2. inversion H2.
+                  }
+                }
+                { right. left. unfold i_not_owns in Hunowns. destruct Hunowns as [Hunowns Hsnds].
+                  destruct Hsnds. easy.
+                }
+                { unfold unowns_acq in Hunowns_acq. 
+                  destruct Hunowns_acq as [j [Hneq [Hstate Hsnds]]].
+                  elim_corece. rewrite Hsnds in H2. inversion H2.
+                }
+                { unfold other_owns_rel in Hother_owns_rel. 
+                  destruct Hother_owns_rel as [j [Hneq [Hstate Hsnds]]].
+                  elim_corece. rewrite Hsnds in H2. inversion H2.
+                }
+              }
+              { unfold unowns_acq in Hunowns_acq. 
+                destruct Hunowns_acq as [Hstate Hsnds].
+                elim_corece. rewrite Hsnds in H2. inversion H2.
+              }
+              { unfold i_owns_rel in Howns_rel. destruct Howns_rel as [Howns_rel Hsnds].
+                elim_corece. rewrite Hsnds in H2. inversion H2.
+              }
+            }
+            destruct HCases as [HH | [HH | HH]].
+            { destruct HH as [Hstate Hsnds].
+              assert(is_ub_state t (stateStepToUB ρ i Acq tt)) as Hub.
+              { unfold is_ub_state. simpl. 
+                exists (StateWithUB_acf LockStep (acf T) (PState ρ)).
+                split; [easy |].
+                eexists. eexists. elim_corece. 
+                rewrite Hsnds in H2. inversion H2; subst.
+                elim_corece. rewrite <- H7. reflexivity.
+              }
+              exists (eq (stateStepToUB ρ i Acq tt)).
+              split.
+              { eexists. reflexivity. }
+              split.
+              { intros. subst σ. exists ρ.
+                split. { rewrite Hρ. reflexivity. }
+                apply stateStepToUBPossSteps; try easy.
+                rewrite Hstate. constructor.
+                { intros. intro. inversion H. }
+                { econstructor; try rewrite eqb_id; try easy.
+                  unfold differ_pointwise. intros j Hneq. rewrite eqb_nid. 2: easy.
+                  rewrite Hstate. easy.
+                }
+              }
+              split.
+              { exists ρ, (stateStepToUB ρ i Acq tt).
+                repeat split; try easy.
+                right. try easy. split; [| easy].
+                right. unfold stateStepToUB. simpl. rewrite eqb_id. easy.
+              }
+              { unfold Guar. intros ρ' Hρ'.
+                pose proof Poss_eq_unique2 _ _ _ Hρ Hρ'; subst ρ'. clear Hρ'.
+                eexists. split; [reflexivity |].
+                split. { apply differ_pointwise_other. easy. } 
+                split. { intros. right. easy. } 
+                split. { intros. right. easy. }
+                split. { intros. right. easy. }
+                split. { intros. right. easy. }
+                split. { intros. right. easy. } 
+                split. { intros. easy. }
+                split. { intros. unfold stateStepToUB. simpl. rewrite eqb_nid; easy. }
+                { intros. unfold stateStepToUB. simpl. easy. }
+              }
+            }
+            { exists ρs.
+              split. { exists ρ. rewrite Hρ. easy. }
+              split.
+              { intros σ Hσ. pose proof Poss_eq_unique _ _ _ Hρ Hσ; subst σ. clear Hσ.
+                exists ρ. split. { rewrite Hρ. reflexivity. }
+                constructor.
+              } 
+              split.
+              { destruct HH as [Hstate Hsnds].
+                exists ρ, ρ.
+                repeat split; try easy.
+                left. do 5 (split; [easy |]). split; [easy |].
+                left. split; [easy |].
+                rewrite Hsnds in H2. inversion H2; subst. unfold unowns_acq. unfold CAS_i_acq.
+                elim_corece. rewrite <- H7.
+                split; [easy |].
+                easy.
+              }
+              { unfold Guar.
+                assert(unowns s ρ) as Hunowns. { unfold unowns. easy. }
+                intros ρ' Hρ'.
+                pose proof Poss_eq_unique2 _ _ _ Hρ Hρ'; subst ρ'. clear Hρ'.
+                exists ρ.
+                repeat split; try easy; intros.
+                { unfold differ_pointwise in H0. specialize (H0 j (ltac:(easy))). easy. }
+                { pose proof i_owns_unowns_exclusive _ _ _ H3 Hunowns. contradiction. }
+                { left. unfold i_not_owns. right. right. left.
+                  destruct HH as [Hstate Hsnds].
+                  exists i. split; [easy |].
+                  rewrite Hsnds in H2. inversion H2; subst. easy.
+                }
+                { assert (i_not_owns j s ρ) as Hnotowns. { right. left. easy. }
+                  pose proof inotowns_iownsrel_exclusive _ _ _ Hnotowns H3. contradiction.
+                }
+                { destruct HH as [Hstate Hsnds].
+                  destruct H3. elim_corece. rewrite H4 in Hsnds. inversion Hsnds.
+                }
+                { destruct HH as [Hstate Hsnds].
+                  destruct H3 as [j0 [Hneq' [? H4]]]. elim_corece. rewrite H4 in Hsnds. inversion Hsnds.
+                }
+                { assert (i_not_owns i s ρ) as Hnotowns. { right. left. easy. }
+                  pose proof inotowns_isub_exclusive _ _ _ Hnotowns H. contradiction.
+                }
+              }
+            }
+            { destruct HH as [j [Hneq [Hstate Hsnds]]].
+              exists ρs.
+              split. { exists ρ. rewrite Hρ. easy. }
+              split.
+              { intros σ Hσ. pose proof Poss_eq_unique _ _ _ Hρ Hσ; subst σ. clear Hσ.
+                exists ρ. split. { rewrite Hρ. reflexivity. }
+                constructor.
+              }
+              split.
+              { exists ρ, ρ.
+                repeat split; try easy.
+                left. do 6 (split; [easy |]).
+                right. split. { unfold other_owns. exists j. split; [easy |]. unfold i_owns. split; [easy |]. left. easy. } 
+                rewrite Hsnds in H2. inversion H2; subst. unfold other_owns_acq. unfold CAS_i_acq.
+                unfold other_owns. exists j. split; [easy |]. unfold i_owns. split; [easy |]. easy.
+              }
+              { unfold Guar.
+                assert(other_owns i s ρ) as Howns. { unfold other_owns. exists j. split; [easy |]. unfold i_owns. split; [easy |]. left. easy. }
+                intros ρ' Hρ'.
+                pose proof Poss_eq_unique2 _ _ _ Hρ Hρ'; subst ρ'. clear Hρ'.
+                exists ρ.
+                repeat split; try easy; intros.
+                { unfold differ_pointwise in H0. specialize (H0 j0 (ltac:(easy))). easy. }
+                { left.
+                  unfold i_owns in *.
+                  destruct H3 as [Hstate' Hsnds'].
+                  rewrite Hstate' in Hstate. inversion Hstate; subst.
+                  split; [easy |].
+                  right. exists i. split; [easy |].
+                  rewrite Hsnds in H2. inversion H2; subst. easy.
+                }
+                { rewrite Hsnds in H2. inversion H2; subst.
+                  left. left. exists j.
+                  assert(j <> j0).
+                  { intro. subst j0. assert(i_owns j s ρ) as Htmp. { unfold i_owns. split; [easy |]. left. easy. }
+                    pose proof iowns_inotowns_exclusive _ _ _ Htmp H3. contradiction.
+                  }
+                  split; [easy |]. split; [easy |]. right. exists i. easy.
+                }
+                { unfold i_owns_rel in H3. destruct H3 as [Howns_rel Hsnds'].
+                  elim_corece. rewrite Hsnds in Hsnds'. inversion Hsnds'.
+                }
+                { unfold unowns_acq in H3. destruct H3 as [Hstate' Hsnds'].
+                  elim_corece. rewrite Hsnds in Hsnds'. inversion Hsnds'.
+                }
+                { rewrite Hsnds in H2. inversion H2; subst. left. unfold other_owns_acq in H3.
+                  destruct H3 as [j' [Hneq' [Hstate' Hsnds']]].
+                  elim_corece. rewrite Hsnds' in Hsnds. inversion Hsnds.
+                }
+                { assert(i_owns j s ρ) as Howns'. { unfold i_owns. split; [easy |]. left. easy. }
+                  pose proof iowns_isub_exclusive _ _ _ Howns' H. contradiction.
+                }
+              }
+            }
+          }
+          { pose proof HH as Hub. unfold is_ub_state in HH.
+            destruct HH as [a [Hstate [o [mm Hsnds]]]].
+            assert(is_ub_state t ρ) as Hub'.
+            { apply is_ub_state_easy with (s := s)(ρ := ρ); easy. }
+            exists (eq ρ).
+            split.
+            { eexists. reflexivity. }
+            split.
+            { intros. subst σ. exists ρ.
+              split. { rewrite Hρ. reflexivity. }
+              constructor.
+            }
+            split.
+            { exists ρ, ρ.
+              repeat split; try easy.
+              right. split; easy.
+            }
+            { unfold Guar. intros ρ' Hρ'.
+              pose proof Poss_eq_unique2 _ _ _ Hρ Hρ'; subst ρ'. clear Hρ'.
+              eexists. split; [reflexivity |].
+              split. { apply differ_pointwise_other. easy. } 
+              split. { intros. right. easy. } 
+              split. { intros. right. easy. }
+              split. { intros. right. easy. }
+              split. { intros. right. easy. }
+              split. { intros. right. easy. }
+              split. { intros. easy. }
+              split. { intros. easy. }
+              { intros. easy. }
+            }
+          }
+        }
+        { intros v.
+          unfold Commit. intros.
+          destruct H as [s0 [ρs0 [s1 [ρs1 ?]]]].
+          destruct H as [HPrec HPost].
+          destruct HPrec as [ρ1 [Hρ1 [Hstateρ1 HPrec]]].
+          destruct HPost as [ρ1' [ρ [Hρ1' [Hρ [Hstateρ1' [Hstateρ HPost]]]]]].
+          assert((PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\ 
+                  fst s i = UCall Acq (CAS None (Some true)) (fun x : bool => whileAux (tmp <- call (CAS None (Some true)); ret (negb tmp)) skip (tmp <- Return x; ret (negb tmp)) skip) /\
+                  (unowns s1 ρ1' /\ unowns_acq i s ρ \/ other_owns i s1 ρ1' /\ other_owns_acq i s ρ)) \/
+                 (((PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle) \/
+                   (PCalls ρ i = CallDone Acq /\ PRets ρ i = RetPoss Acq tt)) /\
+                  is_ub_state s ρ)) as HPost'.
+          { destruct HPost as [HH | HH].
+            { destruct HH as [HCallsρ1' [HRetsρ1' [HCallsρ [HRetsρ [Hfsts1 [Hfsts HH]]]]]].
+              destruct HH as [HH | HH].
+              { left. split; [easy |]. split; [easy |]. split; [easy |]. left. easy. }
+              { left. split; [easy |]. split; [easy |]. split; [easy |]. right. easy. }
+            }
+            { right. easy. }
+          }
+          clear HPost.
+          destruct HPost' as [HCommit | Hub].
+          { destruct HCommit as [PCallsρ [PRetsρ [Hfsts HCommit]]].
+            destruct HCommit as [HSucc | HFail].
+            { destruct HSucc as [_ HSucc].
+              pose proof HSucc as HSucc'.
+              unfold unowns_acq in HSucc.
+              destruct HSucc as [HSρ HSs].
+              elim_corece. rewrite HSs in H2.
+              unfold CAS_i_acq in H2.
+              inversion H2; subst. 2: contradiction.
+              dependent destruction H7.
+              rewrite Hfsts in H1. inversion H1; subst.
+              dependent destruction H3. dependent destruction H6.
+              rewrite frobProgId in H9 at 1. cbn in H9.
+              remember (@MkPoss T F (VFU T) (inl (LockAcqRan i)) 
+                      (fun j => if i =? j then CallDone Acq else PCalls ρ j)
+                      (fun j => if i =? j then RetIdle else PRets ρ j)) as ρ'.
+              remember (@MkPoss T F (VFU T) (inl (LockOwned i)) 
+                      (fun j => if i =? j then CallDone Acq else PCalls ρ' j)
+                      (fun j => if i =? j then RetPoss Acq tt else PRets ρ' j)) as ρ''.
+              exists (eq ρ'').
+              split. { eexists. reflexivity. }
+              split.
+              { intros. subst σ. exists ρ.
+                split. { reflexivity. }
+                eapply Logic.PossStepsStep with (i := i) (σ := ρ').
+                { subst ρ'. 
+                  apply Logic.PCommitCall with (m := Acq); simpl; try rewrite eqb_id; try easy.
+                  { rewrite HSρ. constructor. constructor. }
+                }
+                { subst ρ'. intros. simpl. rewrite eqb_nid; easy. }
+                { subst ρ'. intros. simpl. rewrite eqb_nid; easy. }
+                eapply Logic.PossStepsStep with (i := i) (σ := ρ'').
+                { subst ρ''. subst ρ'.
+                  apply Logic.PCommitRet with (m := Acq)(v := tt); simpl; try rewrite eqb_id; try easy.
+                  { simpl. constructor. constructor. }
+                }
+                { subst ρ''. intros. simpl. rewrite eqb_nid; easy. }
+                { subst ρ''. intros. simpl. rewrite eqb_nid; easy. }
+                constructor.
+              }
+              split.
+              { exists ρ, ρ''.
+                repeat split; try easy.
+                { subst ρ''. simpl. easy. }
+                { left. subst ρ''. simpl. rewrite eqb_id. repeat split; try easy. left. repeat split; try easy. left. easy. } 
+              }
+              { unfold Guar. intros ρ_ Hρ_.
+                pose proof Poss_eq_unique3 _ _ Hρ_; subst ρ_. clear Hρ_.
+                eexists. split; [reflexivity |].
+                split. { apply differ_pointwise_other. easy. } 
+                split. { intros. destruct H3 as [HH ?]. rewrite HSρ in HH. inversion HH. }
+                split. 
+                { intros. left. left. exists i. split; [easy |].
+                  subst ρ''. split; [easy |]. left. easy.
+                }
+                split. { intros. destruct H3 as [HH ?]. rewrite HSρ in HH. inversion HH. }
+                split. { intros. destruct H3 as [? HH]. elim_corece. rewrite HSs in HH. inversion HH. subst j. contradiction. }
+                split. { intros. destruct H3 as [? [j0 [? HH]]]. elim_corece. rewrite HSs in HH. inversion HH. }
+                split. { intros. destruct H as [a [HH ?]]. elim_corece. rewrite HSρ in HH. inversion HH. }
+                split. { intros. subst ρ''. subst ρ'. simpl. rewrite eqb_nid; easy. }
+                { intros. subst ρ''. subst ρ'. simpl. rewrite HSρ. easy. }
+              }
+            }
+            { destruct HFail as [_ HFail]. pose proof HFail as HFail'. 
+              unfold other_owns_acq in HFail.
+              destruct HFail as [j [Hneq [HFρ HFs]]].
+              elim_corece. rewrite HFs in H2.
+              unfold CAS_i_acq in H2.
+              inversion H2; subst. inversion H3.
+              dependent destruction H7.
+              rewrite Hfsts in H1. inversion H1; subst.
+              dependent destruction H4. dependent destruction H7.
+              rewrite frobProgId in H10 at 1. cbn in H10.
+              replace (whileAux (tmp <- call (CAS None (Some true)); ret (negb tmp)) skip
+                               (tmp <- call (CAS None (Some true)); ret (negb tmp)) skip) 
+                  with (SpinLockImpl unit Acq) in H10 by easy.
+              exists (eq ρ).
+              split. { eexists. reflexivity. }
+              split. { intros. subst σ. exists ρ. split; [easy | constructor]. }
+              split.
+              { exists ρ, ρ.
+                repeat split; try easy. left. repeat split; try easy. right. repeat split; try easy.
+                unfold i_not_owns. left.
+                exists j. split; [easy |]. unfold i_owns. split; [easy |]. left. easy.
+              }
+              { unfold Guar. intros ρ' Hρ'.
+                pose proof Poss_eq_unique3 _ _ Hρ'; subst ρ'. clear Hρ'.
+                eexists. split; [reflexivity |]. 
+                split. { apply differ_pointwise_other. easy. } 
+                split. 
+                { intros. unfold i_owns in H4. destruct H4 as [HH H4].
+                  rewrite HFρ in HH. inversion HH. subst j0.
+                  left. unfold i_owns. split; [easy |]. left. easy.
+                }
+                split.
+                { intros. unfold i_not_owns in H4. destruct H4 as [HH | [HH | [HH | HH]]].
+                  { unfold other_owns in HH. destruct HH as [j1 [Hneq' [HH H4]]].
+                    rewrite HFρ in HH. inversion HH. subst j1.
+                    left. left. exists j. split; [easy |]. split; [easy |]. left. easy.
+                  }
+                  { unfold unowns in HH. destruct HH as [HH H4].
+                    rewrite HFρ in HH. inversion HH.
+                  }
+                  { destruct HH as [j1 [Hneq' H4]].
+                    unfold unowns_acq in H4. destruct H4 as [HH H4].
+                    rewrite HFρ in HH. inversion HH.
+                  }
+                  { unfold other_owns_rel in HH. destruct HH as [j1 [Hneq' [? HH]]].
+                    elim_corece. rewrite HFs in HH. inversion HH.
+                  }
+                }
+                split. { intros. unfold i_owns_rel in H4. destruct H4 as [H4 HH]. elim_corece. rewrite HFs in HH. inversion HH. }
+                split. { intros. unfold unowns_acq in H4. destruct H4 as [HH ?]. rewrite HFρ in HH. inversion HH. }
+                split. 
+                { intros. unfold other_owns_acq in H4. destruct H4 as [j1 [Hneq' [HH H4]]].
+                  elim_corece. rewrite HFs in H4. unfold CAS_i_acq in H4. inversion H4. subst j0.
+                  contradiction.
+                }
+                split. { intros. destruct H as [a [HH H4]]. rewrite HFρ in HH. inversion HH. }
+                split; [easy |].
+                { intros. easy. }
+              }
+            }
+          }
+          { destruct Hub as [? Hub]. pose proof Hub as Hub'.
+            destruct Hub as [a [HUρ [m [o HPus]]]].
+            rewrite HUρ in Hstateρ. inversion Hstateρ. simpl in *.
+            assert(is_ub_state t ρ) as HUbt.
+            { apply is_ub_state_easy with (s := s)(ρ := ρ); easy. }
+            exists (eq ρ).
+            split. { eexists. reflexivity. }
+            split. { intros. subst σ. exists ρ. split; [subst ρs; easy | ]. constructor. }
+            split.
+            { exists ρ, ρ. 
+              repeat split; try rewrite HUρ; try easy.
+              right. repeat split; try easy.
+            }
+            { unfold Guar. intros ρ' Hρ'.
+              pose proof Poss_eq_unique2 _ _ _ Hρ Hρ'; subst ρ'. clear Hρ'.
+              eexists. split; [reflexivity |].
+              split. { apply differ_pointwise_other. easy. } 
+              split. { intros. right. easy. }
+              split. { intros. right. easy. }
+              split. { intros. right. easy. }
+              split. { intros. right. easy. }
+              split. { intros. right. easy. }
+              split. { intros. easy. }
+              split. { intros. easy. }
+              { intros. easy. }
             }
           }
         }
       }
+      { intros. apply lemRet.
+        unfold sub, subRelt.
+        intros.
+        rename ρ into ρs.
+        rename σ into σs.
+        destruct H as [s1 [ρs1 [H0 H]]].
+        destruct H as [s2 [ρs2 [H1 H]]].
+        destruct H as [ρ2 [σ [Hρ2 [Hσ H]]]].
+        destruct H as [Hstateρ2 [Hstateσ HPos]].
+        exists σ. split; [easy |].
+        split; [easy |].
+        destruct HPos as [HPos | Hub].
+        { destruct HPos as [Hfsts2 HPos].
+          destruct HPos as [Htrue | Hfalse].
+          { right.
+            destruct Htrue as [Hv [HPCallρ2 [HPRetρ2 [HPCallσ [HPRetσ [Hfstt Hunowns_acqρ2]]]]]].
+            subst v. repeat split; try easy. left. easy.
+          }
+          { left.
+            destruct Hfalse as [Hv [HPCallρ2 [HPRetρ2 [HPCallσ [HPRetσ [Hfstt Hunowns_acqρ2]]]]]].
+            subst v. repeat split; try easy. right. easy.
+          }
+        }
+        { right. right. easy. }
+      }
     }
-    { admit. }
   }
   { intros. destruct v. unfold UnitRet.
     unfold sub, subRelt.
     intros.
     rename σ into σs.
     rename ρ into ρs.
-    destruct H as [ρ [σ [Hρ [Hσ H]]]].
-    destruct H as [? [? [? [? [? Hres]]]]].
-    destruct Hres as [Htrue | Hfalse].
-    1: { destruct Htrue. congruence. }
-    unfold Posts.
-    exists ρ, σ.
-    repeat split; try easy.
-    destruct Hfalse as [? [? [? [? Hres]]]].
-    destruct Hres as [HS | HF]. 
-    { destruct HS as [HPre HPost].
-      destruct HPost.
-      { left. easy. }
-      { right. unfold Precs, ub_and_idle.
-        split.
-        { exists ρ. split; [easy |].
-          split; [| easy].
-          left. unfold valid_state. right. easy.
-        }
-        { unfold is_ub_state in H8. destruct H8 as [a H8].
-          exists a.
-          rewrite H8 in H1. simpl in H1. easy.
-        }
-      }
+    destruct H as [σ [Hρ [Hσ Hres]]].
+    destruct Hres as [Htrue | [Hfalse | Hub]].
+    { destruct Htrue. congruence. }
+    { unfold Posts. exists σ.
+      split; [easy |].
+      left. easy. 
     }
-    { destruct HF as [HPre HPost].
-      right. unfold Precs, ub_and_idle.
-      split.
-      { exists ρ. split; [easy |].
-        split; [| easy].
-        right. unfold valid_state. easy.
-      }
-      { unfold is_ub_state in HPost. destruct HPost as [a HPost].
-        exists a.
-        rewrite HPost in H1. simpl in H1. easy.
-      }
+    { unfold Posts. exists σ. split; [easy |].
+      right. easy.
     }
   }
-Admitted.
+Qed.
 
 Lemma SpinLock_Rel_aux1 {T} (i: Name T) (s1: InterState F (VE T)) ρs1 s2 ρs2: 
   (prComp (Precs i unit Rel) (TInvoke SpinLockImpl i unit Rel)) s1 ρs1 s2 ρs2 ->
