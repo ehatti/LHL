@@ -967,8 +967,6 @@ intros. destruct v0.
         destruct H4. psimpl. rename x into vs.
         destruct H5; destruct H5; psimpl.
         {
-          remember v0.
-          move Heqo at bottom.
           ddestruct H0; simp_sets.
           {
             assert (exists z, y = Some z).
@@ -1060,20 +1058,122 @@ intros. destruct v0.
             }
             {
               exists x3. split. easy.
-              eq_inj H11. eapply StkRevoke
-                with (i:=i) (v:= Some v).
+              eq_inj H11. eapply StkPushConflict
+                with (i:=i) (v:=v) (w:=w).
               constructor.
               {
-                constructor; cbn.
+                constructor; cbn. easy.
+                intros. now rewrite H1.
+              }
+              {
+                cbn. rewrite <- x4, <- x at 1.
+                repeat (easy || constructor).
               }
             }
           }
           {
-            admit.
+            exists (eq x3).
+            split.
+            { repeat econstructor. }
+            split.
+            {
+              intros. subst.
+              repeat econstructor.
+            }
+            split.
+            {
+              exists x3. split. easy.
+              split.
+              {
+                constructor.
+                {
+                  exists vs, x1.
+                  now rewrite <- H7 at 1.
+                }
+                {
+                  intros.
+                  rewrite <- x in H0 at 1.
+                  ddestruct H0.
+                  now apply contains_contr in H11.
+                }
+              }
+              { easy. }
+            }
+            {
+              exists x3. split. easy.
+              eq_inj H0. eapply StkRevoke with
+                (i:=i) (v:= Some v).
+              constructor.
+              {
+                constructor; cbn. easy.
+                intros. now rewrite H1.
+              }
+              {
+                cbn. rewrite <- x2, <- x at 1.
+                repeat (easy || constructor).
+              }
+            }
           }
         }
         {
-          admit.
+          destruct H11.
+          remember v0.
+          move Heqo at bottom.
+          ddestruct H0.
+          {
+            rewrite accepted0 in x2 at 1.
+            ddestruct x2. simp_sets.
+          }
+          {
+            rewrite accepted0 in x5 at 1.
+            ddestruct x5. simp_sets. subst.
+            exists (eq x3).
+            split.
+            { repeat econstructor. }
+            split.
+            {
+              intros. subst.
+              repeat econstructor.
+            }
+            split.
+            {
+              exists x3. split. easy.
+              split.
+              {
+                constructor.
+                {
+                  exists vs, x1.
+                  now rewrite <- H7 at 1.
+                }
+                {
+                  intros.
+                  rewrite <- x5 in H11 at 1.
+                  ddestruct H11.
+                  now apply contains_contr in H12.
+                }
+              }
+              { easy. }
+            }
+            {
+              exists x3. split. easy.
+              eq_inj H11. eapply StkPushFinish
+                with (i:=i) (v:=v).
+              constructor.
+              {
+                constructor; cbn. easy.
+                intros. now rewrite H1.
+              }
+              {
+                cbn. rewrite accepted0, <- x5 at 1.
+                repeat (easy || constructor).
+              }
+            }
+          }
+          {
+            subst.
+            rewrite accepted0 in x2 at 1.
+            ddestruct x2. simp_sets.
+          }
         }
       }
       {
@@ -1114,15 +1214,7 @@ intros. destruct v0.
                 exists x4, x5.
                 easy.
               }
-              {
-                admit.
-              }
-              {
-                admit.
-              }
-              {
-                admit.
-              }
+              { easy. }
             }
             {
               destruct v0. destruct o.
