@@ -120,3 +120,24 @@ CoFixpoint whileAux (t' : Prog E bool) (e' : Prog E unit) : Prog E unit :=
 Definition while := whileAux t e.
 
 End while.
+
+Variant ControlFlow {A} :=
+| Break (v : A)
+| Continue.
+Arguments ControlFlow : clear implicits.
+
+Section loop.
+
+Context {E A} (e : Prog E (ControlFlow A)).
+
+CoFixpoint loopAux (e' : Prog E (ControlFlow A)) : Prog E A :=
+  match e' with
+  | Return (Break v) => Return v
+  | Return Continue => NoOp (loopAux e)
+  | NoOp e' => NoOp (loopAux e')
+  | Bind m k => Bind m (fun x => loopAux (k x))
+  end.
+
+Definition loop := loopAux e.
+
+End loop.

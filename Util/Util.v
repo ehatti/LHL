@@ -152,4 +152,9 @@ Infix "∈" := contains (at level 40).
 
 Axiom contains_triv : forall {A} (s : set A) x, contains x (insert x s).
 
+Axiom contains_contr : forall {A} (x : A), ~contains x emp.
+Axiom contains_invert : forall {A} (s : set A) x y,
+  contains x (insert y s) ->
+  x = y \/ contains x s.
+
 Ltac ddestruct H := dependent destruction H.

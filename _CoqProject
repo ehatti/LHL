@@ -23,6 +23,8 @@
 ./Core/VCompFacts.v
 ./Core/SingConds.v
 
+./Core/VisPoss.v
+
 # Requires Paco
 ./Core/Eutt.v
 
@@ -37,3 +39,7 @@
 ./Examples/NameSpec.v
 ./Examples/CASSpec.v
 ./Examples/ExchangerSpec.v
+# ./Examples/Exchanger.v
+./Examples/RandomSpec.v
+./Examples/AtomicStackSpec.v
+./Examples/WaitFreeStackSpec.v
