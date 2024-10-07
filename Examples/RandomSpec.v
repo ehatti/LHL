@@ -18,7 +18,7 @@ Variant RandStep {T} : RandState T -> ThreadEvent T RandSig -> RandState T -> Pr
     (fun j => if i =? j then None else m j)
     (i, CallEv (Random k))
     (fun j => if i =? j then Some (existT _ _ (Random k)) else m j)
-| RetRand i m k n : n <= k -> RandStep
+| RetRand i m k n : n < k -> RandStep
     (fun j => if i =? j then Some (existT _ _ (Random k)) else m j)
     (i, RetEv (Random k) n)
     (fun j => if i =? j then None else m j).

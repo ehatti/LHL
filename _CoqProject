@@ -40,6 +40,7 @@
 ./Examples/CASSpec.v
 ./Examples/ExchangerSpec.v
 # ./Examples/Exchanger.v
+./Examples/ArraySpec.v
 ./Examples/RandomSpec.v
 ./Examples/AtomicStackSpec.v
 ./Examples/WaitFreeStackSpec.v

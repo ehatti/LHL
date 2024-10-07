@@ -3,6 +3,7 @@ From Coq Require Import
 Import ListNotations.
 
 From LHL.Core Require Import
+  Program
   LogicFacts
   Traces
   Specs
@@ -124,3 +125,17 @@ all: try easy.
 cbn. now rewrite eqb_id.
 apply differ_pointwise_trivial.
 Qed.
+
+Record Waiting {T A} {F : ESig} {VF : Spec T F} (i : Name T) (m : F A)
+  (x : Poss VF)
+:= {
+  call_waiting : PCalls x i = CallPoss m;
+  ret_waiting : PRets x i = RetIdle;
+}.
+
+Record Done {T A} {F : ESig} {VF : Spec T F} (i : Name T) (m : F A) (v : A)
+  (x : Poss VF)
+:= {
+  call_done : PCalls x i = CallDone m;
+  ret_done : PRets x i = RetPoss m v
+}.

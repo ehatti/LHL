@@ -234,7 +234,10 @@ intros.
 rewrite frobProgId with (p:=loopAux _ _). cbn.
 rewrite frobProgId with (p:= x <- call m; _). cbn.
 f_equal. extensionality x.
-Admitted.
+rewrite frobProgId at 1. simpl.
+rewrite frobProgId with (p:= x0 <- Return x; _).
+simpl. easy.
+Qed.
 
 Lemma stepLoopBreak {E A} e :
   forall v : A,
@@ -294,23 +297,6 @@ Ltac simp_sets :=
       clear H
   end.
 
-(* Lemma Waiting_tran {T A} :
-  forall (i : Name T) R (m : F A R),
-  forall s x t y,
-  Waiting i m x ->
-  Rely s x t y ->
-  (Waiting i m y \/
-   exists).
-Admitted. *)
-
-Lemma Done_stable {T A} :
-  forall (i : Name T) R (m : F A R),
-  forall s x t y v,
-  Done i m v x ->
-  Rely s x t y ->
-  Done i m v y.
-Admitted.
-
 Lemma Inv_stable {T A} :
   SStable (T:=T) Rely (Inv (A:=A)).
 Admitted.
@@ -331,7 +317,7 @@ eapply weakenPrec with
 2:{
   unfold sub, subRelt.
   intros. psimpl.
-  admit.
+  
 }
 cut (
   forall P,
@@ -385,9 +371,7 @@ eapply SafeBind with
   {
     destruct v0.
     {
-      destruct v0.
-      eapply Done_stable.
-      exact H2. exact H0.
+      admit.
     }
     {
       admit.
