@@ -87,6 +87,12 @@ Notation IStep s i e t :=
   (InterStep (EBStack _) s (i, UEvent (Some e)) t).
 
 Variant EBTran {T A} : Relt T A :=
+| StkInvoke i s x t y :
+    InvokeAny (EBStack A) i s (eq x) t (eq y) ->
+    EBTran s x t y
+| StkReturn i s x t y :
+    ReturnAny (EBStack A) i s (eq x) t (eq y) ->
+    EBTran s x t y
 | StkCallPush s x t i v :
     IStep s i (CallEv (inr (WFPush v))) t ->
     EBTran s x t x
@@ -297,8 +303,36 @@ Ltac simp_sets :=
       clear H
   end.
 
+Lemma SRTC_stable {T A} {P : Prec T A} {R : Relt T A} :
+  (forall s x t y,
+    P s x ->
+    R s x t y ->
+    P t y) ->
+  forall s x t y,
+    P s x ->
+    SRTC R s x t y ->
+    P t y.
+intros. induction H1. easy.
+eapply IHSRTC, H. exact H0. easy.
+Qed.
+
 Lemma Inv_stable {T A} :
   SStable (T:=T) Rely (Inv (A:=A)).
+unfold SStable, stableSPrec, ssub, subSPrec.
+intros. psimpl.
+eapply SRTC_stable.
+2: exact H. 2: exact H0.
+intros. ddestruct H2.
+{
+  admit.
+}
+{
+  admit.
+}
+{
+  admit.
+}
+all: admit.
 Admitted.
 
 Axiom StkRet_inj : forall A B, StkRet A = StkRet B -> A = B.
@@ -315,9 +349,32 @@ eapply weakenPrec with
     Inv s x /\
     Waiting i (Push v) x)).
 2:{
-  unfold sub, subRelt.
+  unfold sub, subRelt, LiftSPrec, LiftSRelt.
   intros. psimpl.
-  
+  assert (x0 = eq (invPoss i x1 (Push v))).
+  {
+    unfold TInvoke in H1. psimpl. unfold invPoss.
+    set_ext y. split; intros; psimpl.
+    {
+      destruct x0, y. cbn in *.
+      f_equal. easy.
+      extensionality j.
+      dec_eq_nats i j.
+      now rewrite eqb_id.
+      now rewrite eqb_nid, H8.
+      extensionality j.
+      dec_eq_nats i j.
+      now rewrite eqb_id.
+      now rewrite eqb_nid, H9.
+    }
+    {
+      exists x1. split. easy.
+      cbn. rewrite eqb_id.
+      repeat split; (easy || apply differ_pointwise_trivial).
+    }
+  }
+  subst. specialize (H0 _ eq_refl).
+  psimpl. exists x0. split. easy.
 }
 cut (
   forall P,
