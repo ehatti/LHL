@@ -1970,6 +1970,334 @@ eapply weakenPrec with
   }
 }
 apply lemBindSelf.
+{
+  constructor.
+  {
+    setoid_rewrite frobProgId at 1.
+    cbn. intros. easy.
+  }
+  2:{
+    setoid_rewrite frobProgId at 1.
+    cbn. intros. easy.
+  }
+  {
+    setoid_rewrite frobProgId at 1.
+    cbn. intros. ddestruct H.
+    exists (fun i => coerceOp bool (CAS EMPTY (OFFERED i v))).
+    exists (
+      fun i x0 =>
+        my_offer_placed <- Return x0;
+        if my_offer_placed : bool then
+          no_change <- call (CAS (OFFERED i v) EMPTY);
+          if no_change : bool then
+            ret None
+          else
+            w <- call Get;
+            match w : option (Offer T A) with
+            | ACCEPTED _ _ _ w' =>
+                call (CAS w EMPTY);;
+                ret (Some w')
+            | _ =>
+                ret None (* impossible *)
+            end
+        else
+          w <- call Get;
+          match w : option (Offer T A) with
+          | OFFERED j w =>
+              my_offer_accepted <- call (CAS (OFFERED j w) (ACCEPTED j i w v));
+              if my_offer_accepted : bool then
+                ret (Some w)
+              else
+                ret None
+          | _ =>
+              ret None
+          end
+    ).
+    split. now rewrite frobProgId at 1.
+    split. easy.
+    split. easy.
+    intros.
+    destruct z.
+    {
+      constructor.
+      {
+        setoid_rewrite frobProgId at 1.
+        cbn. intros. easy.
+      }
+      2:{
+        setoid_rewrite frobProgId at 1.
+        cbn. intros. easy.
+      }
+      {
+        setoid_rewrite frobProgId at 1.
+        cbn. intros. ddestruct H.
+        exists (fun i => coerceOp bool (CAS (OFFERED i v) EMPTY)).
+        eexists (
+          fun i x1 =>
+            no_change <- Return x1;
+            if no_change : bool then
+              ret None
+            else
+              w <- call Get;
+              match w with
+              | ACCEPTED _ _ _ w' => call (CAS w EMPTY);; ret (Some w')
+              | _ => ret None
+              end
+        ).
+        split.
+        {
+          rewrite simpProg.
+          rewrite frobProgId at 1.
+          easy.
+        }
+        split. easy.
+        split. easy.
+        intros. destruct z.
+        {
+          constructor.
+          {
+            setoid_rewrite frobProgId at 1.
+            cbn. intros. ddestruct H.
+            exists None.
+            rewrite simpProg. easy.
+          }
+          {
+            setoid_rewrite frobProgId at 1.
+            cbn. intros. easy.
+          }
+          {
+            setoid_rewrite frobProgId at 1.
+            cbn. intros. easy.
+          }
+        }
+        {
+          constructor.
+          {
+            setoid_rewrite frobProgId at 1.
+            cbn. intros. easy.
+          }
+          {
+            setoid_rewrite frobProgId at 1.
+            cbn. intros. ddestruct H.
+            exists (fun _ => coerceOp (option (Offer T A)) Get).
+            exists (fun _ x2 =>
+              w <- Return x2;
+              match w with
+              | ACCEPTED _ _ _ w' => call (CAS w EMPTY);; ret (Some w')
+              | _ => ret None
+              end
+            ).
+            split.
+            {
+              rewrite simpProg.
+              rewrite frobProgId at 1.
+              cbn. easy.
+            }
+            split. easy.
+            split. easy.
+            {
+              intros.
+              constructor.
+              {
+                intros. rewrite simpProg in H.
+                destruct z. destruct o.
+                {
+                  ddestruct H.
+                  exists None.
+                  rewrite simpProg.
+                  easy.
+                }
+                {
+                  rewrite frobProgId in H at 1.
+                  cbn in H. easy.
+                }
+                {
+                  ddestruct H.
+                  exists None.
+                  rewrite simpProg.
+                  easy.
+                }
+              }
+              {
+                intros.
+                rewrite simpProg in H.
+                destruct z. destruct o.
+                { easy. }
+                {
+                  rewrite frobProgId in H at 1.
+                  cbn in H. ddestruct H.
+                  exists (fun _ => coerceOp bool (CAS (ACCEPTED i0 j v0 w) EMPTY)).
+                  exists (fun _ _ => ret (Some w)).
+                  split.
+                  {
+                    rewrite simpProg.
+                    rewrite frobProgId at 1.
+                    cbn. f_equal.
+                    extensionality x3.
+                    rewrite trimProg.
+                    easy.
+                  }
+                  split. easy.
+                  split.
+                  {
+                    extensionality x3.
+                    rewrite trimProg.
+                    easy.
+                  }
+                  {
+                    intros. constructor.
+                    {
+                      intros. ddestruct H.
+                      now exists (Some w).
+                    }
+                    { intros. easy. }
+                    { intros. easy. }
+                  }
+                }
+                { easy. }
+              }
+              {
+                intros. rewrite simpProg in H.
+                destruct z. destruct o.
+                { easy. }
+                {
+                  rewrite frobProgId in H at 1.
+                  cbn in H. easy.
+                }
+                { easy. }
+              }
+            }
+          }
+          {
+            setoid_rewrite frobProgId at 1.
+            cbn. intros. easy.
+          }
+        }
+      }
+    }
+    {
+      constructor.
+      {
+        setoid_rewrite frobProgId at 1.
+        cbn. intros. easy.
+      }
+      2:{
+        setoid_rewrite frobProgId at 1.
+        cbn. intros. easy.
+      }
+      {
+        setoid_rewrite frobProgId at 1.
+        cbn. intros. ddestruct H.
+        exists (fun _ => coerceOp (option (Offer T A)) Get).
+        exists (fun i w =>
+          match w with
+          | OFFERED j w =>
+            my_offer_accepted <- call (CAS (OFFERED j w) (ACCEPTED j i w v));
+            if my_offer_accepted : bool then
+              ret (Some w)
+            else
+              ret None
+          | _ => ret None
+          end
+        ).
+        split.
+        {
+          rewrite simpProg.
+          rewrite frobProgId at 1.
+          cbn. f_equal.
+          extensionality x1.
+          rewrite simpProg.
+          easy.
+        }
+        split. easy.
+        split.
+        {
+          extensionality x1.
+          rewrite simpProg.
+          easy.
+        }
+        intros. destruct z. destruct o.
+        {
+          constructor.
+          {
+            setoid_rewrite frobProgId at 1.
+            cbn. intros. easy.
+          }
+          2:{
+            setoid_rewrite frobProgId at 1.
+            cbn. intros. easy.
+          }
+          {
+            setoid_rewrite frobProgId at 1.
+            cbn. intros. ddestruct H.
+            exists (fun i =>
+              coerceOp bool (CAS (OFFERED i0 v0) (ACCEPTED i0 i v0 v))
+            ).
+            exists (fun _ b =>
+              if b : bool then ret (Some v0) else ret None
+            ).
+            split.
+            {
+              rewrite frobProgId at 1.
+              cbn. f_equal.
+              extensionality x2.
+              rewrite simpProg.
+              easy.
+            }
+            split. easy.
+            split.
+            {
+              extensionality x2.
+              rewrite simpProg.
+              easy.
+            }
+            intros. destruct z.
+            {
+              constructor.
+              {
+                intros. ddestruct H.
+                exists (Some v0).
+                easy.
+              }
+              { easy. }
+              { easy. }
+            }
+            {
+              constructor.
+              {
+                intros. ddestruct H.
+                exists None.
+                easy.
+              }
+              { easy. }
+              { easy. }
+            }
+          }
+        }
+        {
+          constructor.
+          {
+            intros. ddestruct H.
+            exists None.
+            easy.
+          }
+          { easy. }
+          { easy. }
+        }
+        {
+          constructor.
+          {
+            intros. ddestruct H.
+            exists None.
+            easy.
+          }
+          { easy. }
+          { easy. }
+        }
+      }
+    }
+  }
+}
 unfold Precs.
 eapply lemBind with
   (Q:=fun _ _ _ => LiftSPrec (fun s x =>
