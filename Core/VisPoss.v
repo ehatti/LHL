@@ -10,7 +10,8 @@ From LHL.Core Require Import
   Logic.
 
 From LHL.Util Require Import
-  Util.
+  Util
+  TransUtil.
 
 Variant VisPossStep {T F} {VF : Spec T F} : Poss VF -> ThreadEvent T F -> Poss VF -> Prop :=
 | VPCommitCall i A (m : F A) (x y : Poss VF) :
@@ -139,3 +140,17 @@ Record Done {T A} {F : ESig} {VF : Spec T F} (i : Name T) (m : F A) (v : A)
   call_done : PCalls x i = CallDone m;
   ret_done : PRets x i = RetPoss m v
 }.
+
+Notation UnderStep s i e t := (PointStep UnderThreadStep s (i, Some e) t).
+
+Ltac destruct_big_steps :=
+repeat (match goal with
+| [ H : VisPossSteps ?x ?p ?y |- _ ] =>
+    ddestruct H
+| [ H : VisPossStep ?x ?e ?y |- _ ] =>
+    ddestruct H
+| [ H : UnderStep ?s ?i ?e ?t |- _] =>
+    ddestruct H
+| [ H : UnderThreadStep ?s ?e ?t |- _ ] =>
+    ddestruct H
+end; cbn in *).

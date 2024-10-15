@@ -160,7 +160,20 @@ Definition Posts {A T} (i : Name T) : SRelt T A :=
   fun _ _ => Precs i.
 Notation Pend i m := (Some (MkCASPend i m)).
 
-Notation UnderStep s i e t := (PointStep UnderThreadStep s (i, Some e) t).
+Ltac destruct_all_steps :=
+repeat (match goal with
+| [ H : VisPossSteps ?x ?p ?y |- _ ] =>
+    ddestruct H
+| [ H : VisPossStep ?x ?e ?y |- _ ] =>
+    ddestruct H
+| [ H : UnderStep ?s ?i ?e ?t |- _] =>
+    ddestruct H
+| [ H : UnderThreadStep ?s ?e ?t |- _ ] =>
+    ddestruct H
+| [ H : ExchStep ?x ?e ?y |- _ ] =>
+    ddestruct H
+end; cbn in *).
+
 
 Notation TS := (MkTS (specL:=nameSpec) (specR:=casSpec)).
 
@@ -874,33 +887,6 @@ Lemma conj_assoc {A B C : Prop} :
   (A /\ B /\ C) = ((A /\ B) /\ C).
 now apply propositional_extensionality.
 Qed.
-
-Ltac destruct_big_steps :=
-repeat (match goal with
-| [ H : VisPossSteps ?x ?p ?y |- _ ] =>
-    ddestruct H
-| [ H : VisPossStep ?x ?e ?y |- _ ] =>
-    ddestruct H
-| [ H : UnderStep ?s ?i ?e ?t |- _] =>
-    ddestruct H
-| [ H : UnderThreadStep ?s ?e ?t |- _ ] =>
-    ddestruct H
-end; cbn in *).
-
-
-Ltac destruct_all_steps :=
-repeat (match goal with
-| [ H : VisPossSteps ?x ?p ?y |- _ ] =>
-    ddestruct H
-| [ H : VisPossStep ?x ?e ?y |- _ ] =>
-    ddestruct H
-| [ H : UnderStep ?s ?i ?e ?t |- _] =>
-    ddestruct H
-| [ H : UnderThreadStep ?s ?e ?t |- _ ] =>
-    ddestruct H
-| [ H : ExchStep ?x ?e ?y |- _ ] =>
-    ddestruct H
-end; cbn in *).
 
 Lemma rw1 {A} {P : A -> Prop} :
     ~(exists x, P x) <-> forall x, ~P x.
