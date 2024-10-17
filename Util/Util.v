@@ -158,3 +158,82 @@ Axiom contains_invert : forall {A} (s : set A) x y,
   x = y \/ contains x s.
 
 Ltac ddestruct H := dependent destruction H.
+
+(* Definition set : Type -> Type := fun A => A -> Prop.
+Definition emp : forall {A}, set A :=
+  fun _ _ => False.
+Definition insert : forall {A}, A -> set A -> set A :=
+  fun _ x s y => x = y \/ s y.
+
+Require Import Coq.Logic.FunctionalExtensionality.
+Require Import Coq.Logic.PropExtensionality.
+
+Lemma insert_perm :
+  forall {A} (s : set A) x y,
+  insert x (insert y s) = insert y (insert x s).
+intros.
+extensionality z. unfold insert.
+apply propositional_extensionality.
+split; intros.
+{
+  destruct H.
+  { right. now left. }
+  {
+    destruct H.
+    { now left. }
+    { right. now right. }
+  }
+}
+{
+  destruct H.
+  { right. now left. }
+  {
+    destruct H.
+    { now left. }
+    { right. now right. }
+  }
+}
+Qed.
+
+Lemma insert_unique :
+  forall {A} (s : set A) x,
+  insert x (insert x s) = insert x s.
+unfold insert. intros.
+extensionality y.
+apply propositional_extensionality.
+split; intros.
+{
+  destruct H.
+  { now left. }
+  { easy. }
+}
+{
+  destruct H.
+  { now left. }
+  { right. now right. }
+}
+Qed.
+
+Lemma help : forall P Q, P = Q -> P <-> Q.
+intros. now rewrite H.
+Qed.
+
+Lemma insert_cong :
+  forall {A} (s1 s2 : set A) x y,
+  insert x s1 = insert y s2 ->
+  x = y /\ s1 = s2.
+unfold insert. intros. *)
+
+
+
+Axiom disj_cons : forall {A} (s : set A) x, insert x s <> emp.
+
+Parameter contains : forall {A}, A -> set A -> Prop.
+Infix "∈" := contains (at level 40).
+
+Axiom contains_triv : forall {A} (s : set A) x, contains x (insert x s).
+
+Axiom contains_contr : forall {A} (x : A), ~contains x emp.
+Axiom contains_invert : forall {A} (s : set A) x y,
+  contains x (insert y s) ->
+  x = y \/ contains x s.
