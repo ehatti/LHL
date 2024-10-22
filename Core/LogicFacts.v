@@ -2627,7 +2627,7 @@ exists
   (fun _ _ _ => comp_inv VE VF M),
   (fun _ _ _ => comp_inv VE VF M),
   (fun _ _ _ _ _ _ => comp_inv VE VF M),
-  (fun i A m v _ _ => comp_inv VE VF M).
+  (fun _ _ _ _ _ _ => comp_inv VE VF M).
 constructor.
 {
   easy.

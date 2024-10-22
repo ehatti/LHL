@@ -23,20 +23,20 @@ Variant ArrayStep {T E N} {V : Spec T E} :
   ThreadEvent T (ArraySig E N) ->
   (nat -> State V) ->
   Prop :=
-| ArrayCall i A (m : E A) s x y n :
+| ArrayCall i A (m : E A) s t x y n :
     n < N ->
+    s n = x ->
+    t n = y ->
+    differ_pointwise s t n ->
     V.(Step) x (i, CallEv m) y ->
-    ArrayStep
-      (fun k => if n =? k then x else s k)
-      (i, CallEv (At n m))
-      (fun k => if n =? k then y else s k)
-| ArrayRet i A (m : E A) v s x y n :
+    ArrayStep s (i, CallEv (At n m)) t
+| ArrayRet i A (m : E A) v s t x y n :
     n < N ->
+    s n = x ->
+    t n = y ->
+    differ_pointwise s t n ->
     V.(Step) x (i, RetEv m v) y ->
-    ArrayStep
-      (fun k => if n =? k then x else s k)
-      (i, RetEv (At n m) v)
-      (fun k => if n =? k then y else s k).
+    ArrayStep s (i, RetEv (At n m) v) t.
 Arguments ArrayStep {T E N} V.
 
 Program Definition arraySpec {T E} N (V : Spec T E) : Spec T (ArraySig E N) := {|

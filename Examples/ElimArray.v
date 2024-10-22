@@ -69,63 +69,73 @@ Notation doneSet s n := (
   end
 ).
 
-Record PIdle {T F} {VF : Spec T F} (i : Name T) (x : Poss VF) := {
-  call_idle : PCalls x i = CallIdle;
-  ret_idle : PRets x i = RetIdle
-}.
-
-Record Ready {T A} (i : Name T)
-  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
+Record Inv {T A}
+  {s : InterState (F A) (VE T A)} {x : Poss (VF T A)}
 := {
   state_idle : PState x = ExchDef {} {};
-  self_in_pend :
+  wait_inv :
+    forall n i v,
+      contains (i, v) (pendSet s n) ->
+      doneSet s n = {} ->
+      Waiting i (Exch v) x;
+  done_inv :
+    forall n i j v w,
+      i <> j ->
+      contains (i, v) (pendSet s n) ->
+      contains (j, w) (doneSet s n) ->
+      Done j (Exch w) (Some v) x;
+  wait_uniq :
+    forall n m i v w,
+      n <> m ->
+      contains (i, v) (pendSet s n) ->
+      doneSet s n = {} ->
+      contains (i, w) (pendSet s m) ->
+      doneSet s m <> {}
+}.
+Arguments Inv {T A} s x.
+
+Record Ready {T A} {i : Name T}
+  {s : InterState (F A) (VE T A)} {x : Poss (VF T A)}
+:= {
+  ready_inv : Inv s x;
+  ready_lazy :
     forall n v,
       contains (i, v) (pendSet s n) ->
-      doneSet s n <> {};
-  othr_ready_wait :
-    forall j w n,
-      i <> j ->
-      contains (j, w) (pendSet s n) ->
-      doneSet s n = {} ->
-      Waiting j (Exch w) x
+      doneSet s n <> {}
 }.
+Arguments Ready {T A} i s x.
 
-Record Offered {T A} (i : Name T) (v : A) (n : nat)
-  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
+Record Complete {T A} {n : nat} {i : Name T}
+  {s : InterState (F A) (VE T A)} {x : Poss (VF T A)}
 := {
-  self_pends_lazy :
-    forall m w,
+  comp_inv : Inv s x;
+  comp_pres : exists v, contains (i, v) (pendSet s n);
+  comp_nemp : doneSet s n = {};
+  comp_lazy :
+    forall m v,
       n <> m ->
-      contains (i, w) (pendSet s m) ->
-      doneSet s m <> {};
-  self_pend_active :
-    contains (i, v) (pendSet s n);
-  self_done_empty :
-    doneSet s n = {};
-  self_idle : PState x = ExchDef {} {};
-  self_othr_wait :
-    forall j w,
-      i <> j ->
-      contains (j, w) (pendSet s n) ->
-      Waiting j (Exch w) x
+      contains (i, v) (pendSet s m) ->
+      doneSet s m <> {}
 }.
+Arguments Complete {T A} n i s x.
 
-Record Accepted {T A} (i j : Name T) (v w : A) (n : nat)
-  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
+Record Offered {T A} {n : nat} {i : Name T} {v : A}
+  {s : InterState (F A) (VE T A)} {x : Poss (VF T A)}
 := {
-  self_pends_ready :
-    forall m w,
-      n <> m ->
-      contains (i, w) (pendSet s m) ->
-      doneSet s m <> {};
-  self_done_active :
-    exchSt s n = ExchDef {j => w} {i => v};
-  self_aidle : PState x = ExchDef {} {};
-  self_done_unique :
-    forall m,
-      contains (i, v) (doneSet s m) ->
-      m = n
+  offered_inv : Inv s x;
+  offer_present : contains (i, v) (pendSet s n);
+  offer_waiting : doneSet s n = {}
 }.
+Arguments Offered {T A} n i v s x.
+
+Record Accepted {T A} {n : nat} {i j : Name T} {v w : A}
+  {s : InterState (F A) (VE T A)} {x : Poss (VF T A)}
+:= {
+  accepted_inv : Inv s x;
+  accept_done : contains (i, v) (doneSet s n);
+  accept_wait : contains (j, w) (pendSet s n)
+}.
+Arguments Accepted {T A} n i j v w s x.
 
 Notation IStep s i e t :=
   (InterStep (elimArray _ _) s (i, UEvent (Some e)) t).
@@ -137,7 +147,13 @@ Variant EATran {T A} : Name T -> Relt T A :=
 | EARandRet s x t i n k :
     IStep s i (RetEv (inl (Random n)) k) t ->
     EATran i s x t x
-| EAOffer s x t i v n :
+| EAOffer (s : InterState (F A) (VE T A)) x t i v n :
+    forall (i_wait : Waiting i (Exch v) x),
+    forall (i_uniq :
+      forall m w,
+        n <> m ->
+        contains (i, w) (pendSet s m) ->
+        doneSet s m <> {}),
     IStep s i (CallEv (inr (At n (Exch v)))) t ->
     EATran i s x t x
 | EAAccept (s : InterState (F A) (VE T A)) x t y i j v w n :
@@ -174,7 +190,8 @@ Definition Rely {T A} (i : Name T) : Relt T A :=
   SRTC (OtherTran i EATran).
 
 Ltac begin_commit :=
-  unfold Commit, LiftSPrec; intros.
+  unfold Commit, LiftSPrec, LiftSRelt;
+  intros; do 2 psimpl.
 
 Lemma eq_inj {A} {x y : A} :
   eq x = eq y -> x = y.
@@ -210,1268 +227,396 @@ Ltac simp_sets :=
       ddestruct H2
   | [ H : emp = emp |- _ ] =>
       clear H
+  | [ H : contains ?x (insert ?y ?s) |- _ ] =>
+      let HL := fresh in
+      let HR := fresh in
+      apply contains_invert in H;
+      destruct H as [HL | HR];
+      [ddestruct HL | idtac]
+  | [ H : contains ?x emp |- _ ] =>
+      now apply contains_contr in H
   end.
 
-Lemma done_ready_stable {T A} (i : Name T) (v : A) (w : option A) :
-  forall s x t y,
-  (Ready i s x /\ Done i (Exch v) w x) ->
-  Rely i s x t y ->
-  Ready i t y /\ Done i (Exch v) w y.
-intros. induction H0. easy.
-apply IHSRTC. clear IHSRTC H1.
-psimpl. destruct H, H0, H.
-rename x into j.
-ddestruct H0.
-{
-  ddestruct H0. cbn in *.
-  psimpl. ddestruct H2.
-  split.
-  {
-    constructor. easy. intros.
-    specf H6 n0. rewrite <- H6 at 1.
-    apply (self_in_pend0 n0 v0).
-    now rewrite H6.
-    {
-      admit.
-    }
-  }
-  { easy. }
-}
-{
-  ddestruct H0. cbn in *.
-  psimpl. ddestruct H2.
-  split.
-  {
-    constructor. easy. intros.
-    specf H6 n0. rewrite <- H6 at 1.
-    apply (self_in_pend0 n0 v0).
-    now rewrite H6.
-    {
-      admit.
-    }
-  }
-  { easy. }
-}
-{
-  ddestruct H0. cbn in *. psimpl.
-  ddestruct H2. cbn in *. ddestruct H3.
-  {
-    split.
-    {
-      constructor. easy. intros.
-      assert (n0 <> n).
-      {
-        contr. subst.
-        specf x n. rewrite eqb_id in x.
-        rewrite <- x in H3 at 1.
-        apply contains_invert in H3.
-        destruct H3. now ddestruct H3.
-        now apply contains_contr in H3.
-      }
-      specf x2 n0. specf x n0.
-      rewrite eqb_nid in *; auto.
-      rewrite <- x, x2 at 1.
-      apply (self_in_pend0 n0 v1).
-      now rewrite <- x2, x at 1.
-      {
-        admit.
-      }
-    }
-    { easy. }
-  }
-  {
-    split.
-    {
-      constructor. easy. intros.
-      assert (n0 <> n).
-      {
-        contr. subst.
-        specf x0 n. rewrite eqb_id in x0.
-        rewrite <- x0 in H8 at 1.
-        apply contains_invert in H8.
-        destruct H8. now ddestruct H8.
-        apply contains_invert in H8.
-        destruct H8. ddestruct H8.
-        2: now apply contains_contr in H8.
-        specf x2 n. rewrite eqb_id in x2.
-        exfalso. apply (self_in_pend0 n x).
-        rewrite <- x2. apply contains_triv.
-        rewrite <- x2. easy.
-      }
-      specf x2 n0. specf x0 n0.
-      rewrite eqb_nid in *; auto.
-      rewrite <- x0, x2 at 1.
-      apply (self_in_pend0 n0 v1).
-      now rewrite <- x2, x0 at 1.
-      admit.
-    }
-    { easy. }
-  }
-}
-{
-  ddestruct H2. cbn in *. psimpl.
-  ddestruct H3. cbn in *. ddestruct H4.
-  2:{
-    specf x2 n. rewrite eqb_id in x2.
-    rewrite H0 in x2. ddestruct x2.
-    simp_sets.
-  }
-  assert (j0 = j /\ y0 = w0).
-  {
-    specf x2 n. rewrite eqb_id in x2.
-    rewrite H0 in x2. ddestruct x2.
-    now simp_sets.
-  }
-  psimpl.
-  split.
-  {
-    constructor.
-    {
-      destruct_big_steps.
-      ddestruct H9.
-      2:{
-        rewrite state_idle0 in x4.
-        ddestruct x4. simp_sets.
-      }
-      ddestruct H16.
-      {
-        rewrite <- x5 in x4.
-        ddestruct x4. simp_sets.
-      }
-      ddestruct H23.
-      2:{
-        rewrite <- x8 in x9.
-        ddestruct x9. simp_sets.
-      }
-      ddestruct H30.
-      {
-        rewrite <- x10 in x9.
-        ddestruct x9. simp_sets.
-      }
-      easy.
-    }
-    intros.
-    assert (n0 <> n).
-    {
-      contr. subst.
-      specf x n. rewrite eqb_id in x. 
-      rewrite <- x in H10 at 1.
-      apply contains_invert in H10.
-      destruct H10. now ddestruct H10.
-      now apply contains_contr in H10.
-    }
-    specf x2 n0. specf x n0.
-    rewrite eqb_nid in *; auto.
-    rewrite <- x, x2 at 1.
-    apply (self_in_pend0 n0 v1).
-    now rewrite <- x2, x at 1.
-    admit.
-  }
-  {
-    assert (i <> j).
-    {
-      contr. subst.
-      destruct H1. destruct_big_steps.
-      rewrite <- H13 in call_done; auto.
-      now rewrite call_done in H16.
-    }
-    destruct_big_steps. destruct H1.
-    constructor.
-    { now rewrite H35, H28, H21, H14. }
-    { now rewrite H36, H29, H22, H15. }
-  }
-}
-{
-  ddestruct H2. cbn in *. psimpl.
-  ddestruct H3. cbn in *. ddestruct H4.
-  2:{
-    split.
-    {
-      constructor. easy. intros.
-      assert (n0 <> n).
-      {
-        contr. subst.
-        specf x0 n. rewrite eqb_id in x0.
-        rewrite <- x0 in H9 at 1.
-        now apply contains_contr in H9.
-      }
-      specf x2 n0. specf x0 n0.
-      rewrite eqb_nid in *; auto.
-      rewrite <- x0, x2 at 1.
-      apply (self_in_pend0 n0 v1).
-      now rewrite <- x2, x0 at 1.
-      admit.
-    }
-    { easy. }
-  }
-  {
-    specf x2 n. rewrite eqb_id in x2.
-    rewrite H0 in x2. ddestruct x2.
-    simp_sets.
-  }
-}
-{
-  ddestruct H0. cbn in *. psimpl.
-  ddestruct H2. cbn in *. ddestruct H3.
-  split.
-  {
-    constructor.
-    {
-      destruct_big_steps.
-      now ddestruct H14.
-    }
-    intros.
-    assert (n0 <> n).
-    {
-      contr. subst.
-      specf x n. rewrite eqb_id in x.
-      rewrite <- x in H3 at 1.
-      now apply contains_contr in H3.
-    }
-    specf x2 n0. specf x n0.
-    rewrite eqb_nid in *; auto.
-    rewrite <- x, x2 at 1.
-    apply (self_in_pend0 n0 v1).
-    now rewrite <- x2, x at 1.
-    admit.
-  }
-  {
-    destruct_big_steps.
-    destruct H1.
-    constructor.
-    { now rewrite H19, H12. }
-    { now rewrite H20, H13. }
-  }
-}
-Admitted.
+Lemma conj_assoc {A B C : Prop} :
+  (A /\ B /\ C) = ((A /\ B) /\ C).
+now apply propositional_extensionality.
+Qed.
 
-Lemma wait_ready_stable {T A} (i : Name T) (v : A) :
+Lemma ready_wait_stable {T A} (i : Name T) (v : A) :
   forall s x t y,
   (Ready i s x /\ Waiting i (Exch v) x) ->
   Rely i s x t y ->
   Ready i t y /\ Waiting i (Exch v) y.
 intros. induction H0. easy.
 apply IHSRTC. clear IHSRTC H1.
-psimpl. destruct H, H0, H.
-rename x into j.
-ddestruct H0.
-{
-  ddestruct H0. cbn in *.
-  psimpl. split.
-  {
-    constructor. easy. intros. specf H6 n0.
-    rewrite <- H6 at 1.
-    eapply self_in_pend0.
-    rewrite H6 at 1.
-    exact H7.
-    admit.
-  }
-  { easy. }
-}
-{
-  ddestruct H0. cbn in *.
-  psimpl. split.
-  {
-    constructor. easy. intros. specf H6 n0.
-    rewrite <- H6 at 1.
-    eapply self_in_pend0.
-    rewrite H6 at 1.
-    exact H7.
-    admit.
-  }
-  { easy. }
-}
-{
-  ddestruct H0. cbn in *. psimpl.
-  ddestruct H2. cbn in *. ddestruct H3.
-  {
-    split.
-    {
-      constructor. easy. intros.
-      assert (n <> n0).
-      {
-        contr. subst.
-        specf x n0. rewrite eqb_id in x.
-        rewrite <- x in H3 at 1.
-        apply contains_invert in H3.
-        destruct H3. now ddestruct H3.
-        now apply contains_contr in H3.
-      }
-      specf x2 n0. specf x n0.
-      rewrite eqb_nid in *; auto.
-      rewrite <- x, x2 at 1.
-      eapply self_in_pend0.
-      rewrite <- x2, x at 1.
-      exact H3.
-      admit.
-    }
-    { easy. }
-  }
-  {
-    split.
-    {
-      assert (i <> i1).
-      {
-        contr. subst. specf x2 n.
-        rewrite eqb_id in x2.
-        eapply (self_in_pend0 n).
-        {
-          rewrite <- x2 at 1.
-          apply contains_triv.
-        }
-        { now rewrite <- x2 at 1. }
-      }
-      constructor. easy. intros.
-      assert (n <> n0).
-      {
-        contr. subst.
-        specf x0 n0. rewrite eqb_id in x0.
-        rewrite <- x0 in H9 at 1.
-        apply contains_invert in H9.
-        destruct H9. now ddestruct H9.
-        apply contains_invert in H9.
-        destruct H9. now ddestruct H9.
-        now apply contains_contr in H9.
-      }
-      specf x2 n0. specf x0 n0.
-      rewrite eqb_nid in *; auto.
-      rewrite <- x0, x2 at 1.
-      eapply self_in_pend0.
-      rewrite <- x2, x0 at 1.
-      exact H9.
-      admit.
-    }
-    { easy. }
-  }
-}
-{
-  rename i0 into k, v0 into u.
-  assert (i <> j).
-  {
-    unfold not. intro. subst.
-    specialize (self_in_pend0 n w).
-    rewrite H0 in self_in_pend0.
-    exfalso. apply self_in_pend0.
-    {
-      rewrite insert_perm.
-      apply contains_triv.
-    }
-    { easy. }
-  }
-  split.
-  {
-    ddestruct H2. cbn in *. psimpl.
-    ddestruct H3. cbn in *. ddestruct H4.
-    2:{
-      specf x2 n. rewrite eqb_id in x2.
-      rewrite H0 in x2. ddestruct x2.
-      simp_sets.
-    }
-    rename y0 into o, j0 into l.
-    assert (i <> l).
-    {
-      contr. subst.
-      specf x2 n. rewrite eqb_id in x2.
-      specialize (self_in_pend0 n o).
-      rewrite <- x2 in self_in_pend0.
-      apply self_in_pend0.
-      {
-        rewrite insert_perm.
-        apply contains_triv.
-      }
-      { easy. }
-    }
-    constructor.
-    {
-      destruct_big_steps.
-      rewrite state_idle0 in H5.
-      ddestruct H5. 2: simp_sets.
-      rewrite <- x in H16.
-      ddestruct H16. simp_sets.
-      rewrite <- x in H23.
-      ddestruct H23. 2: simp_sets.
-      rewrite <- x in H30.
-      ddestruct H30. simp_sets.
-      easy.
-    }
-    intros.
-    assert (x2' := x2).
-    specf x2' n. rewrite eqb_id in x2'.
-    rewrite H0 in x2'. ddestruct x2'.
-    simp_sets.
-    dec_eq_nats n n0.
-    {
-      specf x0 n0. rewrite eqb_id in x0.
-      rewrite <- x0 at 1. apply disj_cons.
-    }
-    {
-      specf x2 n0. specf x0 n0.
-      rewrite eqb_nid in *; auto.
-      rewrite <- x0, x2 at 1.
-      eapply self_in_pend0.
-      rewrite <- x2, x0 at 1.
-      exact H12.
-    }
-    admit.
-  }
-  {
-    destruct_big_steps.
-    destruct H1.
-    constructor;
-    rewrite
-      ?H29, ?H30, ?H22, ?H23,
-      ?H15, ?H16, ?H8, ?H9.
-    all: easy.
-  }
-}
-{
-  ddestruct H2. cbn in *. psimpl.
-  ddestruct H3. cbn in *. ddestruct H4.
-  {
-    specf x2 n. rewrite eqb_id in x2.
-    rewrite H0 in x2. ddestruct x2.
-    simp_sets.
-  }
-  assert (x2' := x2).
-  specf x2' n. rewrite eqb_id in x2'.
-  rewrite H0 in x2'. ddestruct x2'.
-  simp_sets. split.
-  {
-    constructor. easy. intros.
-    assert (n <> n0).
-    {
-      contr. subst. specf x0 n0.
-      rewrite eqb_id in x0.
-      rewrite <- x0 in H9 at 1.
-      now apply contains_contr in H9.
-    }
-    specf x2 n0. specf x0 n0.
-    rewrite eqb_nid in *; auto.
-    rewrite <- x0, x2 at 1.
-    eapply self_in_pend0.
-    rewrite <- x2, x0 at 1.
-    exact H9.
-    admit.
-  }
-  { easy. }
-}
-{
-  split.
-  {
-    constructor.
-    {
-      destruct_big_steps.
-      now ddestruct H9.
-    }
-    intros.
-    ddestruct H0. cbn in *. psimpl.
-    ddestruct H2. cbn in *. ddestruct H3.
-    assert (n <> n0).
-    {
-      contr. subst.
-      specf x n0. rewrite eqb_id in x.
-      rewrite <- x in H9.
-      now apply contains_contr in H9.
-    }
-    specf x2 n0. specf x n0.
-    rewrite eqb_nid in *; auto.
-    rewrite <- x, x2 at 1.
-    eapply self_in_pend0.
-    rewrite <- x2, x at 1.
-    exact H9.
-    admit.
-  }
-  {
-    destruct_big_steps.
-    destruct H1.
-    constructor;
-    now rewrite ?H14, ?H15, ?H7, ?H8.
-  }
-}
-Admitted.
-
-Variant AfterOffer {T A} (i : Name T) (v : A) : Prec T A :=
-| AOOffered n s x :
-    Offered i v n s x ->
-    Waiting i (Exch v) x ->
-    AfterOffer i v s x
-| AOAccepted n j w s x :
-    Accepted i j v w n s x ->
-    Done i (Exch v) (Some w) x ->
-    AfterOffer i v s x.
-
-Lemma after_offer_stable {T A} (i : Name T) (v : A) :
-  forall s x t y,
-  AfterOffer i v s x ->
-  Rely i s x t y ->
-  AfterOffer i v t y.
-intros. induction H0. easy.
-apply IHSRTC. clear IHSRTC H1.
 destruct H0, H0. rename x into j.
-ddestruct H.
+destruct H, H, H2, ready_inv0.
+ddestruct H1.
 {
-  destruct H, H0.
-  ddestruct H2.
+  ddestruct H. cbn in *.
+  psimpl. ddestruct H1.
+  split.
   {
-    ddestruct H. cbn in *.
-    psimpl. ddestruct H0.
-    apply AOOffered
-      with (n:=n).
+    constructor.
     {
       constructor.
-      intros.
-      specf H5 m0. rewrite <- H5 at 1.
-      eapply self_pends_lazy0. easy.
-      rewrite H5 at 1. exact H6.
-      specf H5 n. now rewrite <- H5 at 1.
-      specf H5 n. now rewrite <- H5 at 1.
-      easy.
+      { easy. }
       {
-        intros. specf H5 n.
-        apply self_othr_wait0.
-        { easy. }
-        { now rewrite H5. }
+        intros n0. specf H5 n0.
+        setoid_rewrite <- H5.
+        apply wait_inv0.
+      }
+      {
+        intros n0. specf H5 n0.
+        setoid_rewrite <- H5.
+        apply done_inv0.
+      }
+      {
+        intros n0 m0. assert (H5':=H5).
+        specf H5 n0. specf H5' m0.
+        setoid_rewrite <- H5.
+        setoid_rewrite <- H5'.
+        apply wait_uniq0.
       }
     }
-    { constructor; easy. }
-  }
-  {
-    ddestruct H. cbn in *.
-    psimpl. ddestruct H0.
-    apply AOOffered
-      with (n:=n).
     {
-      constructor. intros.
-      specf H5 m0. rewrite <- H5 at 1.
-      eapply self_pends_lazy0. easy.
-      rewrite H5 at 1. exact H7.
-      specf H5 n. now rewrite <- H5 at 1.
-      specf H5 n. now rewrite <- H5 at 1.
-      easy.
+      intros n0. specf H5 n0.
+      setoid_rewrite <- H5.
+      apply ready_lazy0.
+    }
+  }
+  { easy. }
+}
+{
+  ddestruct H. cbn in *.
+  psimpl. ddestruct H1.
+  split.
+  {
+    constructor.
+    {
+      constructor.
+      { easy. }
       {
-        intros. specf H5 n.
-        apply self_othr_wait0.
-        { easy. }
-        { now rewrite H5. }
+        intros n0. specf H5 n0.
+        setoid_rewrite <- H5.
+        apply wait_inv0.
+      }
+      {
+        intros n0. specf H5 n0.
+        setoid_rewrite <- H5.
+        apply done_inv0.
+      }
+      {
+        intros n0 m0. assert (H5':=H5).
+        specf H5 n0. specf H5' m0.
+        setoid_rewrite <- H5.
+        setoid_rewrite <- H5'.
+        apply wait_uniq0.
       }
     }
-    { constructor; easy. }
-  }
-  {
-    ddestruct H. cbn in *. psimpl.
-    ddestruct H0. cbn in *. ddestruct H2.
     {
-      apply AOOffered
-        with (n:=n).
+      intros n0. specf H5 n0.
+      setoid_rewrite <- H5.
+      apply ready_lazy0.
+    }
+  }
+  { easy. }
+}
+{
+  ddestruct H. cbn in *. psimpl.
+  ddestruct H1. cbn in *. ddestruct H5.
+  {
+    split.
+    {
+      constructor.
       {
-        assert (neq : n0 <> n).
-        {
-          contr. subst.
-          specf x2 n. rewrite eqb_id in x2.
-          rewrite <- x2 in self_pend_active0.
-          now apply contains_contr in self_pend_active0.
-        }
         constructor.
+        { easy. }
         {
           intros.
-          assert (n0 <> m).
+          dec_eq_nats n0 n.
+          {
+            rewrite <- x in H5 at 1.
+            now simp_sets.
+          }
+          {
+            eapply wait_inv0 with
+              (n:=n0).
+            { now rewrite <- H4 at 1. }
+            { now rewrite <- H4 at 1. }
+          }
+        }
+        {
+          intros.
+          assert (n0 <> n).
           {
             contr. subst.
-            specf x m. rewrite eqb_id in x.
-            rewrite <- x in H7 at 1.
-            apply contains_invert in H7.
-            destruct H7. now ddestruct H7.
-            now apply contains_contr in H7.
+            rewrite <- x in H9 at 1.
+            simp_sets.
           }
-          specf x2 m. specf x m.
-          rewrite eqb_nid in *; auto.
-          rewrite <- x, x2 at 1.
-          eapply self_pends_lazy0. easy.
-          rewrite <- x2, x at 1.
-          exact H7.
-        }
-        {
-          specf x2 n. specf x n.
-          rewrite eqb_nid in *; auto.
-          rewrite <- x, x2 at 1. easy.
-        }
-        {
-          specf x2 n. specf x n.
-          rewrite eqb_nid in *; auto.
-          rewrite <- x, x2 at 1. easy.
-        }
-        easy.
-        {
-          intros. specf x n. specf x2 n.
-          rewrite eqb_nid in *; auto.
-          apply self_othr_wait0.
+          eapply done_inv0 with
+            (i:=i1) (n:=n0).
           { easy. }
-          { now rewrite <- x2, x at 1. }
+          { now rewrite <- H4. }
+          { now rewrite <- H4. }
         }
-      }
-      { constructor; easy. }
-    }
-    {
-      apply AOOffered
-        with (n:=n).
-      {
-        constructor.
         {
           intros.
-          assert (n0 <> m).
+          dec_eq_nats n0 n.
           {
-            contr. subst.
-            specf x0 m. rewrite eqb_id in x0.
-            rewrite <- x0 in H8 at 1.
-            apply contains_invert in H8.
-            destruct H8. now ddestruct H8.
-            apply contains_invert in H8.
-            destruct H8. ddestruct H8.
-            2: now apply contains_contr in H8.
-            apply (self_pends_lazy0 m x). easy.
+            rewrite <- x in H8 at 1.
+            simp_sets. rewrite H4; auto.
+            rewrite H4 in H10; auto.
+            eapply i_uniq. easy.
+            exact H10.
+          }
+          {
+            dec_eq_nats m n.
             {
-              specf x2 m. rewrite eqb_id in x2.
-              rewrite <- x2. apply contains_triv.
+              rewrite <- x in H10 at 1.
+              simp_sets. exfalso.
+              eapply i_uniq.
+              { symmetry. exact H11. }
+              { rewrite <- H4 at 1; auto. exact H8. }
+              { now rewrite <- H4 at 1. }
             }
             {
-              specf x2 m. rewrite eqb_id in x2.
-              rewrite <- x2. easy.
+              rewrite H4; auto.
+              eapply wait_uniq0 with
+                (n:=n0)
+                (i:=i1) (v:=v1)
+                (w:=w).
+              { easy. }
+              { now rewrite <- H4 at 1. }
+              { now rewrite <- H4 at 1. }
+              { now rewrite <- H4 at 1. }
             }
           }
-          specf x2 m. specf x0 m.
-          rewrite eqb_nid in *; auto.
-          rewrite <- x0, x2 at 1.
-          eapply self_pends_lazy0. easy.
-          rewrite <- x2, x0 at 1.
-          exact H8.
-        }
-        {
-          dec_eq_nats n n0.
-          {
-            specf x2 n0. rewrite eqb_id in x2.
-            rewrite <- x2 in self_pend_active0.
-            apply contains_invert in self_pend_active0.
-            destruct self_pend_active0. ddestruct H7.
-            2: now apply contains_contr in H7.
-            specf x0 n0. rewrite eqb_id in x0.
-            rewrite <- x0, insert_perm at 1.
-            apply contains_triv.
-          }
-          {
-            specf x2 n. specf x0 n.
-            rewrite eqb_nid in *; auto.
-            now rewrite <- x0, x2 at 1.
-          }
-        }
-        {
-          dec_eq_nats n n0.
-          {
-            specf x2 n0. rewrite eqb_id in x2.
-            rewrite <- x2 in self_pend_active0.
-            apply contains_invert in self_pend_active0.
-            destruct self_pend_active0. ddestruct H7.
-            2: now apply contains_contr in H7.
-            specf x0 n0. rewrite eqb_id in x0.
-            rewrite <- x0 at 1. easy.
-          }
-          {
-            specf x2 n. specf x0 n.
-            rewrite eqb_nid in *; auto.
-            now rewrite <- x0, x2 at 1.
-          }
-        }
-        easy.
-        {
-          intros.
-          admit.
         }
       }
-      { constructor; easy. }
-    }
-  }
-  {
-    ddestruct H0. cbn in *. psimpl.
-    ddestruct H2. cbn in *. ddestruct H3.
-    2:{
-      specf x2 n0. rewrite eqb_id in x2.
-      rewrite H in x2. ddestruct x2.
-      simp_sets.
-    }
-    assert (j0 = j /\ y0 = w).
-    {
-      specf x2 n0. rewrite eqb_id in x2.
-      rewrite H in x2. ddestruct x2.
-      now simp_sets.
-    }
-    psimpl.
-    dec_eq_nats n0 n.
-    {
-      assert (x2' := x2).
-      specf x2 n. rewrite eqb_id in x2.
-      rewrite <- x2 in self_pend_active0.
-      apply contains_invert in self_pend_active0.
-      destruct self_pend_active0. now ddestruct H9.
-      apply contains_invert in H9.
-      destruct H9. ddestruct H9.
-      2: now apply contains_contr in H9.
-      rename i0 into i, v0 into v.
-      apply AOAccepted
-        with (n:=n) (i:=j) (j:=i) (v:=w) (w:=v).
-      {
-        constructor.
-        {
-          intros.
-          specf x2' m. specf x m.
-          rewrite eqb_nid in *; auto.
-          rewrite <- x, x2' at 1.
-          apply (self_pends_lazy0 m w0). easy.
-          rewrite <- x2', x at 1. easy.
-        }
-        { specf x n. now rewrite eqb_id in x. }
-        {
-          destruct_big_steps.
-          clear - self_idle0 H8 H15 H22 H29.
-          rewrite self_idle0 in H8.
-          ddestruct H8. 2: simp_sets.
-          rewrite <- x in H15.
-          ddestruct H15. simp_sets.
-          rewrite <- x in H22.
-          ddestruct H22. 2: simp_sets.
-          rewrite <- x in H29.
-          ddestruct H29. simp_sets.
-          easy.
-        }
-        {
-          admit.
-        }
-      }
-      {
-        destruct_big_steps.
-        constructor; easy.
-      }
-    }
-    {
-      apply AOOffered
-        with (n:=n).
-      {
-        constructor. intros.
-        assert (n0 <> m).
-        {
-          contr. subst.
-          specf x m. rewrite eqb_id in x.
-          rewrite <- x in H11 at 1.
-          apply contains_invert in H11.
-          destruct H11. now ddestruct H11.
-          now apply contains_contr in H11.
-        }
-        specf x2 m. specf x m.
-        rewrite eqb_nid in *; auto.
-        rewrite <- x, x2 at 1.
-        apply (self_pends_lazy0 m w0). easy.
-        { now rewrite <- x2, x at 1. }
-        {
-          specf x2 n. specf x n.
-          rewrite eqb_nid in *; auto.
-          now rewrite <- x, x2 at 1.
-        }
-        {
-          specf x2 n. specf x n.
-          rewrite eqb_nid in *; auto.
-          now rewrite <- x, x2 at 1.
-        }
-        {
-          destruct_big_steps.
-          clear - self_idle0 H8 H15 H22 H29.
-          rewrite self_idle0 in H8.
-          ddestruct H8. 2: simp_sets.
-          rewrite <- x in H15.
-          ddestruct H15. simp_sets.
-          rewrite <- x in H22.
-          ddestruct H22. 2: simp_sets.
-          rewrite <- x in H29.
-          ddestruct H29. simp_sets.
-          easy.
-        }
-        {
-          admit.
-        }
-      }
-      {
-        assert (i <> j).
-        {
-          contr. subst.
-          apply (self_pends_lazy0 n0 w). easy.
-          {
-            rewrite H, insert_perm.
-            apply contains_triv.
-          }
-          {
-            specf x2 n0. rewrite eqb_id in x2.
-            rewrite <- x2. easy.
-          }
-        }
-        clear - H1 H10 H8 call_waiting ret_waiting.
-        destruct_big_steps.
-        constructor.
-        { now rewrite H26, H19, H12, H5. }
-        { now rewrite H27, H20, H13, H6. }
-      }
-    }
-  }
-  {
-    ddestruct H0. cbn in *. psimpl.
-    ddestruct H2. cbn in *. ddestruct H3.
-    {
-      specf x2 n0. rewrite eqb_id in x2.
-      rewrite H in x2. ddestruct x2.
-      simp_sets.
-    }
-    assert (i1 = j /\ x = w).
-    {
-      specf x2 n0. rewrite eqb_id in x2.
-      rewrite H in x2. ddestruct x2.
-      now simp_sets.
-    }
-    psimpl.
-    assert (n <> n0).
-    {
-      contr. subst.
-      rewrite H in self_done_empty0.
-      simp_sets.
-    }
-    apply AOOffered
-      with (n:=n).
-    {
-      constructor. intros.
-      assert (n0 <> m).
-      {
-        contr. subst.
-        specf x0 m. rewrite eqb_id in x0.
-        rewrite <- x0 in H10 at 1.
-        now apply contains_contr in H10.
-      }
-      specf x2 m. specf x0 m.
-      rewrite eqb_nid in *; auto.
-      rewrite <- x0, x2 at 1.
-      apply (self_pends_lazy0 m w0). easy.
-      { now rewrite <- x2, x0 at 1. }
-      {
-        specf x2 n. specf x0 n.
-        rewrite eqb_nid in *; auto.
-        now rewrite <- x0, x2 at 1.
-      }{
-        specf x2 n. specf x0 n.
-        rewrite eqb_nid in *; auto.
-        now rewrite <- x0, x2 at 1.
-      }
-      easy.
-      {
-        admit.
-      }
-    }
-    { constructor; easy. }
-  }
-  {
-    ddestruct H. cbn in *. psimpl.
-    ddestruct H0. cbn in *. ddestruct H2.
-    apply AOOffered
-      with (n:=n).
-    {
-      constructor.
       {
         intros.
-        assert (n0 <> m).
-        {
-          contr. subst.
-          specf x m. rewrite eqb_id in x.
-          rewrite <- x in H8 at 1.
-          now apply contains_contr in H8.
-        }
-        specf x2 m. specf x m.
-        rewrite eqb_nid in *; auto.
-        rewrite <- x, x2 at 1.
-        apply (self_pends_lazy0 m w). easy.
-        { now rewrite <- x2, x at 1. }
-      }
-      {
         assert (n0 <> n).
         {
           contr. subst.
-          specf x2 n. rewrite eqb_id in x2.
-          rewrite <- x2 in self_pend_active0.
-          apply contains_invert in self_pend_active0.
-          destruct self_pend_active0. now ddestruct H2.
-          now apply contains_contr in H2.
+          rewrite <- x in H5 at 1.
+          now simp_sets.
         }
-        specf x2 n. specf x n.
-        rewrite eqb_nid in *; auto.
-        now rewrite <- x, x2 at 1.
-      }
-      {
-        assert (n0 <> n).
-        {
-          contr. subst.
-          specf x2 n. rewrite eqb_id in x2.
-          rewrite <- x2 in self_pend_active0.
-          apply contains_invert in self_pend_active0.
-          destruct self_pend_active0. now ddestruct H2.
-          now apply contains_contr in H2.
-        }
-        specf x2 n. specf x n.
-        rewrite eqb_nid in *; auto.
-        now rewrite <- x, x2 at 1.
-      }
-      {
-        destruct_big_steps.
-        clear - self_idle0 H2 H13.
-        rewrite self_idle0 in H2.
-        ddestruct H2. 2: simp_sets.
-        rewrite <- x in H13.
-        now ddestruct H13.
-      }
-      {
-        admit.
+        rewrite H4 at 1; auto.
+        eapply ready_lazy0 with
+          (v:=v1).
+        { now rewrite <- H4 at 1. }
       }
     }
+    { constructor; easy. }
+  }
+  {
+    split.
     {
-      destruct_big_steps.
       constructor.
-      { now rewrite H18, H11. }
-      { now rewrite H19, H12. }
+      {
+        constructor.
+        { easy. }
+        {
+          intros.
+          dec_eq_nats n0 n.
+          {
+            rewrite <- x in H8 at 1.
+            simp_sets; try easy.
+            eapply wait_inv0 with
+              (n:=n).
+            {
+              rewrite <- x2 at 1.
+              apply contains_triv.
+            }
+            { now rewrite <- x2 at 1. }
+          }
+          {
+            eapply wait_inv0 with
+              (n:=n0).
+            { now rewrite <- H4 at 1. }
+            { now rewrite <- H4 at 1. }
+          }
+        }
+        {
+          intros.
+          assert (n0 <> n).
+          {
+            contr. subst.
+            rewrite <- x in H10 at 1.
+            simp_sets.
+          }
+          eapply done_inv0 with
+            (i:=i2) (n:=n0).
+          { contr. now subst. }
+          { now rewrite <- H4. }
+          { now rewrite <- H4. }
+        }
+        {
+          intros.
+          
+        }
+      }
+      {
+        intros.
+        dec_eq_nats n0 n.
+        {
+          contr. subst.
+          rewrite <- x in H8 at 1.
+          simp_sets; try easy.
+          eapply ready_lazy0 with
+            (n:=n) (v:=x0).
+          {
+            rewrite <- x2 at 1.
+            apply contains_triv.
+          }
+          { now rewrite <- x2 at 1. }
+        }
+        {
+          rewrite H4 at 1; auto.
+          eapply ready_lazy0 with
+            (v:=v1).
+          { now rewrite <- H4 at 1. }
+        }
+      }
     }
+    { constructor; easy. }
   }
 }
 {
-  destruct H. ddestruct H2.
+  ddestruct H1. cbn in *. psimpl.
+  ddestruct H2. cbn in *. ddestruct H6.
+  2:{
+    rewrite <- x2 in H.
+    ddestruct H. simp_sets.
+  }
+  rewrite H in x0.
+  ddestruct x0. simp_sets.
+  rename i0 into k, v0 into u.
+  split.
   {
-    ddestruct H. cbn in *.
-    psimpl. ddestruct H2.
-    eapply AOAccepted with
-      (j:=j) (w:=w) (n:=n).
+    constructor.
     {
       constructor.
-      {
-        intros.
-        specf H6 m0. rewrite <- H6 at 1.
-        eapply self_pends_ready0. easy.
-        rewrite H6. exact H7.
-      }
-      {
-        specf H6 n.
-        now rewrite <- H6 at 1.
-      }
-      { easy. }
-      {
-        admit.
-      }
-    }
-    { easy. }
-  }
-  {
-    ddestruct H. cbn in *.
-    psimpl. ddestruct H2.
-    apply AOAccepted with
-      (j:=j) (w:=w) (n:=n).
-    {
-      constructor.
-      {
-        intros.
-        specf H6 m0. rewrite <- H6 at 1.
-        eapply self_pends_ready0. easy.
-        rewrite H6. exact H8.
-      }
-      {
-        specf H6 n.
-        now rewrite <- H6 at 1.
-      }
-      { easy. }
-      {
-        admit.
-      }
-    }
-    { easy. }
-  }
-  {
-    ddestruct H. cbn in *. psimpl.
-    ddestruct H2. cbn in *. ddestruct H3.
-    {
-      assert (n <> n0).
-      {
-        contr. subst.
-        specf x2 n0. rewrite eqb_id in x2.
-        rewrite self_done_active0 in x2.
-        ddestruct x2. simp_sets.
-      }
-      apply AOAccepted with
-        (j:=j) (w:=w) (n:=n).
-      {
-        constructor.
-        {
-          intros.
-          assert (n0 <> m).
-          {
-            contr. subst.
-            specf x m. rewrite eqb_id in x.
-            rewrite <- x in H9 at 1.
-            apply contains_invert in H9.
-            destruct H9. now ddestruct H9.
-            now apply contains_contr in H9.
-          }
-          specf x2 m. specf x m.
-          rewrite eqb_nid in *; auto.
-          rewrite <- x, x2 at 1.
-          eapply self_pends_ready0. easy.
-          rewrite <- x2, x at 1.
-          exact H9.
-        }
-        {
-          specf x2 n. specf x n.
-          rewrite eqb_nid in *; auto.
-          now rewrite <- x, x2 at 1.
-        }
-        { easy. }
-        {
-          admit.
-        }
-      }
-      { easy. }
-    }
-    {
-      assert (n <> n0).
-      {
-        contr. subst.
-        specf x2 n0. rewrite eqb_id in x2.
-        rewrite self_done_active0 in x2.
-        ddestruct x2. simp_sets.
-      }
-      apply AOAccepted with
-        (j:=j) (w:=w) (n:=n).
-      {
-        constructor.
-        {
-          intros.
-          assert (n0 <> m).
-          {
-            contr. subst.
-            specf x0 m. rewrite eqb_id in x0.
-            rewrite <- x0 in H10 at 1.
-            apply contains_invert in H10.
-            destruct H10. now ddestruct H10.
-            apply contains_invert in H10.
-            destruct H10. ddestruct H10.
-            2: now apply contains_contr in H10.
-            apply (self_pends_ready0 m x). easy.
-            {
-              specf x2 m. rewrite eqb_id in x2.
-              rewrite <- x2. apply contains_triv.
-            }
-            {
-              specf x2 m. rewrite eqb_id in x2.
-              rewrite <- x2. easy.
-            }
-          }
-          specf x2 m. specf x0 m.
-          rewrite eqb_nid in *; auto.
-          rewrite <- x0, x2 at 1.
-          eapply self_pends_ready0. easy.
-          rewrite <- x2, x0 at 1.
-          exact H10.
-        }
-        {
-          specf x2 n. specf x0 n.
-          rewrite eqb_nid in *; auto.
-          now rewrite <- x0, x2 at 1.
-        }
-        { easy. }
-        {
-          admit.
-        }
-      }
-      { easy. }
-    }
-  }
-  {
-    assert (n <> n0).
-    {
-      contr. subst.
-      rewrite self_done_active0 in H.
-      ddestruct H. simp_sets.
-    }
-    ddestruct H2. cbn in *. psimpl.
-    ddestruct H3. cbn in *. ddestruct H4.
-    {
-      apply AOAccepted with
-        (n:=n) (j:=j) (w:=w).
-      {
-        constructor.
-        {
-          intros.
-          assert (n0 <> m).
-          {
-            contr. subst.
-            specf x m. rewrite eqb_id in x.
-            rewrite <- x in H12 at 1.
-            apply contains_invert in H12.
-            destruct H12. now ddestruct H12.
-            now apply contains_contr in H12.
-          }
-          specf x2 m. specf x m.
-          rewrite eqb_nid in *; auto.
-          rewrite <- x, x2 at 1.
-          apply (self_pends_ready0 m w1). easy.
-          { now rewrite <- x2, x at 1. }
-        }
-        {
-          specf x2 n. specf x n.
-          rewrite eqb_nid in *; auto.
-          now rewrite <- x, x2 at 1.
-        }
-        {
-          destruct_big_steps.
-          clear - self_aidle0 H5 H16 H23 H30.
-          rewrite self_aidle0 in H5.
-          ddestruct H5. 2: simp_sets.
-          rewrite <- x in H16.
-          ddestruct H16. simp_sets.
-          rewrite <- x in H23.
-          ddestruct H23. 2: simp_sets.
-          rewrite <- x in H30.
-          ddestruct H30. simp_sets.
-          easy.
-        }
-        {
-          admit.
-        }
-      }
-      {
-        assert (i <> j0).
-        {
-          contr. subst.
-          destruct H0. destruct_big_steps.
-          rewrite H13 in H16; try easy.
-          now rewrite call_done in H16.
-        }
-        destruct H0.
-        destruct_big_steps.
-        constructor.
-        { now rewrite H34, H27, H20, H13. }
-        { now rewrite H35, H28, H21, H14. }
-      }
-    }
-    {
-      specf x2 n0. rewrite eqb_id in x2.
-      rewrite H in x2. ddestruct x2.
-      simp_sets.
-    }
-  }
-  {
-    assert (n0 <> n).
-    {
-      contr. subst.
-      rewrite self_done_active0 in H.
-      ddestruct H. now simp_sets.
-    }
-    ddestruct H2. cbn in *. psimpl.
-    ddestruct H3. cbn in *. ddestruct H4.
-    {
-      specf x2 n0. rewrite eqb_id in x2.
-      rewrite H in x2. ddestruct x2.
-      simp_sets.
-    }
-    {
-      eapply AOAccepted
-        with (n:=n) (j:=j) (w:=w).
-      {
-        constructor.
-        {
-          intros.
-          assert (n0 <> m).
-          {
-            contr. subst.
-            specf x0 m. rewrite eqb_id in x0.
-            rewrite <- x0 in H11 at 1.
-            now apply contains_contr in H11.
-          }
-          specf x2 m. specf x0 m.
-          rewrite eqb_nid in *; auto.
-          rewrite <- x0, x2 at 1.
-          apply (self_pends_ready0 m w1). easy.
-          { now rewrite <- x2, x0. }
-        }
-        {
-          specf x2 n. specf x0 n.
-          rewrite eqb_nid in *; auto.
-          now rewrite <- x0, x2 at 1.
-        }
-        { easy. }
-        {
-          admit.
-        }
-      }
-      { easy. }
-    }
-  }
-  {
-    ddestruct H. cbn in *. psimpl.
-    ddestruct H2. cbn in *. ddestruct H3.
-    assert (n0 <> n).
-    {
-      contr. subst.
-      specf x2 n. rewrite eqb_id in x2.
-      rewrite self_done_active0 in x2.
-      ddestruct x2. simp_sets.
-    }
-    eapply AOAccepted
-      with (n:=n) (j:=j) (w:=w).
-    {
-      constructor.
-      {
-        intros.
-        assert (n0 <> m).
-        {
-          contr. subst.
-          specf x m. rewrite eqb_id in x.
-          rewrite <- x in H10 at 1.
-          now apply contains_contr in H10.
-        }
-        specf x2 m. specf x m.
-        rewrite eqb_nid in *; auto.
-        rewrite <- x, x2 at 1.
-        apply (self_pends_ready0 m w0). easy.
-        now rewrite <- x2, x at 1.
-      }
-      {
-        specf x2 n. specf x n.
-        rewrite eqb_nid in *; auto.
-        now rewrite <- x, x2 at 1.
-      }
       {
         destruct_big_steps.
-        clear - self_aidle0 H3 H14.
-        rewrite self_aidle0 in H3.
-        ddestruct H3. 2: simp_sets.
-        rewrite <- x in H14.
-        ddestruct H14. easy.
+        rewrite state_idle0 in H9.
+        ddestruct H9. 2: simp_sets.
+        rewrite <- x in H16.
+        ddestruct H16. simp_sets.
+        rewrite <- x in H23.
+        ddestruct H23. 2: simp_sets.
+        rewrite <- x in H30.
+        ddestruct H30. simp_sets.
+        easy.
+      }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x0 in H10 at 1.
+          simp_sets.
+          admit.
+        }
+        admit.
+      }
+      {
+        admit.
       }
       {
         admit.
       }
     }
     {
-      destruct H0.
-      destruct_big_steps.
-      constructor.
-      { now rewrite H18, H11. }
-      { now rewrite H19, H12. }
+      admit.
     }
+  }
+  {
+    admit.
+  }
+}
+{
+  ddestruct H1. cbn in *. psimpl.
+  ddestruct H2. cbn in *. ddestruct H6.
+  {
+    rewrite H in x0.
+    ddestruct x0. simp_sets.
+  }
+  rewrite H in x2.
+  ddestruct x2. simp_sets.
+  rename i0 into k, v0 into u.
+  split.
+  {
+    constructor.
+    {
+      constructor.
+      { easy. }
+      {
+        admit.
+      }
+      {
+        admit.
+      }
+      {
+        admit.
+      }
+    }
+    {
+      admit.
+    }
+  }
+  {
+    admit.
+  }
+}
+{
+  ddestruct H. cbn in *. psimpl.
+  ddestruct H1. cbn in *. ddestruct H5.
+  destruct_big_steps.
+  rewrite state_idle0 in H5.
+  ddestruct H5. 2: simp_sets.
+  rewrite <- x in H14.
+  ddestruct H14.
+  split.
+  {
+    constructor.
+    {
+      constructor.
+      { easy. }
+      {
+        admit.
+      }
+      {
+        admit.
+      }
+      {
+        admit.
+      }
+    }
+    {
+      admit.
+    }
+  }
+  {
+    admit.
   }
 }
 Admitted.
 
-Lemma conj_assoc {A B C : Prop} :
-  (A /\ B /\ C) = ((A /\ B) /\ C).
-now apply propositional_extensionality.
-Qed.
+Lemma ready_done_stable {T A} (i : Name T) (v : A) (w : option A) :
+  forall s x t y,
+  (Ready i s x /\ Done i (Exch v) w x) ->
+  Rely i s x t y ->
+  Ready i t y /\ Done i (Exch v) w y.
+Admitted.
+
+Lemma complete_stable {T A} (k : nat) (i : Name T) (v : A) :
+  forall s x t y,
+  Complete k i s x \/ (Ready i s x /\ exists w, Done i (Exch v) w x) ->
+  Rely i s x t y ->
+  Complete k i t y \/ (Ready i t y /\ exists w, Done i (Exch v) w y).
+Admitted.
 
 Lemma exch_correct {T A} {i : Name T} {v : A} :
   VerifyProg i (LiftSRelt (Rely i)) (LiftSRelt (Guar i))
@@ -1487,12 +632,13 @@ eapply weakenPrec with
     Waiting i (Exch v) x)).
 2:{
   unfold sub, subRelt, LiftSPrec, LiftSRelt.
-  intros. psimpl. unfold TInvoke in H1.
-  psimpl.
+  intros. psimpl. unfold TInvoke in H1. psimpl.
+  specialize (H0 (invPoss i x1 (Exch v))).
   eassert _.
   {
-    eapply H0 with (x:= invPoss i x1 (Exch v)).
-    unfold invPoss. set_ext y. split; intros; psimpl.
+    eapply H0. set_ext y.
+    unfold invPoss.
+    split; intros; psimpl.
     {
       destruct x0, y. cbn in *.
       f_equal. easy.
@@ -1505,30 +651,64 @@ eapply weakenPrec with
       now rewrite eqb_id.
       now rewrite eqb_nid, H9.
     }
-    {
-      exists x1. split. easy.
-      cbn. rewrite eqb_id.
-      repeat split; (easy || apply differ_pointwise_trivial).
-    }
+    exists x1. split. easy.
+    cbn. rewrite eqb_id.
+    repeat split;
+      (easy || apply differ_pointwise_trivial).
   }
-  psimpl. clear H0.
+  clear H0. psimpl.
   exists x0. split. easy.
-  eapply wait_ready_stable.
-  2: exact H5. split.
+  eapply ready_wait_stable.
+  2: exact H4. split.
   {
+    destruct H2, ready_inv0.
     constructor.
-    { now destruct H2. }
-    { destruct H2. now setoid_rewrite <- H3. }
     {
-      destruct H2. intros.
-      rewrite <- H3 in H2 at 1.
-      rewrite <- H3 in H4 at 1.
-      eapply othr_ready_wait0 in H4.
-      2: exact H0. 2: exact H2.
-      destruct H4. unfold invPoss.
-      constructor; cbn;
-      now rewrite eqb_nid.
+      constructor.
+      { easy. }
+      {
+        intros.
+        assert (Waiting i0 (Exch v0) x1).
+        {
+          eapply wait_inv0 with (n:=n).
+          now rewrite H3 at 1.
+          now rewrite H3 at 1.
+        }
+        destruct H5.
+        assert (i0 <> i).
+        {
+          contr. subst.
+          unfold TIdle in H. psimpl.
+          specialize (H5 x1 eq_refl). psimpl.
+          now rewrite H5 in call_waiting.
+        }
+        constructor; cbn;
+        now rewrite eqb_nid.
+      }
+      {
+        intros.
+        assert (Done j (Exch w) (Some v0) x1).
+        {
+          eapply done_inv0 with
+            (i:=i0) (n:=n).
+          { easy. }
+          { now rewrite H3 at 1. }
+          { now rewrite H3 at 1. }
+        }
+        destruct H6.
+        assert (i <> j).
+        {
+          contr. subst.
+          unfold TIdle in H. psimpl.
+          specialize (H6 x1 eq_refl). psimpl.
+          now rewrite H6 in call_done.
+        }
+        constructor; cbn;
+        now rewrite eqb_nid.
+      }
+      { now setoid_rewrite <- H3. }
     }
+    { now setoid_rewrite <- H3. }
   }
   {
     constructor; cbn;
@@ -1542,35 +722,29 @@ eapply lemBind.
     (Q:=fun _ _ => LiftSPrec (fun s x =>
       Ready i s x /\
       Waiting i (Exch v) x))
-    (S:=fun r _ _ => LiftSPrec (fun s x =>
+    (S:=fun _ _ _ => LiftSPrec (fun s x =>
       Ready i s x /\
-      Waiting i (Exch v) x /\
-      r < T))).
+      Waiting i (Exch v) x))).
   {
     unfold Stable, stableRelt, sub, subRelt.
-    unfold LiftSPrec, LiftSRelt. intros. psimpl.
+    unfold LiftSRelt, LiftSPrec. intros. psimpl.
     specialize (H0 x1 eq_refl). psimpl.
     exists x0. split. easy.
-    eapply wait_ready_stable.
-    split. exact H1. easy.
-    easy.
+    eapply ready_wait_stable.
+    2: exact H0. easy.
   }
   {
     unfold Stable, stablePost, stableRelt, sub, subRelt.
-    unfold LiftSPrec, LiftSRelt. intros. psimpl.
+    unfold LiftSRelt, LiftSPrec. intros. psimpl.
     specialize (H0 x1 eq_refl). psimpl.
     exists x0. split. easy.
-    rewrite conj_assoc.
-    split. 2: easy.
-    eapply wait_ready_stable.
-    split. exact H1. easy.
-    easy.
+    eapply ready_wait_stable.
+    2: exact H0. easy.
   }
   {
     begin_commit.
-    cbn in *. psimpl.
-    ddestruct H2.
-    exists (eq x1).
+    rename x1 into p.
+    exists (eq p).
     split.
     { repeat econstructor. }
     split.
@@ -1580,47 +754,57 @@ eapply lemBind.
     }
     split.
     {
-      exists x1. split. easy.
+      exists p. split. easy.
       split.
       {
-        destruct H7. constructor. easy.
-        intros.
-        apply equal_f with (x:=n) in H6.
-        rewrite <- H6 at 1.
-        eapply self_in_pend0.
-        rewrite H6 at 1.
-        exact H.
+        constructor.
         {
-          intros. specf H6 n.
-          eapply othr_ready_wait0.
-          { easy. }
-          { rewrite H6 at 1. exact H2. }
-          { now rewrite H6 at 1. }
+          constructor.
+          { apply H3. }
+          {
+            intros n. specf H7 n.
+            setoid_rewrite <- H7.
+            apply H3.
+          }
+          {
+            intros n. specf H7 n.
+            setoid_rewrite <- H7.
+            apply H3.
+          }
+          {
+            intros n m.
+            assert (H7' := H7).
+            specf H7 n. specf H7' m.
+            setoid_rewrite <- H7.
+            setoid_rewrite <- H7'.
+            apply H3.
+          }
+        }
+        {
+          intros n. specf H7 n.
+          setoid_rewrite <- H7.
+          apply H3.
         }
       }
       { easy. }
     }
     {
-      exists x1. split. easy.
-      eq_inj H. eapply EARandCall
-        with (n:=T).
-      constructor; cbn.
+      intros. eq_inj H8.
+      exists x. split. easy.
+      eapply EARandCall with
+        (n:=T).
+      constructor.
       {
         constructor; cbn. easy.
         intros. now rewrite H0.
       }
-      {
-        rewrite <- x2, <- x at 1.
-        repeat (easy || constructor).
-      }
+      { easy. }
     }
   }
-  intros.
   {
     begin_commit.
-    cbn in *. psimpl.
-    ddestruct H2.
-    exists (eq x3).
+    rename x3 into p.
+    exists (eq p).
     split.
     { repeat econstructor. }
     split.
@@ -1630,73 +814,88 @@ eapply lemBind.
     }
     split.
     {
-      exists x3. split. easy.
-      rewrite conj_assoc.
-      split. 2: easy.
+      exists p. split. easy.
       split.
       {
-        destruct H8. constructor. easy. intros.
-        apply equal_f with (x:=n) in H6.
-        rewrite <- H6 at 1.
-        eapply self_in_pend0.
-        rewrite H6 at 1.
-        exact H2.
+        constructor.
         {
-          intros. specf H6 n.
-          eapply othr_ready_wait0.
-          { easy. }
-          { rewrite H6 at 1. exact H7. }
-          { now rewrite H6 at 1. }
+          constructor.
+          { apply H4. }
+          {
+            intros n. specf H9 n.
+            setoid_rewrite <- H9.
+            apply H4.
+          }
+          {
+            intros n. specf H9 n.
+            setoid_rewrite <- H9.
+            apply H4.
+          }
+          {
+            intros n m.
+            assert (H9' := H9).
+            specf H9 n. specf H9' m.
+            setoid_rewrite <- H9.
+            setoid_rewrite <- H9'.
+            apply H4.
+          }
+        }
+        {
+          intros n. specf H9 n.
+          setoid_rewrite <- H9.
+          apply H4.
         }
       }
       { easy. }
     }
     {
-      exists x3. split. easy.
-      eq_inj H2. eapply EARandRet
-        with (n:=T) (k:=v0).
-      constructor; cbn.
+      intros. eq_inj H10.
+      exists x2. split. easy.
+      eapply EARandRet with
+        (n:=T) (k:=v0).
+      constructor.
       {
         constructor; cbn. easy.
         intros. now rewrite H0.
       }
-      {
-        rewrite <- x5, <- x at 1.
-        repeat (easy || constructor).
-      }
+      { easy. }
     }
   }
 }
 intros.
+rename v0 into k.
+repeat rewrite <- reltCompAssoc at 1.
+apply lemForget.
 eapply lemBind.
 {
   eapply (lemCall
-    (Q:=fun _ _ => LiftSPrec (AfterOffer i v))
+    (Q:=fun _ _ => LiftSPrec (fun s x =>
+      Complete k i s x \/
+      (Ready i s x /\
+       exists w, Done i (Exch v) w x)))
     (S:=fun w _ _ => LiftSPrec (fun s x =>
       Ready i s x /\
       Done i (Exch v) w x))).
   {
     unfold Stable, stableRelt, sub, subRelt.
-    unfold LiftSPrec, LiftSRelt. intros. psimpl.
+    unfold LiftSRelt, LiftSPrec. intros. psimpl.
     specialize (H0 x1 eq_refl). psimpl.
     exists x0. split. easy.
-    eapply after_offer_stable.
-    exact H1. easy.
+    eapply complete_stable.
+    2: exact H0. easy.
   }
   {
     unfold Stable, stablePost, stableRelt, sub, subRelt.
-    unfold LiftSPrec, LiftSRelt. intros. psimpl.
+    unfold LiftSRelt, LiftSPrec. intros. psimpl.
     specialize (H0 x1 eq_refl). psimpl.
     exists x0. split. easy.
-    eapply done_ready_stable.
-    split. exact H1. easy.
-    easy.
+    eapply ready_done_stable.
+    2: exact H0. easy.
   }
   {
-    unfold LiftSPrec, LiftSRelt.
-    begin_commit. do 2 psimpl.
-    ddestruct H. cbn in *.
-    ddestruct H2.
+    begin_commit.
+    ddestruct H.
+    cbn in *. ddestruct H9.
     {
       exists (eq x5).
       split.
@@ -1709,43 +908,99 @@ eapply lemBind.
       split.
       {
         exists x5. split. easy.
-        eapply AOOffered with (n:=v0).
+        left.
+        constructor.
         {
           constructor.
+          { apply H4. }
           {
             intros.
-            specf x8 m. specf x m.
-            rewrite eqb_nid in *; auto.
-            destruct H5.
-            rewrite <- x, x8 in H14 at 1.
-            apply self_in_pend0 in H14.
-            now rewrite <- x, x8 at 1.
+            dec_eq_nats k n.
+            {
+              rewrite <- x in H9 at 1.
+              now simp_sets.
+            }
+            {
+              apply H4 with (n:=n).
+              { now rewrite <- H8. }
+              { now rewrite <- H8. }
+            }
           }
-          {
-            specf x v0. rewrite eqb_id in x.
-            rewrite <- x at 1. apply contains_triv.
-          }
-          {
-            specf x v0. rewrite eqb_id in x.
-            rewrite <- x at 1. easy.
-          }
-          now destruct H5.
           {
             intros.
-            specf x v0. rewrite eqb_id in x.
-            rewrite <- x in H14 at 1.
-            apply contains_invert in H14.
-            destruct H14. now ddestruct H14.
-            now apply contains_contr in H14.
+            assert (k <> n).
+            {
+              contr. subst.
+              rewrite <- x in H13 at 1.
+              now apply contains_contr in H13.
+            }
+            eapply H4 with (n:=n).
+            { exact H9. }
+            { now rewrite <- H8 at 1. }
+            { now rewrite <- H8 at 1. }
+          }
+          {
+            intros. destruct H4, ready_inv0.
+            assert (k <> m).
+            {
+              contr. subst.
+              rewrite <- x in H14 at 1.
+              simp_sets.
+              eapply ready_lazy0 with
+                (n:=n) (v:=v0).
+              rewrite <- H8 at 1.
+              easy. easy. now rewrite <- H8.
+            }
+            dec_eq_nats k n.
+            {
+              rewrite <- x in H12 at 1.
+              simp_sets.
+              rewrite H8 at 1; auto.
+              eapply ready_lazy0 with
+                (v:=w).
+              { now rewrite <- H8 at 1. }
+            }
+            {
+              rewrite H8 at 1.
+              eapply wait_uniq0 with
+                (n:=n)
+                (i:=i0) (v:=v0)
+                (w:=w).
+              { easy. }
+              { now rewrite <- H8 at 1. }
+              { now rewrite <- H8 at 1. }
+              { now rewrite <- H8 at 1. }
+              { easy. }
+            }
           }
         }
-        { easy. }
+        {
+          exists v.
+          rewrite <- x at 1.
+          apply contains_triv.
+        }
+        { now rewrite <- x at 1. }
+        {
+          intros.
+          destruct H4, ready_inv0.
+          rewrite H8 at 1; auto.
+          eapply ready_lazy0 with
+            (v:=v0).
+          { now rewrite <- H8 at 1. }
+        }
       }
       {
-        intros. eq_inj H2.
-        exists x2. split. easy.
+        intros. eq_inj H9.
+        exists x8. split. easy.
         eapply EAOffer with
-          (n:=v0) (v:=v).
+          (n:=k) (v:=v).
+        { easy. }
+        {
+          intros.
+          destruct H4.
+          eapply ready_lazy0.
+          exact H12.
+        }
         {
           constructor.
           {
@@ -1753,8 +1008,13 @@ eapply lemBind.
             intros. now rewrite H0.
           }
           {
-            cbn. rewrite <- x8, <- x at 1.
-            repeat (easy || constructor).
+            cbn. repeat (easy || constructor).
+            econstructor.
+            { easy. }
+            { symmetry. exact x4. }
+            { symmetry. exact x. }
+            { easy. }
+            { constructor. }
           }
         }
       }
@@ -1771,97 +1031,175 @@ eapply lemBind.
       split.
       {
         exists x5. split. easy.
-        eapply AOOffered with (n:=v0).
+        left.
+        constructor.
         {
           constructor.
+          { apply H4. }
           {
             intros.
-            specf x8 m. specf x2 m.
-            rewrite eqb_nid in *; auto.
-            destruct H5.
-            rewrite <- x2, x8 in H15 at 1.
-            apply self_in_pend0 in H15.
-            now rewrite <- x2, x8 at 1.
-          }
-          {
-            specf x2 v0. rewrite eqb_id in x2.
-            rewrite <- x2 at 1. apply contains_triv.
-          }
-          {
-            specf x2 v0. rewrite eqb_id in x2.
-            rewrite <- x2 at 1. easy.
-          }
-          now destruct H5.
-          {
-            intros.
-            specf x2 v0. rewrite eqb_id in x2.
-            rewrite <- x2 in H15 at 1.
-            apply contains_invert in H15.
-            destruct H15. now ddestruct H15.
-            apply contains_invert in H15.
-            destruct H15. ddestruct H15.
-            2: now apply contains_contr in H15.
+            dec_eq_nats k n.
             {
-              specf x8 v0. rewrite eqb_id in x8.
-              destruct H5. eapply othr_ready_wait0.
+              rewrite <- x in H12 at 1.
+              simp_sets.
               { easy. }
-              { rewrite <- x8 at 1. apply contains_triv. }
-              { now rewrite <- x8 at 1. }
+              {
+                eapply H4 with (n:=n).
+                {
+                  rewrite <- x8 at 1.
+                  apply contains_triv.
+                }
+                { now rewrite <- x8 at 1. }
+              }
+            }
+            {
+              apply H4 with (n:=n).
+              { now rewrite <- H8. }
+              { now rewrite <- H8. }
+            }
+          }
+          {
+            intros.
+            assert (k <> n).
+            {
+              contr. subst.
+              rewrite <- x in H14 at 1.
+              now apply contains_contr in H14.
+            }
+            eapply H4 with (n:=n).
+            { exact H12. }
+            { now rewrite <- H8 at 1. }
+            { now rewrite <- H8 at 1. }
+          }
+          {
+            intros. destruct H4, ready_inv0.
+            dec_eq_nats k n.
+            {
+              rewrite <- x in H13 at 1.
+              simp_sets.
+              {
+                rewrite H8 at 1; auto.
+                eapply ready_lazy0 with
+                  (v:=w).
+                { now rewrite <- H8 at 1. }
+              }
+              {
+                rewrite H8 at 1; auto.
+                eapply wait_uniq0 with
+                  (n:=n)
+                  (i:=i0) (v:=x4)
+                  (w:=w).
+                { easy. }
+                {
+                  rewrite <- x8 at 1.
+                  apply contains_triv.
+                }
+                { now rewrite <- x8 at 1. }
+                { now rewrite <- H8 at 1. }
+              }
+            }
+            {
+              dec_eq_nats k m.
+              {
+                rewrite <- x in H15 at 1.
+                simp_sets.
+                {
+                  exfalso.
+                  eapply ready_lazy0 with
+                    (n:=n) (v:=v0).
+                  { now rewrite <- H8 at 1. }
+                  { now rewrite <- H8 at 1. }
+                }
+                {
+                  exfalso.
+                  eapply wait_uniq0 with
+                    (n:=n) (m:=m)
+                    (i:=i0) (v:=v0)
+                    (w:=x4).
+                  { easy. }
+                  { now rewrite <- H8. }
+                  { now rewrite <- H8. }
+                  {
+                    rewrite <- x8 at 1.
+                    apply contains_triv.
+                  }
+                  { now rewrite <- x8 at 1. }
+                }
+              }
+              {
+                rewrite H8 at 1; auto.
+                eapply wait_uniq0 with
+                  (n:=n)
+                  (i:=i1) (v:=v0)
+                  (w:=w).
+                { easy. }
+                { now rewrite <- H8 at 1. }
+                { now rewrite <- H8 at 1. }
+                { now rewrite <- H8 at 1. }
+              }
             }
           }
         }
-        { easy. }
+        {
+          exists v.
+          rewrite <- x at 1.
+          apply contains_triv.
+        }
+        { now rewrite <- x at 1. }
+        {
+          intros. destruct H4.
+          rewrite H8 at 1; auto.
+          eapply ready_lazy0 with
+            (v:=v0).
+          { now rewrite <- H8 at 1. }
+        }
       }
       {
-        intros. eq_inj H14.
+        intros. eq_inj H12.
         exists x9. split. easy.
         eapply EAOffer with
-          (n:=v0) (v:=v).
-        constructor.
+          (n:=k) (v:=v).
+        { easy. }
         {
-          constructor; cbn. easy.
-          intros. now rewrite H0.
+          intros. destruct H4, ready_inv0.
+          eapply ready_lazy0. exact H13.
         }
         {
-          cbn. rewrite <- x8, <- x2 at 1.
-          repeat (easy || constructor).
+          constructor.
+          {
+            constructor; cbn. easy.
+            intros. now rewrite H0.
+          }
+          {
+            cbn.
+            repeat (easy || constructor).
+            econstructor.
+            { easy. }
+            { symmetry. exact x8. }
+            { symmetry. exact x. }
+            { easy. }
+            { now constructor. }
+          }
         }
       }
     }
   }
+  intros.
   {
-    unfold LiftSPrec, LiftSRelt.
-    begin_commit. do 2 psimpl.
-    ddestruct H. cbn in *.
-    move H4 at bottom. destruct H4.
+    begin_commit.
+    rename x3 into p.
+    destruct H4.
     {
-      destruct H4.
-      ddestruct H2.
+      ddestruct H. cbn in *.
+      ddestruct H10.
       {
         rename y into w.
-        assert (v0 = n).
-        {
-          specf x7 v0. rewrite eqb_id in x7.
-          apply NNPP. contr.
-          apply (self_pends_lazy0 v0 v).
-          { easy. }
-          { rewrite <- x7 at 1. apply contains_triv. }
-          { rewrite <- x7 at 1. easy. }
-        }
-        subst.
-        assert (Waiting j (Exch w) x4).
-        {
-          apply self_othr_wait0. easy.
-          specf x7 n. rewrite eqb_id in x7.
-          rewrite <- x7, insert_perm at 1.
-          apply contains_triv.
-        }
         pose (p' :=
           comRetPoss j
             (comRetPoss i
               (comInvPoss j
                 (comInvPoss i
-                  x4
+                  p
                   (Exch v)
                   (ExchDef {i => v} {}))
                 (Exch w)
@@ -1875,25 +1213,48 @@ eapply lemBind.
         ).
         assert (
           VisPossSteps
-            x4
+            p
             ([] ++
-             [(i, CallEv (Exch v))] ++ [(j, CallEv (Exch w))] ++
-             [(i, RetEv (Exch v) (Some w))] ++ [(j, RetEv (Exch w) (Some v))])
+            [(i, CallEv (Exch v))] ++
+            [(j, CallEv (Exch w))] ++
+            [(i, RetEv (Exch v) (Some w))] ++
+            [(j, RetEv (Exch w) (Some v))])
             p'
         ).
         {
+          assert (Waiting i (Exch v) p).
+          {
+            eapply H4 with (n:=k).
+            {
+              rewrite <- x2 at 1.
+              apply contains_triv.
+            }
+            { now rewrite <- x2 at 1. }
+          }
+          assert (Waiting j (Exch w) p).
+          {
+            eapply H4 with (n:=k).
+            {
+              rewrite <- x2, insert_perm at 1.
+              apply contains_triv.
+            }
+            { now rewrite <- x2 at 1. }
+          }
+          assert (PState p = ExchDef {} {}).
+          {
+            apply H4.
+          }
+          destruct H13, H14.
           repeat rewrite app_assoc.
-          destruct H4, H15.
           apply retStep. apply retStep.
           apply callStep. apply callStep.
           constructor.
           {
-            rewrite self_idle0.
+            rewrite H15.
             repeat (easy || constructor).
           }
           {
-            rewrite insert_perm.
-            cbn. rewrite eqb_nid; auto.
+            cbn. rewrite eqb_nid, insert_perm; auto.
             repeat (easy || constructor).
           }
           {
@@ -1911,9 +1272,9 @@ eapply lemBind.
         split.
         {
           intros. subst.
-          exists x4. split. easy.
+          exists p. split. easy.
           eapply erase_vis.
-          exact H16.
+          exact H13.
         }
         split.
         {
@@ -1921,49 +1282,209 @@ eapply lemBind.
           split.
           {
             constructor.
-            { subst p'. easy. }
             {
-              intros.
-              dec_eq_nats n0 n.
+              constructor.
+              { now subst p'. }
               {
-                specf x n. rewrite eqb_id in x.
-                rewrite <- x at 1. apply disj_cons.
+                intros.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H15 at 1.
+                  simp_sets.
+                }
+                assert (i <> i0).
+                {
+                  contr. subst.
+                  eapply H4.(comp_inv).(wait_uniq) with
+                    (n:=k) (m:=n).
+                  { easy. }
+                  {
+                    rewrite <- x2 at 1.
+                    apply contains_triv.
+                  }
+                  { now rewrite <- x2 at 1. }
+                  {
+                    rewrite <- H5 at 1.
+                    exact H14. easy.
+                  }
+                  { now rewrite <- H5 at 1. }
+                }
+                assert (j <> i0).
+                {
+                  contr. subst.
+                  eapply H4.(comp_inv).(wait_uniq) with
+                    (n:=k) (m:=n).
+                  { easy. }
+                  {
+                    rewrite <- x2, insert_perm at 1.
+                    apply contains_triv.
+                  }
+                  { now rewrite <- x2 at 1. }
+                  {
+                    rewrite <- H5 at 1.
+                    exact H14. easy.
+                  }
+                  { now rewrite <- H5 at 1. }
+                }
+                assert (Waiting i0 (Exch v0) p).
+                {
+                  eapply H4 with (n:=n).
+                  { now rewrite <- H5 at 1. }
+                  { now rewrite <- H5 at 1. }
+                }
+                destruct H19.
+                constructor; cbn;
+                now rewrite ?eqb_id, ?eqb_nid.
               }
               {
-                specf x n0. specf x7 n0.
-                rewrite eqb_nid in *; auto.
-                rewrite <- x, x7 at 1.
-                eapply self_pends_lazy0. easy.
-                rewrite <- x7, x at 1.
-                exact H17.
+                intros.
+                dec_eq_nats k n.
+                {
+                  rewrite <- x in H15 at 1.
+                  rewrite <- x in H16 at 1.
+                  simp_sets.
+                  constructor; cbn;
+                  now rewrite eqb_id.
+                }
+                {
+                  assert (i <> j0).
+                  {
+                    contr. subst.
+                    rewrite H5 in H15 at 1; auto.
+                    rewrite H5 in H16 at 1; auto.
+                    assert (Done j0 (Exch w0) (Some v0) p).
+                    {
+                      eapply H4 with (n:=n).
+                      { exact H14. }
+                      { easy. }
+                      { easy. }
+                    }
+                    assert (Waiting j0 (Exch v) p).
+                    {
+                      eapply H4 with (n:=k).
+                      {
+                        rewrite <- x2 at 1.
+                        apply contains_triv.
+                      }
+                      { now rewrite <- x2 at 1. }
+                    }
+                    destruct H18, H19.
+                    rewrite call_done in call_waiting.
+                    easy.
+                  }
+                  assert (j <> j0).
+                  {
+                    contr. subst.
+                    rewrite H5 in H15 at 1; auto.
+                    rewrite H5 in H16 at 1; auto.
+                    assert (Done j0 (Exch w0) (Some v0) p).
+                    {
+                      eapply H4 with (n:=n).
+                      { exact H14. }
+                      { easy. }
+                      { easy. }
+                    }
+                    assert (Waiting j0 (Exch w) p).
+                    {
+                      eapply H4 with (n:=k).
+                      {
+                        rewrite <- x2, insert_perm at 1.
+                        apply contains_triv.
+                      }
+                      { now rewrite <- x2 at 1. }
+                    }
+                    destruct H19, H20.
+                    rewrite call_done in call_waiting.
+                    easy.
+                  }
+                  assert (Done j0 (Exch w0) (Some v0) p).
+                  {
+                    eapply H4 with (n:=n).
+                    { exact H14. }
+                    { now rewrite <- H5 at 1. }
+                    { now rewrite <- H5 at 1. }
+                  }
+                  destruct H20.
+                  constructor; cbn;
+                  now rewrite ?eqb_id, ?eqb_nid.
+                }
+              }
+              {
+                intros.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H16 at 1.
+                  simp_sets.
+                }
+                assert (k <> m).
+                {
+                  contr. subst.
+                  rewrite <- x in H17 at 1.
+                  simp_sets.
+                  eapply H4.(comp_inv).(wait_uniq) with
+                    (n:=n) (m:=m)
+                    (i:=i) (v:=v0) (w:=v).
+                  { easy. }
+                  { now rewrite <- H5 at 1. }
+                  { now rewrite <- H5 at 1. }
+                  {
+                    rewrite <- x2 at 1.
+                    apply contains_triv.
+                  }
+                  { now rewrite <- x2 at 1. }
+                }
+                rewrite H5 at 1; auto.
+                eapply H4 with (n:=n).
+                { easy. }
+                {
+                  rewrite <- H5 at 1; auto.
+                  exact H15.
+                }
+                { now rewrite <- H5 at 1. }
+                {
+                  rewrite <- H5 at 1; auto.
+                  exact H17.
+                }
               }
             }
             {
               intros.
-              assert (n0 <> n).
+              dec_eq_nats k n.
               {
-                contr. subst.
-                specf x n. rewrite eqb_id in x.
-                rewrite <- x in H18 at 1.
-                apply contains_invert in H18.
-                destruct H18. now ddestruct H18.
-                now apply contains_contr in H18.
+                rewrite <- x at 1.
+                apply disj_cons.
               }
-              
+              {
+                rewrite H5 at 1.
+                eapply H4 with
+                  (n:=k)
+                  (i:=i) (v:=v)
+                  (w:=v0).
+                { easy. }
+                {
+                  rewrite <- x2 at 1.
+                  apply contains_triv.
+                }
+                { now rewrite <- x2 at 1. }
+                { now rewrite <- H5 at 1. }
+                { easy. }
+              }
             }
           }
           {
-            subst p'.
             constructor; cbn;
-            now rewrite eqb_id, eqb_nid.
+            now rewrite ?eqb_id, ?eqb_nid.
           }
         }
         {
-          intros. eq_inj H17.
+          intros. eq_inj H14.
           exists p'. split. easy.
           eapply EAAccept with
-            (n:=n) (v:=v) (j:=j) (w:=w).
-          { specf x7 n. now rewrite eqb_id in x7. }
+            (n:=k) (v:=v)
+            (j:=j) (w:=w).
+          { easy. }
           {
             constructor.
             {
@@ -1971,34 +1492,152 @@ eapply lemBind.
               intros. now rewrite H0.
             }
             {
-              cbn. rewrite <- x, <- x7 at 1.
+              cbn.
               repeat (easy || constructor).
+              econstructor.
+              { easy. }
+              { symmetry. exact x2. }
+              { symmetry. exact x. }
+              { easy. }
+              { now constructor. }
             }
           }
           { easy. }
         }
       }
       {
-        admit.
-      }
-      {
-        assert (v0 = n).
+        exists (eq p).
+        split.
+        { repeat econstructor. }
+        split.
         {
-          specf x7 v0. rewrite eqb_id in x7.
-          apply NNPP. contr.
-          apply (self_pends_lazy0 v0 v).
+          intros. subst.
+          repeat econstructor.
+        }
+        split.
+        {
+          exists p. split. easy.
+          split.
+          {
+            constructor.
+            {
+              constructor.
+              { apply H4. }
+              {
+                intros.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H13 at 1.
+                  now apply contains_contr in H13.
+                }
+                eapply H4 with
+                  (n:=n).
+                { now rewrite <- H5 at 1. }
+                { now rewrite <- H5 at 1. }
+              }
+              {
+                intros.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H14 at 1.
+                  simp_sets.
+                }
+                eapply H4 with
+                  (i:=i1)
+                  (n:=n).
+                { easy. }
+                { now rewrite <- H5 at 1. }
+                { now rewrite <- H5 at 1. }
+              }
+              {
+                intros.
+                assert (k <> m).
+                {
+                  contr. subst.
+                  rewrite <- x in H16 at 1.
+                  simp_sets.
+                }
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H14 at 1.
+                  simp_sets.
+                }
+                rewrite H5 at 1; auto.
+                eapply H4 with
+                  (n:=n)
+                  (i:=i1) (v:=v0)
+                  (w:=w).
+                { easy. }
+                { now rewrite <- H5 at 1. }
+                { now rewrite <- H5 at 1. }
+                { now rewrite <- H5 at 1. }
+              }
+            }
+            {
+              intros.
+              assert (k <> n).
+              {
+                contr. subst.
+                rewrite <- x in H13 at 1.
+                simp_sets.
+              }
+              destruct H4.
+              rewrite H5 at 1; auto.
+              eapply comp_lazy0 with
+                (v:=v0).
+              { easy. }
+              { now rewrite <- H5 at 1. }
+            }
+          }
+          {
+            eapply H4 with
+              (n:=k) (i:=i0).
+            { easy. }
+            {
+              rewrite <- x7 at 1.
+              apply contains_triv.
+            }
+            {
+              rewrite <- x7 at 1.
+              apply contains_triv.
+            }
+          }
+        }
+        {
+          intros. eq_inj H13.
+          exists x10. split. easy.
+          eapply EAFinish with
+            (n:=k)
+            (j:=i0) (w:=x2)
+            (v:=v).
           { easy. }
           {
-            rewrite <- x7 at 1.
-            apply contains_triv.
+            constructor.
+            {
+              constructor; cbn. easy.
+              intros. now rewrite H0.
+            }
+            {
+              cbn.
+              repeat (easy || constructor).
+              econstructor.
+              { easy. }
+              { symmetry. exact x7. }
+              { symmetry. exact x. }
+              { easy. }
+              { now constructor. }
+            }
           }
-          { now rewrite <- x7 at 1. }
         }
-        subst.
+      }
+      {
         pose (p' :=
           comRetPoss i
             (comInvPoss i
-              x4
+              p
               (Exch v)
               (ExchDef {i => v} {}))
             (Exch v)
@@ -2007,17 +1646,29 @@ eapply lemBind.
         ).
         assert (
           VisPossSteps
-            x4
-            ([] ++ [(i, CallEv (Exch v))] ++ [(i, RetEv (Exch v) None)])
+            p
+            ([] ++
+            [(i, CallEv (Exch v))] ++
+            [(i, RetEv (Exch v) None)])
             p'
         ).
         {
-          repeat rewrite app_assoc.
-          destruct H15.
+          assert (Waiting i (Exch v) p).
+          {
+            eapply H4 with
+              (n:=k).
+            {
+              rewrite <- x2 at 1.
+              apply contains_triv.
+            }
+            { now rewrite <- x2 at 1. }
+          }
+          destruct H10. rewrite app_assoc.
           apply retStep. apply callStep.
           constructor.
           {
-            rewrite self_idle0.
+            destruct H4, comp_inv0.
+            rewrite state_idle0.
             repeat (easy || constructor).
           }
           {
@@ -2031,9 +1682,9 @@ eapply lemBind.
         split.
         {
           intros. subst.
-          exists x4. split. easy.
+          exists p. split. easy.
           eapply erase_vis.
-          exact H2.
+          exact H10.
         }
         split.
         {
@@ -2041,25 +1692,115 @@ eapply lemBind.
           split.
           {
             constructor.
-            { now subst p'. }
             {
-              intros.
-              dec_eq_nats n0 n.
+              constructor.
+              { easy. }
               {
-                specf x n. rewrite eqb_id in x.
-                rewrite <- x in H4 at 1.
-                now apply contains_contr in H4.
+                intros. destruct H4, comp_inv0.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H13 at 1.
+                  simp_sets.
+                }
+                assert (i0 <> i).
+                {
+                  contr. subst.
+                  eapply comp_lazy0 with
+                    (m:=n)
+                    (v:=v0).
+                  { easy. }
+                  { now rewrite <- H5 at 1. }
+                  { now rewrite <- H5 at 1. }
+                }
+                assert (Waiting i0 (Exch v0) p).
+                {
+                  eapply wait_inv0 with
+                    (n:=n).
+                  { now rewrite <- H5 at 1. }
+                  { now rewrite <- H5 at 1. }
+                }
+                destruct H16.
+                constructor; cbn;
+                now rewrite eqb_nid.
               }
               {
-                specf x n0. specf x7 n0.
-                rewrite eqb_nid in *; auto.
-                rewrite <- x, x7 at 1.
-                eapply self_pends_lazy0. easy.
-                rewrite <- x7, x at 1.
-                exact H4.
+                intros. destruct H4, comp_inv0.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H14 at 1.
+                  simp_sets.
+                }
+                assert (Done j (Exch w) (Some v0) p).
+                {
+                  eapply done_inv0 with
+                    (i:=i0)
+                    (n:=n).
+                  { easy. }
+                  { now rewrite <- H5 at 1. }
+                  { now rewrite <- H5 at 1. }
+                }
+                assert (i <> j).
+                {
+                  contr. subst.
+                  assert (Waiting j (Exch v) p).
+                  {
+                    eapply wait_inv0 with
+                      (n:=k).
+                    {
+                      rewrite <- x2 at 1.
+                      apply contains_triv.
+                    }
+                    { now rewrite <- x2 at 1. }
+                  }
+                  destruct H16, H17.
+                  rewrite call_done in call_waiting.
+                  easy.
+                }
+                destruct H16.
+                constructor; cbn;
+                now rewrite eqb_nid.
+              }
+              {
+                intros.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H14 at 1.
+                  simp_sets.
+                }
+                assert (k <> m).
+                {
+                  contr. subst.
+                  rewrite <- x in H16 at 1.
+                  simp_sets.
+                }
+                rewrite H5 at 1; auto.
+                eapply H4 with
+                  (n:=n)
+                  (i:=i0) (v:=v0)
+                  (w:=w).
+                { easy. }
+                { now rewrite <- H5 at 1. }
+                { now rewrite <- H5 at 1. }
+                { now rewrite <- H5 at 1. }
               }
             }
-            admit.
+            {
+              intros.
+              assert (k <> n).
+              {
+                contr. subst.
+                rewrite <- x in H13 at 1.
+                simp_sets.
+              }
+              rewrite H5 at 1; auto.
+              eapply H4.(comp_lazy) with
+                (v:=v0).
+              { easy. }
+              { now rewrite <- H5 at 1. }
+            }
           }
           {
             constructor; cbn;
@@ -2067,10 +1808,10 @@ eapply lemBind.
           }
         }
         {
-          intros. eq_inj H4.
+          intros. eq_inj H13.
           exists p'. split. easy.
           eapply EARevoke with
-            (n:=n) (v:=v).
+            (n:=k) (v:=v).
           {
             constructor.
             {
@@ -2078,8 +1819,14 @@ eapply lemBind.
               intros. now rewrite H0.
             }
             {
-              cbn. rewrite <- x, <- x7 at 1.
+              cbn.
               repeat (easy || constructor).
+              econstructor.
+              { easy. }
+              { symmetry. exact x2. }
+              { symmetry. exact x. }
+              { easy. }
+              { now constructor. }
             }
           }
           { easy. }
@@ -2087,112 +1834,172 @@ eapply lemBind.
       }
     }
     {
-      destruct H4, H15.
-      ddestruct H2.
+      psimpl.
+      destruct H4, ready_inv0.
+      ddestruct H. cbn in *.
+      ddestruct H5.
       {
-        assert (v0 = n).
+        rename y into w.
+        assert (Waiting i (Exch v) p).
         {
-          apply NNPP. contr.
-          specf x7 v0. rewrite eqb_id in x7.
-          apply (self_pends_ready0 v0 v).
-          { easy. }
-          { rewrite <- x7 at 1. apply contains_triv. }
-          { now rewrite <- x7 at 1. }
+          eapply wait_inv0 with
+            (n:=k).
+          {
+            rewrite <- x3 at 1.
+            apply contains_triv.
+          }
+          { now rewrite <- x3 at 1. }
         }
-        subst. exfalso.
-        specf x7 n. rewrite eqb_id in x7.
-        rewrite <- x7 in self_done_active0 at 1.
-        ddestruct self_done_active0. simp_sets.
+        destruct H11, H13.
+        now rewrite call_done in call_waiting.
       }
-      2:{
-        assert (v0 = n).
-        {
-          apply NNPP. contr.
-          specf x7 v0. rewrite eqb_id in x7.
-          apply (self_pends_ready0 v0 v).
-          { easy. }
-          { rewrite <- x7 at 1. apply contains_triv. }
-          { now rewrite <- x7 at 1. }
-        }
-        subst. exfalso.
-        specf x7 n. rewrite eqb_id in x7.
-        rewrite <- x7 in self_done_active0 at 1.
-        ddestruct self_done_active0. simp_sets.
-      }
-      assert (v0 = n).
       {
-        apply self_done_unique0.
-        specf x7 v0. rewrite eqb_id in x7.
-        rewrite <- x7 at 1. apply contains_triv.
-      }
-      subst.
-      exists (eq x4).
-      split.
-      { repeat econstructor. }
-      split.
-      {
-        intros. subst.
-        repeat econstructor.
-      }
-      split.
-      {
-        exists x4. split. easy.
+        exists (eq p).
+        split.
+        { repeat econstructor. }
         split.
         {
-          constructor.
-          { easy. }
+          intros. subst.
+          repeat econstructor.
+        }
+        split.
+        {
+          exists p. split. easy.
+          split.
           {
-            intros.
-            assert (n0 <> n).
+            constructor.
             {
-              contr. subst.
-              specf x2 n. rewrite eqb_id in x2.
-              rewrite <- x2 in H4 at 1.
-              now apply contains_contr in H4.
+              constructor.
+              { easy. }
+              {
+                intros.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H13 at 1.
+                  simp_sets.
+                }
+                eapply wait_inv0 with
+                  (n:=n).
+                { now rewrite <- H4 at 1. }
+                { now rewrite <- H4 at 1. }
+              }
+              {
+                intros.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H14 at 1.
+                  simp_sets.
+                }
+                eapply done_inv0 with
+                  (i:=i1) (n:=n).
+                { easy. }
+                { now rewrite <- H4 at 1. }
+                { now rewrite <- H4 at 1. }
+              }
+              {
+                intros.
+                assert (k <> n).
+                {
+                  contr. subst.
+                  rewrite <- x in H14 at 1.
+                  simp_sets.
+                }
+                assert (k <> m).
+                {
+                  contr. subst.
+                  rewrite <- x in H16 at 1.
+                  simp_sets.
+                }
+                rewrite H4 at 1; auto.
+                eapply wait_uniq0 with
+                  (n:=n)
+                  (i:=i1) (v:=v0)
+                  (w:=w).
+                { easy. }
+                { now rewrite <- H4 at 1. }
+                { now rewrite <- H4 at 1. }
+                { now rewrite <- H4 at 1. }
+              }
             }
-            specf x2 n0. specf x7 n0.
-            rewrite eqb_nid in *; auto.
-            rewrite <- x2, x7 at 1.
-            eapply self_pends_ready0. easy.
-            rewrite <- x7, x2 at 1.
-            exact H4.
+            {
+              intros.
+              assert (k <> n).
+              {
+                contr. subst.
+                rewrite <- x in H13 at 1.
+                simp_sets.
+              }
+              rewrite H4 at 1; auto.
+              eapply ready_lazy0 with
+                (v:=v0).
+              { now rewrite <- H4 at 1. }
+            }
           }
-          admit.
+          {
+            eapply done_inv0 with
+              (i:=i0)
+              (n:=k).
+            { easy. }
+            {
+              rewrite <- x10 at 1.
+              apply contains_triv.
+            }
+            {
+              rewrite <- x10 at 1.
+              apply contains_triv.
+            }
+          }
         }
         {
-          specf x7 n. rewrite eqb_id in x7.
-          rewrite <- x7 in self_done_active0 at 1.
-          ddestruct self_done_active0. simp_sets.
-          constructor; easy.
+          intros. eq_inj H13.
+          exists x11. split. easy.
+          eapply EAFinish with
+            (n:=k) (v:=v)
+            (j:=i0) (w:=x3).
+          { easy. }
+          {
+            constructor.
+            {
+              constructor; cbn. easy.
+              intros. now rewrite H0.
+            }
+            {
+              cbn.
+              repeat (easy || constructor).
+              econstructor.
+              { easy. }
+              { symmetry. exact x10. }
+              { symmetry. exact x. }
+              { easy. }
+              { now constructor. }
+            }
+          }
         }
       }
       {
-        assert (x7' := x7).
-        specf x7 n. rewrite eqb_id in x7.
-        rewrite <- x7 in self_done_active0 at 1.
-        ddestruct self_done_active0. simp_sets.
-        intros. eq_inj H4.
-        exists x. split. easy.
-        eapply EAFinish.
-        { symmetry. exact x7. }
+        exfalso.
+        assert (Waiting i (Exch v) p).
         {
-          constructor.
+          eapply wait_inv0 with
+            (n:=k).
           {
-            constructor; cbn. easy.
-            intros. now rewrite H0. 
+            rewrite <- x3 at 1.
+            apply contains_triv.
           }
-          {
-            cbn. rewrite <- x7', <- x2 at 1.
-            repeat (easy || constructor).
-          }
+          { now rewrite <- x3 at 1. }
         }
+        destruct H11, H5.
+        rewrite call_done in call_waiting.
+        easy.
       }
     }
   }
 }
-intros.
-apply lemRet.
 {
-  unfold sub, subRelt, LiftSPrec.
-  intros. psimpl. now exists x4.
+  intros. constructor.
+  unfold sub, subRelt.
+  intros. psimpl. easy.
 }
+Qed.
