@@ -454,7 +454,72 @@ ddestruct H1.
         }
         {
           intros.
-          
+          dec_eq_nats n0 n.
+          {
+            rewrite <- x in H9 at 1.
+            simp_sets.
+            {
+              rewrite H4; auto.
+              rewrite H4 in H11; auto.
+              eapply i_uniq. easy.
+              exact H11.
+            }
+            {
+              rewrite H4; auto.
+              rewrite H4 in H11; auto.
+              eapply wait_uniq0 with
+                (n:=n)
+                (i:=i1) (v:=x0)
+                (w:=w).
+              { easy. }
+              {
+                rewrite <- x2 at 1.
+                apply contains_triv.
+              }
+              { now rewrite <- x2 at 1. }
+              { easy. }
+            }
+          }
+          {
+            dec_eq_nats m n.
+            {
+              rewrite <- x in H11 at 1.
+              simp_sets.
+              {
+                exfalso.
+                eapply i_uniq.
+                { symmetry. exact H12. }
+                { rewrite <- H4 at 1; auto. exact H9. }
+                { now rewrite <- H4 at 1. }
+              }
+              {
+                exfalso.
+                eapply wait_uniq0 with
+                  (n:=n0) (m:=n)
+                  (i:=i1) (v:=v1)
+                  (w:=x0).
+                { easy. }
+                { now rewrite <- H4 at 1. }
+                { now rewrite <- H4 at 1. }
+                {
+                  rewrite <- x2 at 1.
+                  apply contains_triv.
+                }
+                { now rewrite <- x2 at 1. }
+              }
+            }
+            {
+              rewrite H4; auto.
+              eapply wait_uniq0 with
+                (n:=n0)
+                (i:=i2) (v:=v1)
+                (w:=w).
+              { easy. }
+              { now rewrite <- H4 at 1. }
+              { now rewrite <- H4 at 1. }
+              { now rewrite <- H4 at 1. }
+            }
+          }
         }
       }
       {
@@ -515,25 +580,165 @@ ddestruct H1.
         assert (n0 <> n).
         {
           contr. subst.
-          rewrite <- x0 in H10 at 1.
+          rewrite <- x0 in H11 at 1.
           simp_sets.
-          admit.
         }
-        admit.
+        assert (k <> i0).
+        {
+          contr. subst. exfalso.
+          eapply wait_uniq0 with
+            (n:=n0) (m:=n)
+            (i:=i0) (v:=v0)
+            (w:=u).
+          { easy. }
+          { now rewrite <- H5 at 1. }
+          { now rewrite <- H5 at 1. }
+          {
+            rewrite H at 1.
+            apply contains_triv.
+          }
+          { now rewrite H. }
+        }
+        assert (j <> i0).
+        {
+          contr. subst.
+          eapply wait_uniq0 with
+            (n:=n0) (m:=n)
+            (i:=i0)  (v:=v0)
+            (w:=w).
+          { easy. }
+          { now rewrite <- H5 at 1. }
+          { now rewrite <- H5 at 1. }
+          {
+            rewrite H, insert_perm.
+            apply contains_triv.
+          }
+          { now rewrite H at 1. }
+        }
+        {
+          assert (Waiting i0 (Exch v0) x1).
+          {
+            eapply wait_inv0 with
+              (n:=n0).
+            { now rewrite <- H5 at 1. }
+            { now rewrite <- H5 at 1. }
+          }
+          clear - H9 H13 H14 H15 state_idle0.
+          destruct_big_steps.
+          destruct H29. constructor.
+          { now rewrite H25, H18, H11, H4. }
+          { now rewrite H26, H19, H12, H5. }
+        }
       }
       {
-        admit.
+        intros.
+        dec_eq_nats n0 n.
+        {
+          rewrite <- x0 in H12 at 1.
+          rewrite <- x0 in H11 at 1.
+          simp_sets.
+          destruct_big_steps.
+          constructor; easy.
+        }
+        {
+          assert (Done j0 (Exch w0) (Some v0) x1).
+          {
+            eapply done_inv0 with
+              (i:=i0)
+              (n:=n0).
+            { easy. }
+            { now rewrite <- H5 at 1. }
+            { now rewrite <- H5 at 1. }
+          }
+          destruct H14.
+          assert (j0 <> k).
+          {
+            contr. subst.
+            destruct_big_steps.
+            rewrite H10 in call_done.
+            easy.
+          }
+          assert (j0 <> j).
+          {
+            contr. subst.
+            destruct_big_steps.
+            rewrite <- H14 in call_done; auto.
+            rewrite H17 in call_done.
+            easy.
+          }
+          destruct_big_steps.
+          constructor.
+          { now rewrite H35, H28, H21, H14. }
+          { now rewrite H36, H29, H22, H15. }
+        }
       }
       {
-        admit.
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x0 in H12 at 1.
+          simp_sets.
+        }
+        assert (m <> n).
+        {
+          contr. subst.
+          rewrite <- x0 in H13 at 1.
+          simp_sets.
+          eapply wait_uniq0 with
+            (n:=n0) (m:=n)
+            (i:=k) (v:=v0)
+            (w:=u).
+          { easy. }
+          { now rewrite <- H5 at 1. }
+          { now rewrite <- H5 at 1. }
+          {
+            rewrite H at 1.
+            apply contains_triv.
+          }
+          { now rewrite H at 1. }
+        }
+        rewrite H5; auto.
+        eapply wait_uniq0 with
+          (n:=n0)
+          (i:=i0) (v:=v0)
+          (w:=w0).
+        { easy. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
       }
     }
     {
-      admit.
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x0 in H10 at 1.
+        now simp_sets.
+      }
+      rewrite H5; auto.
+      eapply ready_lazy0 with
+        (v:=v0).
+      { now rewrite <- H5 at 1. }
     }
   }
   {
-    admit.
+    assert (i <> j).
+    {
+      contr. subst.
+      eapply ready_lazy0 with
+        (n:=n) (v:=w).
+      {
+        rewrite H, insert_perm.
+        apply contains_triv.
+      }
+      { now rewrite H. }
+    }
+    destruct_big_steps.
+    constructor.
+    { now rewrite H35, H28, H21, H14. }
+    { now rewrite H36, H29, H22, H15. }
   }
 }
 {
@@ -553,22 +758,72 @@ ddestruct H1.
       constructor.
       { easy. }
       {
-        admit.
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H9 at 1.
+          simp_sets.
+        }
+        eapply wait_inv0 with
+          (n:=n0).
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
       }
       {
-        admit.
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H11 at 1.
+          simp_sets.
+        }
+        eapply done_inv0 with
+          (i:=i0) (n:=n0).
+        { easy. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
       }
       {
-        admit.
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H10 at 1.
+          simp_sets.
+        }
+        assert (m <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H12 at 1.
+          simp_sets.
+        }
+        rewrite H5; auto.
+        eapply wait_uniq0 with
+          (n:=n0)
+          (i:=i0) (v:=v0)
+          (w:=w0).
+        { easy. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
       }
     }
     {
-      admit.
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x2 in H9 at 1.
+        simp_sets.
+      }
+      rewrite H5; auto.
+      eapply ready_lazy0 with
+        (v:=v0).
+      { now rewrite <- H5 at 1. }
     }
   }
-  {
-    admit.
-  }
+  { constructor; easy. }
 }
 {
   ddestruct H. cbn in *. psimpl.
@@ -585,10 +840,1357 @@ ddestruct H1.
       constructor.
       { easy. }
       {
-        admit.
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H5 at 1.
+          simp_sets.
+        }
+        assert (Waiting i1 (Exch v1) x1).
+        {
+          eapply wait_inv0 with
+            (n:=n0).
+          { now rewrite <- H4 at 1. }
+          { now rewrite <- H4 at 1. }
+        }
+        assert (i1 <> i0).
+        {
+          contr. subst.
+          eapply wait_uniq0 with
+            (n:=n) (m:=n0)
+            (i:=i0) (v:=v0)
+            (w:=v1).
+          { easy. }
+          {
+            rewrite <- x0 at 1.
+            apply contains_triv.
+          }
+          { now rewrite <- x0 at 1. }
+          { now rewrite <- H4 at 1. }
+          { now rewrite <- H4 at 1. }
+        }
+        destruct H22.
+        constructor; cbn.
+        { now rewrite H19, H12. }
+        { now rewrite H20, H13. }
       }
       {
-        admit.
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H21 at 1.
+          simp_sets.
+        }
+        assert (Done j (Exch w) (Some v1) x1).
+        {
+          eapply done_inv0 with
+            (i:=i1)
+            (n:=n0).
+          { easy. }
+          { now rewrite <- H4 at 1. }
+          { now rewrite <- H4 at 1. }
+        }
+        assert (i0 <> j).
+        {
+          contr. subst.
+          assert (Waiting j (Exch v0) x1).
+          {
+            eapply wait_inv0 with
+              (n:=n).
+            {
+              rewrite <- x0 at 1.
+              apply contains_triv.
+            }
+            { now rewrite <- x0 at 1. }
+          }
+          destruct H23, H24.
+          rewrite call_done in call_waiting0.
+          easy.
+        }
+        destruct H23.
+        constructor; cbn.
+        { now rewrite H19, H12. }
+        { now rewrite H20, H13. }
+      }
+      {
+        intros.
+        assert (m <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H22 at 1.
+          simp_sets.
+        }
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H14 at 1.
+          simp_sets.
+        }
+        rewrite H4; auto.
+        eapply wait_uniq0 with
+          (n:=n0)
+          (i:=i1) (v:=v1)
+          (w:=w).
+        { easy. }
+        { now rewrite <- H4 at 1. }
+        { now rewrite <- H4 at 1. }
+        { now rewrite <- H4 at 1. }
+      }
+    }
+    {
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x2 in H5 at 1.
+        simp_sets.
+      }
+      rewrite H4; auto.
+      eapply ready_lazy0 with
+        (v:=v1).
+      { now rewrite <- H4 at 1. }
+    }
+  }
+  {
+    constructor; cbn.
+    { now rewrite H19, H12. }
+    { now rewrite H20, H13. }
+  }
+}
+Qed.
+
+Lemma ready_done_stable {T A} (i : Name T) (v : A) (w : option A) :
+  forall s x t y,
+  (Ready i s x /\ Done i (Exch v) w x) ->
+  Rely i s x t y ->
+  Ready i t y /\ Done i (Exch v) w y.
+intros. induction H0. easy.
+apply IHSRTC. clear IHSRTC H1.
+destruct H0, H0. rename x into j.
+destruct H, H, H2, ready_inv0.
+ddestruct H1.
+{
+  ddestruct H. cbn in *.
+  psimpl. ddestruct H1.
+  split.
+  {
+    constructor.
+    {
+      constructor.
+      { easy. }
+      {
+        intros n0. specf H5 n0.
+        setoid_rewrite <- H5.
+        apply wait_inv0.
+      }
+      {
+        intros n0. specf H5 n0.
+        setoid_rewrite <- H5.
+        apply done_inv0.
+      }
+      {
+        intros n0 m0. assert (H5':=H5).
+        specf H5 n0. specf H5' m0.
+        setoid_rewrite <- H5.
+        setoid_rewrite <- H5'.
+        apply wait_uniq0.
+      }
+    }
+    {
+      intros n0. specf H5 n0.
+      setoid_rewrite <- H5.
+      apply ready_lazy0.
+    }
+  }
+  { easy. }
+}
+{
+  ddestruct H. cbn in *.
+  psimpl. ddestruct H1.
+  split.
+  {
+    constructor.
+    {
+      constructor.
+      { easy. }
+      {
+        intros n0. specf H5 n0.
+        setoid_rewrite <- H5.
+        apply wait_inv0.
+      }
+      {
+        intros n0. specf H5 n0.
+        setoid_rewrite <- H5.
+        apply done_inv0.
+      }
+      {
+        intros n0 m0. assert (H5':=H5).
+        specf H5 n0. specf H5' m0.
+        setoid_rewrite <- H5.
+        setoid_rewrite <- H5'.
+        apply wait_uniq0.
+      }
+    }
+    {
+      intros n0. specf H5 n0.
+      setoid_rewrite <- H5.
+      apply ready_lazy0.
+    }
+  }
+  { easy. }
+}
+{
+  ddestruct H. cbn in *. psimpl.
+  ddestruct H1. cbn in *. ddestruct H5.
+  {
+    split.
+    {
+      constructor.
+      {
+        constructor.
+        { easy. }
+        {
+          intros.
+          dec_eq_nats n0 n.
+          {
+            rewrite <- x in H5 at 1.
+            now simp_sets.
+          }
+          {
+            eapply wait_inv0 with
+              (n:=n0).
+            { now rewrite <- H4 at 1. }
+            { now rewrite <- H4 at 1. }
+          }
+        }
+        {
+          intros.
+          assert (n0 <> n).
+          {
+            contr. subst.
+            rewrite <- x in H9 at 1.
+            simp_sets.
+          }
+          eapply done_inv0 with
+            (i:=i1) (n:=n0).
+          { easy. }
+          { now rewrite <- H4. }
+          { now rewrite <- H4. }
+        }
+        {
+          intros.
+          dec_eq_nats n0 n.
+          {
+            rewrite <- x in H8 at 1.
+            simp_sets. rewrite H4; auto.
+            rewrite H4 in H10; auto.
+            eapply i_uniq. easy.
+            exact H10.
+          }
+          {
+            dec_eq_nats m n.
+            {
+              rewrite <- x in H10 at 1.
+              simp_sets. exfalso.
+              eapply i_uniq.
+              { symmetry. exact H11. }
+              { rewrite <- H4 at 1; auto. exact H8. }
+              { now rewrite <- H4 at 1. }
+            }
+            {
+              rewrite H4; auto.
+              eapply wait_uniq0 with
+                (n:=n0)
+                (i:=i1) (v:=v1)
+                (w:=w0).
+              { easy. }
+              { now rewrite <- H4 at 1. }
+              { now rewrite <- H4 at 1. }
+              { now rewrite <- H4 at 1. }
+            }
+          }
+        }
+      }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x in H5 at 1.
+          now simp_sets.
+        }
+        rewrite H4 at 1; auto.
+        eapply ready_lazy0 with
+          (v:=v1).
+        { now rewrite <- H4 at 1. }
+      }
+    }
+    { constructor; easy. }
+  }
+  {
+    split.
+    {
+      constructor.
+      {
+        constructor.
+        { easy. }
+        {
+          intros.
+          dec_eq_nats n0 n.
+          {
+            rewrite <- x in H8 at 1.
+            simp_sets; try easy.
+            eapply wait_inv0 with
+              (n:=n).
+            {
+              rewrite <- x2 at 1.
+              apply contains_triv.
+            }
+            { now rewrite <- x2 at 1. }
+          }
+          {
+            eapply wait_inv0 with
+              (n:=n0).
+            { now rewrite <- H4 at 1. }
+            { now rewrite <- H4 at 1. }
+          }
+        }
+        {
+          intros.
+          assert (n0 <> n).
+          {
+            contr. subst.
+            rewrite <- x in H10 at 1.
+            simp_sets.
+          }
+          eapply done_inv0 with
+            (i:=i2) (n:=n0).
+          { contr. now subst. }
+          { now rewrite <- H4. }
+          { now rewrite <- H4. }
+        }
+        {
+          intros.
+          dec_eq_nats n0 n.
+          {
+            rewrite <- x in H9 at 1.
+            simp_sets.
+            {
+              rewrite H4; auto.
+              rewrite H4 in H11; auto.
+              eapply i_uniq. easy.
+              exact H11.
+            }
+            {
+              rewrite H4; auto.
+              rewrite H4 in H11; auto.
+              eapply wait_uniq0 with
+                (n:=n)
+                (i:=i1) (v:=x0)
+                (w:=w0).
+              { easy. }
+              {
+                rewrite <- x2 at 1.
+                apply contains_triv.
+              }
+              { now rewrite <- x2 at 1. }
+              { easy. }
+            }
+          }
+          {
+            dec_eq_nats m n.
+            {
+              rewrite <- x in H11 at 1.
+              simp_sets.
+              {
+                exfalso.
+                eapply i_uniq.
+                { symmetry. exact H12. }
+                { rewrite <- H4 at 1; auto. exact H9. }
+                { now rewrite <- H4 at 1. }
+              }
+              {
+                exfalso.
+                eapply wait_uniq0 with
+                  (n:=n0) (m:=n)
+                  (i:=i1) (v:=v1)
+                  (w:=x0).
+                { easy. }
+                { now rewrite <- H4 at 1. }
+                { now rewrite <- H4 at 1. }
+                {
+                  rewrite <- x2 at 1.
+                  apply contains_triv.
+                }
+                { now rewrite <- x2 at 1. }
+              }
+            }
+            {
+              rewrite H4; auto.
+              eapply wait_uniq0 with
+                (n:=n0)
+                (i:=i2) (v:=v1)
+                (w:=w0).
+              { easy. }
+              { now rewrite <- H4 at 1. }
+              { now rewrite <- H4 at 1. }
+              { now rewrite <- H4 at 1. }
+            }
+          }
+        }
+      }
+      {
+        intros.
+        dec_eq_nats n0 n.
+        {
+          contr. subst.
+          rewrite <- x in H8 at 1.
+          simp_sets; try easy.
+          eapply ready_lazy0 with
+            (n:=n) (v:=x0).
+          {
+            rewrite <- x2 at 1.
+            apply contains_triv.
+          }
+          { now rewrite <- x2 at 1. }
+        }
+        {
+          rewrite H4 at 1; auto.
+          eapply ready_lazy0 with
+            (v:=v1).
+          { now rewrite <- H4 at 1. }
+        }
+      }
+    }
+    { constructor; easy. }
+  }
+}
+{
+  ddestruct H1. cbn in *. psimpl.
+  ddestruct H2. cbn in *. ddestruct H6.
+  2:{
+    rewrite <- x2 in H.
+    ddestruct H. simp_sets.
+  }
+  rewrite H in x0.
+  ddestruct x0. simp_sets.
+  rename i0 into k, v0 into u.
+  split.
+  {
+    constructor.
+    {
+      constructor.
+      {
+        destruct_big_steps.
+        rewrite state_idle0 in H9.
+        ddestruct H9. 2: simp_sets.
+        rewrite <- x in H16.
+        ddestruct H16. simp_sets.
+        rewrite <- x in H23.
+        ddestruct H23. 2: simp_sets.
+        rewrite <- x in H30.
+        ddestruct H30. simp_sets.
+        easy.
+      }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x0 in H11 at 1.
+          simp_sets.
+        }
+        assert (k <> i0).
+        {
+          contr. subst. exfalso.
+          eapply wait_uniq0 with
+            (n:=n0) (m:=n)
+            (i:=i0) (v:=v0)
+            (w:=u).
+          { easy. }
+          { now rewrite <- H5 at 1. }
+          { now rewrite <- H5 at 1. }
+          {
+            rewrite H at 1.
+            apply contains_triv.
+          }
+          { now rewrite H. }
+        }
+        assert (j <> i0).
+        {
+          contr. subst.
+          eapply wait_uniq0 with
+            (n:=n0) (m:=n)
+            (i:=i0)  (v:=v0)
+            (w:=w0).
+          { easy. }
+          { now rewrite <- H5 at 1. }
+          { now rewrite <- H5 at 1. }
+          {
+            rewrite H, insert_perm.
+            apply contains_triv.
+          }
+          { now rewrite H at 1. }
+        }
+        {
+          assert (Waiting i0 (Exch v0) x1).
+          {
+            eapply wait_inv0 with
+              (n:=n0).
+            { now rewrite <- H5 at 1. }
+            { now rewrite <- H5 at 1. }
+          }
+          clear - H9 H13 H14 H15 state_idle0.
+          destruct_big_steps.
+          destruct H29. constructor.
+          { now rewrite H25, H18, H11, H4. }
+          { now rewrite H26, H19, H12, H5. }
+        }
+      }
+      {
+        intros.
+        dec_eq_nats n0 n.
+        {
+          rewrite <- x0 in H12 at 1.
+          rewrite <- x0 in H11 at 1.
+          simp_sets.
+          destruct_big_steps.
+          constructor; easy.
+        }
+        {
+          assert (Done j0 (Exch w1) (Some v0) x1).
+          {
+            eapply done_inv0 with
+              (i:=i0)
+              (n:=n0).
+            { easy. }
+            { now rewrite <- H5 at 1. }
+            { now rewrite <- H5 at 1. }
+          }
+          destruct H14.
+          assert (j0 <> k).
+          {
+            contr. subst.
+            destruct_big_steps.
+            rewrite H10 in call_done0.
+            easy.
+          }
+          assert (j0 <> j).
+          {
+            contr. subst.
+            destruct_big_steps.
+            rewrite <- H14 in call_done0; auto.
+            rewrite H17 in call_done0.
+            easy.
+          }
+          destruct_big_steps.
+          constructor.
+          { now rewrite H35, H28, H21, H14. }
+          { now rewrite H36, H29, H22, H15. }
+        }
+      }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x0 in H12 at 1.
+          simp_sets.
+        }
+        assert (m <> n).
+        {
+          contr. subst.
+          rewrite <- x0 in H13 at 1.
+          simp_sets.
+          eapply wait_uniq0 with
+            (n:=n0) (m:=n)
+            (i:=k) (v:=v0)
+            (w:=u).
+          { easy. }
+          { now rewrite <- H5 at 1. }
+          { now rewrite <- H5 at 1. }
+          {
+            rewrite H at 1.
+            apply contains_triv.
+          }
+          { now rewrite H at 1. }
+        }
+        rewrite H5; auto.
+        eapply wait_uniq0 with
+          (n:=n0)
+          (i:=i0) (v:=v0)
+          (w:=w1).
+        { easy. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+      }
+    }
+    {
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x0 in H10 at 1.
+        now simp_sets.
+      }
+      rewrite H5; auto.
+      eapply ready_lazy0 with
+        (v:=v0).
+      { now rewrite <- H5 at 1. }
+    }
+  }
+  {
+    assert (i <> j).
+    {
+      contr. subst.
+      eapply ready_lazy0 with
+        (n:=n) (v:=w0).
+      {
+        rewrite H, insert_perm.
+        apply contains_triv.
+      }
+      { now rewrite H. }
+    }
+    destruct_big_steps.
+    constructor.
+    { now rewrite H35, H28, H21, H14. }
+    { now rewrite H36, H29, H22, H15. }
+  }
+}
+{
+  ddestruct H1. cbn in *. psimpl.
+  ddestruct H2. cbn in *. ddestruct H6.
+  {
+    rewrite H in x0.
+    ddestruct x0. simp_sets.
+  }
+  rewrite H in x2.
+  ddestruct x2. simp_sets.
+  rename i0 into k, v0 into u.
+  split.
+  {
+    constructor.
+    {
+      constructor.
+      { easy. }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H9 at 1.
+          simp_sets.
+        }
+        eapply wait_inv0 with
+          (n:=n0).
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+      }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H11 at 1.
+          simp_sets.
+        }
+        eapply done_inv0 with
+          (i:=i0) (n:=n0).
+        { easy. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+      }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H10 at 1.
+          simp_sets.
+        }
+        assert (m <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H12 at 1.
+          simp_sets.
+        }
+        rewrite H5; auto.
+        eapply wait_uniq0 with
+          (n:=n0)
+          (i:=i0) (v:=v0)
+          (w:=w1).
+        { easy. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+      }
+    }
+    {
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x2 in H9 at 1.
+        simp_sets.
+      }
+      rewrite H5; auto.
+      eapply ready_lazy0 with
+        (v:=v0).
+      { now rewrite <- H5 at 1. }
+    }
+  }
+  { constructor; easy. }
+}
+{
+  ddestruct H. cbn in *. psimpl.
+  ddestruct H1. cbn in *. ddestruct H5.
+  destruct_big_steps.
+  rewrite state_idle0 in H5.
+  ddestruct H5. 2: simp_sets.
+  rewrite <- x in H14.
+  ddestruct H14.
+  split.
+  {
+    constructor.
+    {
+      constructor.
+      { easy. }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H5 at 1.
+          simp_sets.
+        }
+        assert (Waiting i1 (Exch v1) x1).
+        {
+          eapply wait_inv0 with
+            (n:=n0).
+          { now rewrite <- H4 at 1. }
+          { now rewrite <- H4 at 1. }
+        }
+        assert (i1 <> i0).
+        {
+          contr. subst.
+          eapply wait_uniq0 with
+            (n:=n) (m:=n0)
+            (i:=i0) (v:=v0)
+            (w:=v1).
+          { easy. }
+          {
+            rewrite <- x0 at 1.
+            apply contains_triv.
+          }
+          { now rewrite <- x0 at 1. }
+          { now rewrite <- H4 at 1. }
+          { now rewrite <- H4 at 1. }
+        }
+        destruct H22.
+        constructor; cbn.
+        { now rewrite H19, H12. }
+        { now rewrite H20, H13. }
+      }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H21 at 1.
+          simp_sets.
+        }
+        assert (Done j (Exch w0) (Some v1) x1).
+        {
+          eapply done_inv0 with
+            (i:=i1)
+            (n:=n0).
+          { easy. }
+          { now rewrite <- H4 at 1. }
+          { now rewrite <- H4 at 1. }
+        }
+        assert (i0 <> j).
+        {
+          contr. subst.
+          assert (Waiting j (Exch v0) x1).
+          {
+            eapply wait_inv0 with
+              (n:=n).
+            {
+              rewrite <- x0 at 1.
+              apply contains_triv.
+            }
+            { now rewrite <- x0 at 1. }
+          }
+          destruct H23, H24.
+          rewrite call_done0 in call_waiting.
+          easy.
+        }
+        destruct H23.
+        constructor; cbn.
+        { now rewrite H19, H12. }
+        { now rewrite H20, H13. }
+      }
+      {
+        intros.
+        assert (m <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H22 at 1.
+          simp_sets.
+        }
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x2 in H14 at 1.
+          simp_sets.
+        }
+        rewrite H4; auto.
+        eapply wait_uniq0 with
+          (n:=n0)
+          (i:=i1) (v:=v1)
+          (w:=w0).
+        { easy. }
+        { now rewrite <- H4 at 1. }
+        { now rewrite <- H4 at 1. }
+        { now rewrite <- H4 at 1. }
+      }
+    }
+    {
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x2 in H5 at 1.
+        simp_sets.
+      }
+      rewrite H4; auto.
+      eapply ready_lazy0 with
+        (v:=v1).
+      { now rewrite <- H4 at 1. }
+    }
+  }
+  {
+    constructor; cbn.
+    { now rewrite H19, H12. }
+    { now rewrite H20, H13. }
+  }
+}
+Qed.
+
+Lemma complete_stable {T A} (k : nat) (i : Name T) (v : A) (w : option A) :
+  forall s x t y,
+  Complete k i s x \/ (Ready i s x /\ Done i (Exch v) w x) ->
+  Rely i s x t y ->
+  Complete k i t y \/ (Ready i t y /\ Done i (Exch v) w y).
+intros.
+destruct H.
+2:{
+  right.
+  eapply ready_done_stable.
+  2: exact H0. easy.
+}
+revert H.
+cut (
+  Complete k i s x \/ Ready i s x /\ Done i (Exch v) w x ->
+  Complete k i t y \/ Ready i t y /\ Done i (Exch v) w y
+).
+{ intros. apply H. now left. }
+intros.
+induction H0. easy.
+apply IHSRTC. clear IHSRTC H1.
+destruct H.
+2:{
+  right.
+  eapply ready_done_stable.
+  2:{
+    eapply SRTCStep.
+    exact H0.
+    constructor.
+  }
+  easy.
+}
+move H after H0.
+destruct H0, H0. rename x into j.
+ddestruct H1.
+{
+  left.
+  destruct H, comp_inv0.
+  psimpl. ddestruct H1. cbn in *.
+  psimpl. ddestruct H2.
+  constructor.
+  {
+    constructor.
+    { easy. }
+    {
+      intros n0. specf H6 n0.
+      setoid_rewrite <- H6.
+      apply wait_inv0.
+    }
+    {
+      intros n0. specf H6 n0.
+      setoid_rewrite <- H6.
+      apply done_inv0.
+    }
+    {
+      intros n0 m0. assert (H6':=H6).
+      specf H6 n0. specf H6' m0.
+      setoid_rewrite <- H6.
+      setoid_rewrite <- H6'.
+      apply wait_uniq0.
+    }
+  }
+  {
+    exists x0. specf H6 k.
+    now rewrite <- H6 at 1.
+  }
+  {
+    specf H6 k.
+    now rewrite <- H6 at 1.
+  }
+  {
+    intros m0. specf H6 m0.
+    setoid_rewrite <- H6.
+    apply comp_lazy0.
+  }
+}
+{
+  left.
+  destruct H, comp_inv0.
+  psimpl. ddestruct H1. cbn in *.
+  psimpl. ddestruct H2.
+  constructor.
+  {
+    constructor.
+    { easy. }
+    {
+      intros n0. specf H6 n0.
+      setoid_rewrite <- H6.
+      apply wait_inv0.
+    }
+    {
+      intros n0. specf H6 n0.
+      setoid_rewrite <- H6.
+      apply done_inv0.
+    }
+    {
+      intros n0 m0. assert (H6':=H6).
+      specf H6 n0. specf H6' m0.
+      setoid_rewrite <- H6.
+      setoid_rewrite <- H6'.
+      apply wait_uniq0.
+    }
+  }
+  {
+    exists x0. specf H6 k.
+    now rewrite <- H6 at 1.
+  }
+  {
+    specf H6 k.
+    now rewrite <- H6 at 1.
+  }
+  {
+    intros m0. specf H6 m0.
+    setoid_rewrite <- H6.
+    apply comp_lazy0.
+  }
+}
+{
+  left.
+  destruct H, comp_inv0.
+  ddestruct H1. cbn in *. psimpl.
+  ddestruct H1. cbn in *. ddestruct H5.
+  {
+    constructor.
+    {
+      constructor.
+      { easy. }
+      {
+        intros.
+        dec_eq_nats n0 n.
+        {
+          rewrite <- x in H5 at 1.
+          now simp_sets.
+        }
+        {
+          eapply wait_inv0 with
+            (n:=n0).
+          { now rewrite <- H4 at 1. }
+          { now rewrite <- H4 at 1. }
+        }
+      }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x in H10 at 1.
+          simp_sets.
+        }
+        eapply done_inv0 with
+          (i:=i1) (n:=n0).
+        { easy. }
+        { now rewrite <- H4. }
+        { now rewrite <- H4. }
+      }
+      {
+        intros.
+        dec_eq_nats n0 n.
+        {
+          rewrite <- x in H9 at 1.
+          simp_sets. rewrite H4; auto.
+          rewrite H4 in H11; auto.
+          eapply i_uniq. easy.
+          exact H11.
+        }
+        {
+          dec_eq_nats m n.
+          {
+            rewrite <- x in H11 at 1.
+            simp_sets. exfalso.
+            eapply i_uniq.
+            { symmetry. exact H12. }
+            { rewrite <- H4 at 1; auto. exact H9. }
+            { now rewrite <- H4 at 1. }
+          }
+          {
+            rewrite H4; auto.
+            eapply wait_uniq0 with
+              (n:=n0)
+              (i:=i1) (v:=v1)
+              (w:=w0).
+            { easy. }
+            { now rewrite <- H4 at 1. }
+            { now rewrite <- H4 at 1. }
+            { now rewrite <- H4 at 1. }
+          }
+        }
+      }
+    }
+    {
+      exists x0.
+      assert (k <> n).
+      {
+        contr. subst.
+        rewrite <- x1 in H6 at 1.
+        simp_sets.
+      }
+      now rewrite H4.
+    }
+    {
+      assert (k <> n).
+      {
+        contr. subst.
+        rewrite <- x1 in H6 at 1.
+        simp_sets.
+      }
+      now rewrite H4.
+    }
+    {
+      intros.
+      assert (m <> n).
+      {
+        contr. subst.
+        rewrite <- x in H9 at 1.
+        now simp_sets.
+      }
+      rewrite H4 at 1; auto.
+      eapply comp_lazy0 with
+        (v:=v1).
+      { easy. }
+      { now rewrite <- H4 at 1. }
+    }
+  }
+  {
+    constructor.
+    {
+      constructor.
+      { easy. }
+      {
+        intros.
+        dec_eq_nats n0 n.
+        {
+          rewrite <- x in H9 at 1.
+          simp_sets; try easy.
+          eapply wait_inv0 with
+            (n:=n).
+          {
+            rewrite <- x3 at 1.
+            apply contains_triv.
+          }
+          { now rewrite <- x3 at 1. }
+        }
+        {
+          eapply wait_inv0 with
+            (n:=n0).
+          { now rewrite <- H4 at 1. }
+          { now rewrite <- H4 at 1. }
+        }
+      }
+      {
+        intros.
+        assert (n0 <> n).
+        {
+          contr. subst.
+          rewrite <- x in H11 at 1.
+          simp_sets.
+        }
+        eapply done_inv0 with
+          (i:=i2) (n:=n0).
+        { contr. now subst. }
+        { now rewrite <- H4. }
+        { now rewrite <- H4. }
+      }
+      {
+        intros.
+        dec_eq_nats n0 n.
+        {
+          rewrite <- x in H10 at 1.
+          simp_sets.
+          {
+            rewrite H4; auto.
+            rewrite H4 in H12; auto.
+            eapply i_uniq. easy.
+            exact H12.
+          }
+          {
+            rewrite H4; auto.
+            rewrite H4 in H12; auto.
+            eapply wait_uniq0 with
+              (n:=n)
+              (i:=i1) (v:=x1)
+              (w:=w0).
+            { easy. }
+            {
+              rewrite <- x3 at 1.
+              apply contains_triv.
+            }
+            { now rewrite <- x3 at 1. }
+            { easy. }
+          }
+        }
+        {
+          dec_eq_nats m n.
+          {
+            rewrite <- x in H12 at 1.
+            simp_sets.
+            {
+              exfalso.
+              eapply i_uniq.
+              { symmetry. exact H13. }
+              { rewrite <- H4 at 1; auto. exact H10. }
+              { now rewrite <- H4 at 1. }
+            }
+            {
+              exfalso.
+              eapply wait_uniq0 with
+                (n:=n0) (m:=n)
+                (i:=i1) (v:=v1)
+                (w:=x1).
+              { easy. }
+              { now rewrite <- H4 at 1. }
+              { now rewrite <- H4 at 1. }
+              {
+                rewrite <- x3 at 1.
+                apply contains_triv.
+              }
+              { now rewrite <- x3 at 1. }
+            }
+          }
+          {
+            rewrite H4; auto.
+            eapply wait_uniq0 with
+              (n:=n0)
+              (i:=i2) (v:=v1)
+              (w:=w0).
+            { easy. }
+            { now rewrite <- H4 at 1. }
+            { now rewrite <- H4 at 1. }
+            { now rewrite <- H4 at 1. }
+          }
+        }
+      }
+    }
+    {
+      exists x0.
+      dec_eq_nats k n.
+      {
+        rewrite <- x3 in H6 at 1. simp_sets.
+        rewrite <- x, insert_perm at 1.
+        apply contains_triv.
+      }
+      { now rewrite H4 at 1. }
+    }
+    {
+      dec_eq_nats k n.
+      { now rewrite <- x at 1. }
+      { now rewrite H4 at 1. }
+    }
+    {
+      intros.
+      dec_eq_nats m n.
+      {
+        contr. subst.
+        rewrite <- x in H10 at 1.
+        simp_sets; try easy.
+        eapply comp_lazy0 with
+          (m:=n) (v:=x1).
+        { easy. }
+        {
+          rewrite <- x3 at 1.
+          apply contains_triv.
+        }
+        { now rewrite <- x3 at 1. }
+      }
+      {
+        rewrite H4 at 1; auto.
+        eapply comp_lazy0 with
+          (v:=v1).
+        { easy. }
+        { now rewrite <- H4 at 1. }
+      }
+    }
+  }
+}
+{
+  destruct H, comp_inv0.
+  dec_eq_nats j i.
+  {
+    right.
+    ddestruct H2. cbn in *. psimpl.
+    ddestruct H2. cbn in *. ddestruct H6.
+    2:{
+      rewrite H1 in x3.
+      ddestruct x3.
+      simp_sets.
+    }
+    rewrite H1 in x1.
+    ddestruct x1.
+    simp_sets.
+    assert (k = n).
+    {
+      apply NNPP. contr.
+      eapply comp_lazy0 with
+        (m:=n) (v:=w0).
+      { easy. }
+      {
+        rewrite H1, insert_perm.
+        apply contains_triv.
+      }
+      { now rewrite H1. }
+    }
+    subst.
+    split.
+    {
+      constructor.
+      {
+        constructor.
+        {
+          clear - H10 state_idle0.
+          destruct_big_steps.
+          rewrite state_idle0 in H.
+          ddestruct H. 2: simp_sets.
+          rewrite <- x in H6.
+          ddestruct H6. simp_sets.
+          rewrite <- x in H13.
+          ddestruct H13. 2: simp_sets.
+          rewrite <- x in H20.
+          ddestruct H20. simp_sets.
+          easy.
+        }
+        {
+          intros.
+          assert (n0 <> n).
+          {
+            contr. subst.
+            rewrite <- x1 in H12 at 1.
+            simp_sets.
+          }
+          assert (Waiting i1 (Exch v1) x2).
+          {
+            eapply wait_inv0 with
+              (n:=n0).
+            { now rewrite <- H5 at 1. }
+            { now rewrite <- H5 at 1. }
+          }
+          assert (i1 <> i0).
+          {
+            contr. subst.
+            eapply wait_uniq0 with
+              (n:=n0) (m:=n)
+              (i:=i0) (v:=v1)
+              (w:=v0).
+            { easy. }
+            { now rewrite <- H5 at 1. }
+            { now rewrite <- H5 at 1. }
+            { rewrite H1. apply contains_triv. }
+            { now rewrite H1. }
+          }
+          assert (i1 <> i).
+          {
+            contr. subst.
+            eapply comp_lazy0 with
+              (m:=n0) (v:=v1).
+            { easy. }
+            { now rewrite <- H5 at 1. }
+            { now rewrite <- H5 at 1. }
+          }
+          clear - H10 H14 H15 H16 state_idle0.
+          destruct_big_steps. destruct H27.
+          constructor.
+          { now rewrite H25, H18, H11, H4. }
+          { now rewrite H26, H19, H12, H5. }
+        }
+        {
+          intros.
+          dec_eq_nats n0 n.
+          {
+            rewrite <- x1 in H13 at 1.
+            rewrite <- x1 in H12 at 1.
+            simp_sets. clear - H10.
+            destruct_big_steps.
+            constructor; easy.
+          }
+          {
+            assert (Done j (Exch w1) (Some v1) x2).
+            {
+              eapply done_inv0 with
+                (i:=i1)
+                (n:=n0).
+              { easy. }
+              { now rewrite <- H5 at 1. }
+              { now rewrite <- H5 at 1. }
+            }
+            clear - H10 H14 H15.
+            destruct_big_steps.
+            destruct H28.
+            assert (i0 <> j).
+            {
+              contr. subst.
+              rewrite H2 in ret_done.
+              easy.
+            }
+            assert (i <> j).
+            {
+              contr. subst.
+              rewrite H4 in H7; auto.
+              rewrite H7 in call_done.
+              easy.
+            }
+            constructor.
+            { now rewrite H25, H18, H11, H4. }
+            { now rewrite H26, H19, H12, H5. }
+          }
+        }
+        {
+          intros.
+          dec_eq_nats m n.
+          {
+            rewrite <- x1 at 1.
+          }
+        }
       }
       {
         admit.
@@ -599,23 +2201,243 @@ ddestruct H1.
     }
   }
   {
+    left.
     admit.
   }
 }
-Admitted.
-
-Lemma ready_done_stable {T A} (i : Name T) (v : A) (w : option A) :
-  forall s x t y,
-  (Ready i s x /\ Done i (Exch v) w x) ->
-  Rely i s x t y ->
-  Ready i t y /\ Done i (Exch v) w y.
-Admitted.
-
-Lemma complete_stable {T A} (k : nat) (i : Name T) (v : A) :
-  forall s x t y,
-  Complete k i s x \/ (Ready i s x /\ exists w, Done i (Exch v) w x) ->
-  Rely i s x t y ->
-  Complete k i t y \/ (Ready i t y /\ exists w, Done i (Exch v) w y).
+{
+  left.
+  destruct H, comp_inv0.
+  assert (k <> n).
+  {
+    contr. subst.
+    rewrite H1 in comp_nemp0.
+    simp_sets.
+  }
+  ddestruct H2. cbn in *. psimpl.
+  ddestruct H2. cbn in *. ddestruct H6.
+  {
+    rewrite H1 in x1 at 1.
+    ddestruct x1. simp_sets.
+  }
+  rewrite H1 in x3 at 1.
+  ddestruct x3. simp_sets.
+  constructor.
+  {
+    constructor.
+    { easy. }
+    {
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x3 in H11 at 1.
+        simp_sets.
+      }
+      eapply wait_inv0 with
+        (n:=n0).
+      { now rewrite <- H5 at 1. }
+      { now rewrite <- H5 at 1. }
+    }
+    {
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x3 in H13 at 1.
+        simp_sets.
+      }
+      eapply done_inv0 with
+        (n:=n0) (i:=i1).
+      { easy. }
+      { now rewrite <- H5 at 1. }
+      { now rewrite <- H5 at 1. }
+    }
+    {
+      intros.
+      assert (m <> n).
+      {
+        contr. subst.
+        rewrite <- x3 in H14 at 1.
+        simp_sets.
+      }
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x3 in H12 at 1.
+        simp_sets.
+      }
+      rewrite H5; auto.
+      eapply wait_uniq0 with
+        (n:=n0)
+        (i:=i1) (v:=v1)
+        (w:=w1).
+      { easy. }
+      { now rewrite <- H5 at 1. }
+      { now rewrite <- H5 at 1. }
+      { now rewrite <- H5 at 1. }
+    }
+  }
+  {
+    exists x0.
+    now rewrite H5 at 1.
+  }
+  { now rewrite H5 at 1. }
+  {
+    intros.
+    assert (m <> n).
+    {
+      contr. subst.
+      rewrite <- x3 in H12 at 1.
+      simp_sets.
+    }
+    rewrite H5; auto.
+    eapply comp_lazy0 with
+      (v:=v1).
+    { easy. }
+    { now rewrite <- H5 at 1. }
+  }
+}
+{
+  ddestruct H1. cbn in *. psimpl.
+  ddestruct H2. cbn in *. ddestruct H6.
+  destruct H, comp_inv0. psimpl.
+  assert (k <> n).
+  {
+    contr. subst.
+    rewrite <- x0 in H at 1.
+    now simp_sets.
+  }
+  left.
+  destruct_big_steps.
+  rewrite state_idle0 in H6.
+  ddestruct H6. 2: simp_sets.
+  rewrite <- x in H15.
+  ddestruct H15. clear x4 x5.
+  psimpl.
+  constructor.
+  {
+    constructor.
+    { easy. }
+    {
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x3 in H6 at 1.
+        simp_sets.
+      }
+      assert (i1 <> i0).
+      {
+        contr. subst.
+        eapply wait_uniq0 with
+          (n:=n0) (m:=n)
+          (i:=i0) (v:=v1)
+          (w:=v0).
+        { easy. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+        {
+          rewrite <- x0 at 1.
+          apply contains_triv.
+        }
+        { now rewrite <- x0 at 1. }
+      }
+      assert (Waiting i1 (Exch v1) x1).
+      {
+        eapply wait_inv0 with
+          (n:=n0).
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+      }
+      destruct H23.
+      constructor.
+      { now rewrite H20, H13. }
+      { now rewrite H21, H14. }
+    }
+    {
+      intros.
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x3 in H16 at 1.
+        simp_sets.
+      }
+      assert (Done j (Exch w0) (Some v1) x1).
+      {
+        eapply done_inv0 with
+          (i:=i1) (n:=n0).
+        { easy. }
+        { now rewrite <- H5 at 1. }
+        { now rewrite <- H5 at 1. }
+      }
+      assert (j <> i0).
+      {
+        contr. subst.
+        assert (Waiting i0 (Exch v0) x1).
+        {
+          eapply wait_inv0 with
+            (n:=n).
+          {
+            rewrite <- x0 at 1.
+            apply contains_triv.
+          }
+          { now rewrite <- x0 at 1. }
+        }
+        destruct H23, H24.
+        rewrite call_done in call_waiting.
+        easy.
+      }
+      destruct H23.
+      constructor.
+      { now rewrite H20, H13. }
+      { now rewrite H21, H14. }
+    }
+    {
+      intros.
+      assert (m <> n).
+      {
+        contr. subst.
+        rewrite <- x3 in H18 at 1.
+        simp_sets.
+      }
+      assert (n0 <> n).
+      {
+        contr. subst.
+        rewrite <- x3 in H15 at 1.
+        simp_sets.
+      }
+      rewrite H5; auto.
+      eapply wait_uniq0 with
+        (n:=n0)
+        (i:=i1) (v:=v1)
+        (w:=w0).
+      { easy. }
+      { now rewrite <- H5 at 1. }
+      { now rewrite <- H5 at 1. }
+      { now rewrite <- H5 at 1. }
+    }
+  }
+  {
+    exists x2.
+    now rewrite H5 at 1.
+  }
+  { now rewrite H5 at 1. }
+  {
+    intros.
+    assert (m <> n).
+    {
+      contr. subst.
+      rewrite <- x3 in H15 at 1.
+      simp_sets.
+    }
+    rewrite H5; auto.
+    eapply comp_lazy0 with
+      (v:=v1).
+    { easy. }
+    { now rewrite <- H5 at 1. }
+  }
+}
 Admitted.
 
 Lemma exch_correct {T A} {i : Name T} {v : A} :
@@ -881,8 +2703,33 @@ eapply lemBind.
     unfold LiftSRelt, LiftSPrec. intros. psimpl.
     specialize (H0 x1 eq_refl). psimpl.
     exists x0. split. easy.
-    eapply complete_stable.
-    2: exact H0. easy.
+    assert (
+      exists w,
+        Complete k i x x1 \/
+        Ready i x x1 /\ Done i (Exch v) w x1
+    ).
+    {
+      destruct H1.
+      {
+        exists None.
+        now left.
+      }
+      {
+        psimpl.
+        exists x2.
+        now right.
+      }
+    }
+    psimpl.
+    eapply complete_stable in H.
+    2: exact H0.
+    destruct H.
+    { now left. }
+    {
+      right.
+      split. easy.
+      now exists x2.
+    }
   }
   {
     unfold Stable, stablePost, stableRelt, sub, subRelt.
