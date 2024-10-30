@@ -6333,3 +6333,11 @@ constructor.
   }
 }
 Qed.
+
+Require Import LHL.Core.Linearizability.
+
+Theorem elimArrayLin T A :
+  Lin (overObj (VE T A :> elimArray T A)) (VF T A).
+eapply soundness.
+apply elimArrayCorrect.
+Qed.
