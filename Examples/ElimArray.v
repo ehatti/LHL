@@ -462,65 +462,57 @@ ddestruct H1.
     { now rewrite H9. }
   }
   {
-    setoid_rewrite <- H2. intros.
-    assert (j <> i0).
+    intros.
+    dec_eq_nats i0 j.
     {
-      contr. subst.
-      apply nwait_inv0 in H12.
-      psimpl. destruct H12.
-      symmetry in x4. apply H in x4.
-      specialize (x4 x3 eq_refl). psimpl.
-      now rewrite H13 in call_
+      now rewrite <- x in neq_idle at 1.
     }
-    assert (Done j (Exch w) (Some v) x2).
     {
-      eapply done_inv0.
-      { now rewrite H3 at 1. }
-      { exact H1. }
-      { exact H9. }
-      { exact H10. }
+      assert (Done j (Exch w) (Some v) x3).
+      {
+        eapply done_inv0.
+        { now rewrite H3 at 1. }
+        { exact H1. }
+        { rewrite H2. exact H11. }
+        { rewrite H2. exact H12. }
+      }
+      destruct H14.
+      constructor.
+      { now rewrite H8. }
+      { now rewrite H9. }
     }
-    destruct H12.
-    constructor.
-    { now rewrite H7. }
-    { now rewrite H8. }
   }
   {
     intros.
     rewrite <- H2 at 1.
-    eapply idle_inv0.
-    setoid_rewrite H3. easy.
-    contr. subst.
-    setoid_rewrite <- x in H1.
-    destruct H1.
-    { easy. }
+    dec_eq_nats i1 i0.
     {
-      psimpl.
-      rewrite frobProgId in H1 at 1.
-      cbn in H1. ddestruct H1.
+      eapply idle_inv0.
+      right. destruct x1.
+      now exists v0, x2.
     }
-    contr. subst.
-    setoid_rewrite <- x in H1.
-    destruct H1.
-    { easy. }
     {
-      psimpl.
-      rewrite frobProgId in H1 at 1.
-      cbn in H1. ddestruct H1.
+      eapply idle_inv0.
+      now setoid_rewrite H3.
     }
   }
   { now setoid_rewrite <- H2. }
   {
     intros.
     dec_eq_nats i1 i0.
-    { now rewrite <- x at 1. }
+    {
+      symmetry in x4.
+      apply H in x4.
+      destruct H1.
+      now rewrite H4 in call_waiting.
+    }
     {
       rewrite <- H3; auto.
       eapply wait_nidle0 with (v:=v).
       destruct H1.
       constructor.
-      { now rewrite <- H7. }
       { now rewrite <- H8. }
+      { now rewrite <- H9. }
     }
   }
   {
@@ -528,32 +520,32 @@ ddestruct H1.
     dec_eq_nats i1 i0.
     {
       contr. psimpl.
-      rewrite <- x in H9 at 1.
-      rewrite frobProgId in H9 at 1.
-      cbn in *. ddestruct H9.
+      now rewrite <- x in H11 at 1.
     }
     {
-      rewrite <- H3; auto.
+      setoid_rewrite <- H3; auto.
       eapply wait_nret0 with (v:=v).
       destruct H1.
       constructor.
-      { now rewrite <- H7. }
       { now rewrite <- H8. }
+      { now rewrite <- H9. }
     }
   }
   {
     setoid_rewrite <- H2. intros.
-    apply nwait_inv0 in H1. psimpl.
-    assert (j <> i0).
+    dec_eq_nats j i0.
     {
-      contr. subst. destruct H1, H.
-      specialize (H1 x2 eq_refl). psimpl.
-      now rewrite H1 in call_done.
+      apply done_nret0 in H1.
+      exfalso. apply H1.
+      destruct x1. now exists v, x2.
     }
-    exists x4. destruct H1.
-    constructor.
-    { now rewrite H7. }
-    { now rewrite H8. }
+    {
+      apply nwait_inv0 in H1. psimpl.
+      exists x5. destruct H1.
+      constructor.
+      { now rewrite H8. }
+      { now rewrite H9. }
+    }
   }
   { now setoid_rewrite <- H2. }
   {
@@ -561,10 +553,9 @@ ddestruct H1.
     assert (i1 <> i0).
     {
       contr. subst.
-      apply nwait_inv0 in H1.
-      psimpl. destruct H, H1.
-      specialize (H9 x2 eq_refl). psimpl.
-      now rewrite H1 in call_done.
+      apply done_nret0 in H1.
+      psimpl. exfalso. apply H1.
+      destruct x1. now exists v0, x2.
     }
     setoid_rewrite <- H3; auto.
     eapply done_nret0. exact H1.
@@ -2146,6 +2137,42 @@ destruct H0, H0. rename x into j.
 destruct H, H, H2, ready_inv0.
 ddestruct H1.
 {
+  split. 2: easy.
+  constructor.
+  {
+    eapply inv_stable with (s:=s) (x:=x).
+    { constructor; easy. }
+    {
+      econstructor.
+      2: constructor.
+      exists i0. split. exact H0.
+      eapply EAInvoke. easy.
+    }
+  }
+  {
+    unfold InvokeAny, TInvoke in H.
+    psimpl. now setoid_rewrite <- H2.
+  }
+}
+{
+  split. 2: easy.
+  constructor.
+  {
+    eapply inv_stable with (s:=s) (x:=x).
+    { constructor; easy. }
+    {
+      econstructor.
+      2: constructor.
+      exists i0. split. exact H0.
+      eapply EAReturn. easy.
+    }
+  }
+  {
+    unfold ReturnAny, TReturn in H.
+    psimpl. now setoid_rewrite <- H2.
+  }
+}
+{
   ddestruct H. cbn in *.
   psimpl. ddestruct H1.
   split.
@@ -2520,6 +2547,31 @@ destruct H, H1, ready_inv0.
 ddestruct H2.
 all: try easy.
 {
+  unfold InvokeAny, TInvoke in H.
+  psimpl. apply sing_elem in H3. psimpl.
+  assert (i0 <> i).
+  {
+    contr. subst.
+    destruct H. specialize (H3 x2 eq_refl).
+    psimpl. now rewrite call_waiting in H3.
+  }
+  constructor.
+  { now rewrite H7. }
+  { now rewrite H8. }
+}
+{
+  unfold ReturnAny, TReturn, mapRetPoss in H.
+  psimpl. apply sing_elem in H3. psimpl.
+  assert (i0 <> i).
+  {
+    contr. subst.
+    now rewrite call_waiting in H5.
+  }
+  constructor.
+  { now rewrite H8. }
+  { now rewrite H9. }
+}
+{
   destruct H1. cbn in *. psimpl.
   ddestruct H3. cbn in *. ddestruct H6.
   {
@@ -2581,6 +2633,31 @@ destruct H0, H0.
 destruct H, H1, ready_inv0.
 ddestruct H2.
 all: try easy.
+{
+  unfold InvokeAny, TInvoke in H.
+  psimpl. apply sing_elem in H3. psimpl.
+  assert (i0 <> i).
+  {
+    contr. subst.
+    destruct H. specialize (H3 x2 eq_refl).
+    psimpl. now rewrite call_done in H3.
+  }
+  constructor.
+  { now rewrite H7. }
+  { now rewrite H8. }
+}
+{
+  unfold ReturnAny, TReturn, mapRetPoss in H.
+  psimpl. apply sing_elem in H3. psimpl.
+  assert (i0 <> i).
+  {
+    contr. subst.
+    now rewrite call_done in H5.
+  }
+  constructor.
+  { now rewrite H8. }
+  { now rewrite H9. }
+}
 {
   clear - call_done ret_done H2.
   destruct_big_steps.
@@ -2658,6 +2735,69 @@ destruct H.
 move H after H0.
 destruct H0, H0. rename x into j.
 ddestruct H1.
+{
+  left.
+  assert (H1' := H1). 
+  unfold InvokeAny, TInvoke in H1.
+  psimpl. apply sing_elem in H4. psimpl.
+  destruct H1, H2. cbn in *. ddestruct H2.
+  specialize (H4 x2 eq_refl). psimpl.
+  constructor.
+  {
+    eapply inv_stable with
+      (s:=s) (x:=x2) (i:=i).
+    { apply H. }
+    {
+      econstructor.
+      2: constructor.
+      exists i0. split. easy.
+      now eapply EAInvoke.
+    }
+  }
+  {
+    setoid_rewrite <- H3.
+    apply H.
+  }
+  {
+    setoid_rewrite <- H3.
+    apply H.
+  }
+  {
+    setoid_rewrite <- H3.
+    apply H.
+  }
+}
+{
+  left.
+  assert (H1' := H1). 
+  unfold ReturnAny, TReturn, mapRetPoss in H1.
+  psimpl. apply sing_elem in H4. psimpl.
+  destruct H2. cbn in *. ddestruct H2.
+  constructor.
+  {
+    eapply inv_stable with
+      (s:=s) (x:=x3) (i:=i).
+    { apply H. }
+    {
+      econstructor.
+      2: constructor.
+      exists i0. split. easy.
+      now eapply EAReturn.
+    }
+  }
+  {
+    setoid_rewrite <- H3.
+    apply H.
+  }
+  {
+    setoid_rewrite <- H3.
+    apply H.
+  }
+  {
+    setoid_rewrite <- H3.
+    apply H.
+  }
+}
 {
   left.
   destruct H, comp_inv0.
@@ -3142,6 +3282,16 @@ induction H. easy.
 rewrite <- IHSRTC. clear IHSRTC H0.
 destruct H, H. rename x into j.
 ddestruct H0.
+{
+  unfold InvokeAny, TInvoke in H0.
+  psimpl. destruct H1. cbn in *.
+  now rewrite H4.
+}
+{
+  unfold ReturnAny, TReturn in H0.
+  psimpl. destruct H1. cbn in *.
+  now rewrite H4.
+}
 {
   destruct H0. cbn in *. psimpl.
   ddestruct H0. cbn in *.
@@ -5728,6 +5878,59 @@ eapply lemBind.
 }
 Qed.
 
+Lemma Invoke_pres_single {T A R} :
+  forall (m : F A R) i s ρ t σs,
+  TInvoke (VE:= VE T A) (VF:= VF T A) (elimArray T A) i R m s (eq ρ) t σs ->
+  exists σ, σs = eq σ.
+intros.
+unfold TInvoke in H. psimpl.
+exists (invPoss i ρ m).
+set_ext σ. split; intros; destruct_all; subst.
+{
+  unfold TIdle in H. destruct_all.
+  specialize (H2 x eq_refl). destruct_all.
+  destruct x, σ. unfold invPoss. cbn in *.
+  f_equal; try easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H6; easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H7; easy.
+}
+{
+  cbn. rewrite eqb_id. exists ρ.
+  repeat split; (easy || apply differ_pointwise_trivial).
+}
+Qed.
+
+Lemma Return_pres_single {T A R} :
+  forall (m : F A R) v i s ρ t σs,
+  TReturn (VE:= VE T A) (VF:= VF T A) (elimArray T A) i m v s (eq ρ) t σs ->
+  exists σ, σs = eq σ.
+intros.
+unfold TReturn, mapRetPoss in H. psimpl.
+exists (retPoss i ρ).
+set_ext σ. split; intros; destruct_all; subst.
+{
+  unfold retPoss. destruct x, σ. cbn in *.
+  f_equal. easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H7; easy.
+  extensionality j. dec_eq_nats i j.
+  rewrite eqb_id. easy.
+  rewrite eqb_nid, H8; easy.
+}
+{
+  cbn. rewrite eqb_id. exists ρ.
+  destruct H0. ddestruct H0. cbn in *.
+  symmetry in x0. apply H in x0.
+  specialize (x0 ρ eq_refl).
+  repeat split; (easy || apply differ_pointwise_trivial).
+}
+Qed.
+
 Theorem elimArrayCorrect T A :
   VerifyImpl (VE T A) (VF T A)
     (fun i => LiftSRelt (Rely i))
@@ -5759,10 +5962,34 @@ constructor.
   exists i. easy.
 }
 {
-  admit.
+  unfold sub, subRelt, LiftSRelt.
+  intros. psimpl.
+  assert (exists x, σ = eq x).
+  {
+    destruct H0, H0.
+    eapply Invoke_pres_single.
+    exact H0.
+  }
+  psimpl.
+  exists x0. split. easy.
+  econstructor. 2: constructor.
+  exists i. split. easy.
+  now eapply EAInvoke.
 }
 {
-  admit.
+  unfold sub, subRelt, LiftSRelt.
+  intros. psimpl.
+  assert (exists x, σ = eq x).
+  {
+    destruct H0, H0, H0.
+    eapply Return_pres_single.
+    exact H0.
+  }
+  psimpl.
+  exists x0. split. easy.
+  econstructor. 2: constructor.
+  exists i. split. easy.
+  now eapply EAReturn.
 }
 {
   intros. eexists.
@@ -6038,6 +6265,71 @@ constructor.
     { easy. }
   }
   {
-    admit.
+    unfold LiftSRelt. intros.
+    eq_inj H. exists (retPoss i x0).
+    split.
+    {
+      set_ext y. unfold mapRetPoss, retPoss.
+      split; intros; psimpl.
+      {
+        destruct x1, y. cbn in *.
+        f_equal; try easy.
+        extensionality j.
+        dec_eq_nats i j.
+        now rewrite eqb_id.
+        now rewrite eqb_nid, H8.
+        extensionality j.
+        dec_eq_nats i j.
+        now rewrite eqb_id.
+        now rewrite eqb_nid, H9.
+      }
+      {
+        cbn. exists x0. split. easy.
+        rewrite eqb_id. destruct H3.
+        repeat split; (easy || apply differ_pointwise_trivial).
+      }
+    }
+    {
+      eapply EAReturn.
+      exists _, m, v.
+      split.
+      {
+        unfold Returned. intros.
+        psimpl. now destruct H3.
+      }
+      split.
+      {
+        split; cbn.
+        {
+          rewrite H0, eqb_id.
+          constructor; easy.
+        }
+        { intros. now rewrite eqb_nid. }
+      }
+      split.
+      { easy. }
+      {
+        set_ext y. unfold mapRetPoss, retPoss.
+        split; intros; psimpl.
+        {
+          cbn. exists x0. split. easy.
+          rewrite eqb_id. destruct H3.
+          repeat split; (easy || apply differ_pointwise_trivial).
+        }
+        {
+          destruct x1, y. cbn in *.
+          f_equal; try easy.
+          extensionality j.
+          dec_eq_nats i j.
+          now rewrite eqb_id.
+          now rewrite eqb_nid, H8.
+          extensionality j.
+          dec_eq_nats i j.
+          now rewrite eqb_id.
+          now rewrite eqb_nid, H9.
+        }
+      }
+    }
   }
 }
+Qed.
