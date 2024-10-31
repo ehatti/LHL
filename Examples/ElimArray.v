@@ -261,12 +261,23 @@ Ltac simp_sets :=
   | [ H : {} = {?i => ?v} |- _ ] =>
       symmetry in H;
       now apply disj_cons in H
-  | [ H : insert ?x ?xs = insert ?y ?ys |- _ ] =>
+  | [ H : insert ?x emp = insert ?y emp |- _ ] =>
+      apply insert_cong1 in H;
+      ddestruct H
+  | [ H : insert (?i, ?x) (insert (?j, ?y) emp) =
+          insert (?i, ?x) (insert (?k, ?z) emp),
+      H0 : ?i <> ?j
+    |-
+      _
+    ] =>
+      apply (insert_cong2_pad _ _ _ _ _ _ H0) in H;
+      ddestruct H
+  (* | [ H : insert ?x ?xs = insert ?y ?ys |- _ ] =>
       let H2 := fresh in
       let H3 := fresh in
       apply insert_cong in H;
       destruct H as [H2 H3];
-      ddestruct H2
+      ddestruct H2 *)
   | [ H : emp = emp |- _ ] =>
       clear H
   | [ H : contains ?x (insert ?y ?s) |- _ ] =>
@@ -6001,18 +6012,21 @@ constructor.
     {
       cbn. intros.
       simp_sets.
+      easy.
     }
     {
       cbn. intros.
       simp_sets.
+      easy.
     }
     {
       cbn. intros.
-      apply contains_contr.
+      easy.
     }
     {
       cbn. intros.
       simp_sets.
+      easy.
     }
     {
       intros. now destruct H.
@@ -6023,19 +6037,23 @@ constructor.
     {
       cbn. intros.
       simp_sets.
+      easy.
     }
     {
       cbn. intros.
       simp_sets.
+      easy.
     }
     {
       cbn. intros.
       simp_sets.
+      easy.
     }
   }
   {
     cbn. intros.
     simp_sets.
+    easy.
   }
 }
 {

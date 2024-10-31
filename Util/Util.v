@@ -137,29 +137,13 @@ easy.
 exfalso. apply n0. easy.
 Qed.
 
-Parameter set : Type -> Type.
-Parameter emp : forall {A}, set A.
-Parameter insert : forall {A}, A -> set A -> set A.
-
-Axiom insert_perm : forall {A} (s : set A) x y, insert x (insert y s) = insert y (insert x s).
-Axiom insert_unique : forall {A} (s : set A) x, insert x (insert x s) = insert x s.
-Axiom insert_cong : forall {A} (s1 s2 : set A) x y, insert x s1 = insert y s2 -> x = y /\ s1 = s2.
-
-Axiom disj_cons : forall {A} (s : set A) x, insert x s <> emp.
-
-Parameter contains : forall {A}, A -> set A -> Prop.
-Infix "∈" := contains (at level 40).
-
-Axiom contains_triv : forall {A} (s : set A) x, contains x (insert x s).
-
-Axiom contains_contr : forall {A} (x : A), ~contains x emp.
-Axiom contains_invert : forall {A} (s : set A) x y,
-  contains x (insert y s) ->
-  x = y \/ contains x s.
-
 Ltac ddestruct H := dependent destruction H.
+Ltac decide_prop P :=
+  let H := fresh in
+  assert (H : P \/ ~P) by apply excluded_middle;
+  destruct H.
 
-(* Definition set : Type -> Type := fun A => A -> Prop.
+Definition set : Type -> Type := fun A => A -> Prop.
 Definition emp : forall {A}, set A :=
   fun _ _ => False.
 Definition insert : forall {A}, A -> set A -> set A :=
@@ -218,22 +202,164 @@ Lemma help : forall P Q, P = Q -> P <-> Q.
 intros. now rewrite H.
 Qed.
 
-Lemma insert_cong :
-  forall {A} (s1 s2 : set A) x y,
-  insert x s1 = insert y s2 ->
-  x = y /\ s1 = s2.
-unfold insert. intros. *)
+Lemma insert_cong1 :
+  forall {A} (x y : A),
+  insert x emp = insert y emp ->
+  x = y.
+unfold insert. intros.
+apply equal_f with (x:=x) in H.
+assert (x = x \/ emp x) by now left.
+rewrite H in H0. now destruct H0.
+Qed.
 
+Lemma insert_cong2 :
+  forall {A} (x y z w : A),
+  x <> y ->
+  insert x (insert y emp) = insert z (insert w emp) ->
+  x = z /\ y = w \/
+  x = w /\ y = z.
+unfold insert, emp.
+intros A x y z w neq. intros.
+dec_eq_nats x z.
+{
+  dec_eq_nats y w.
+  { now left. }
+  {
+    dec_eq_nats z w.
+    {
+      apply equal_f with (x:=y) in H.
+      assert (w = y \/ y = y \/ False).
+      { right. now left. }
+      rewrite H in H1.
+      destruct H1. congruence.
+      destruct H1. congruence.
+      easy.
+    }
+    {
+      apply equal_f with (x:=y) in H.
+      assert (z = y \/ y = y \/ False).
+      { right. now left. }
+      rewrite H in H2.
+      destruct H2. now subst.
+      destruct H2. congruence.
+      easy.
+    }
+  }
+}
+{
+  right.
+  dec_eq_nats x w.
+  {
+    apply equal_f with (x:=y) in H.
+    assert (w = y \/ y = y \/ False).
+    { right. now left. }
+    rewrite H in H1.
+    destruct H1. easy.
+    destruct H1. congruence.
+    easy.
+  }
+  {
+    dec_eq_nats y z.
+    {
+      apply equal_f with (x:=x) in H.
+      assert (x = x \/ z = x \/ False).
+      { now left. }
+      rewrite H in H2.
+      destruct H2. congruence.
+      destruct H2. congruence.
+      easy.
+    }
+    {
+      dec_eq_nats w y.
+      {
+        apply equal_f with (x:=x) in H.
+        assert (x = x \/ y = x \/ False).
+        { now left. }
+        rewrite H in H3.
+        destruct H3. congruence.
+        destruct H3. congruence.
+        easy.
+      }
+      {
+        apply equal_f with (x:=y) in H.
+        assert (x = y \/ y = y \/ False).
+        { right. now left. }
+        rewrite H in H4.
+        destruct H4. congruence.
+        destruct H4. congruence.
+        easy.
+      }
+    }
+  }
+}
+Qed.
 
+Lemma insert_cong2_left :
+  forall {I A} (i j k l : I) (x y z w : A),
+  i <> j ->
+  j <> k ->
+  insert (i, x) (insert (j, y) emp) = insert (k, z) (insert (l, w) emp) ->
+  (i, x) = (k, z) /\ insert (j, y) emp = insert (l, w) emp.
+intros I A i j k l x y z w.
+intros neq1 neq2 H. 
+apply insert_cong2 in H; auto.
+2:{ unfold not. intros. now ddestruct H0. }
+destruct H; destruct H;
+ddestruct H; ddestruct H0;
+easy.
+Qed.
 
-(* Axiom disj_cons : forall {A} (s : set A) x, insert x s <> emp.
+Lemma insert_cong2_pad :
+  forall {I A} (i j k : I) (x y z : A),
+  i <> j ->
+  insert (i, x) (insert (j, y) emp) = insert (i, x) (insert (k, z) emp) ->
+  (j, y) = (k, z).
+unfold insert, emp. intros.
+apply equal_f with (x:=(j, y)) in H0.
+assert ((i, x) = (j, y) \/ (j, y) = (j, y) \/ False).
+{ right. now left. }
+rewrite H0 in H1.
+destruct H1. now ddestruct H1.
+now destruct H1.
+Qed.
 
-Parameter contains : forall {A}, A -> set A -> Prop.
+Lemma disj_cons : forall {A} (s : set A) x, insert x s <> emp.
+unfold insert, emp, not. intros.
+apply equal_f with (x:=x) in H.
+rewrite <- H. now left.
+Qed.
+
+Lemma disj_cons2 :
+  forall {I A} (i j : I) (x y : A),
+  i <> j ->
+  insert (i, x) (insert (j, y) emp) <> (insert (i, x) emp).
+unfold insert, emp, not. intros.
+apply equal_f with (x:=(j, y)) in H0.
+apply H.
+assert ((i, x) = (j, y) \/ (j, y) = (j, y) \/ False).
+{ right. now left. }
+rewrite H0 in H1.
+destruct H1. now ddestruct H1.
+easy.
+Qed.
+
+Definition contains : forall {A}, A -> set A -> Prop :=
+  fun A x s => s x.
 Infix "∈" := contains (at level 40).
 
-Axiom contains_triv : forall {A} (s : set A) x, contains x (insert x s).
+Lemma contains_triv : forall {A} (s : set A) x, contains x (insert x s).
+unfold insert, contains. intros. now left.
+Qed.
 
-Axiom contains_contr : forall {A} (x : A), ~contains x emp.
-Axiom contains_invert : forall {A} (s : set A) x y,
+Lemma contains_contr : forall {A} (x : A), ~contains x emp.
+easy.
+Qed.
+
+Lemma contains_invert : forall {A} (s : set A) x y,
   contains x (insert y s) ->
-  x = y \/ contains x s. *)
+  x = y \/ contains x s.
+unfold contains, insert.
+intros. destruct H.
+now left.
+now right.
+Qed.

@@ -18,7 +18,6 @@ From LHL.Util Require Import
 From LHL.Examples Require Import
   NameSpec
   ExchangerSpec
-  ThreadLocal
   CASSpec.
 
 From Coq Require Import
@@ -1452,9 +1451,8 @@ psimpl. ddestruct H5.
   destruct_all_steps; ddestruct H20.
   2:{
     rewrite <- x in x5. ddestruct x5.
-    apply insert_cong in x. destruct x.
-    exfalso. eapply disj_cons.
-    symmetry. exact H16.
+    symmetry in x.
+    now apply disj_cons2 in x.
   }
   eexists. split. easy.
   unfold OnSelf in *.
@@ -1465,9 +1463,8 @@ psimpl. ddestruct H5.
   ddestruct H6. destruct_all_steps.
   2:{
     rewrite <- x in x5. ddestruct x5.
-    apply insert_cong in x. destruct x.
-    exfalso. eapply disj_cons.
-    symmetry. exact H18.
+    symmetry in x.
+    now apply disj_cons2 in x.
   }
   eexists. split. easy.
   unfold OnSelf in *.
