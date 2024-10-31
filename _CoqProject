@@ -14,7 +14,7 @@
 ./Core/LogicPaco.v
 ./Core/LogicFacts.v
 ./Core/Tensor.v
-# ./Core/TensorFacts.v
+./Core/TensorFacts.v
 ./Core/ProgramRules.v
 
 ./Core/ProgramFacts.v

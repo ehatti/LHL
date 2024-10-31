@@ -1427,8 +1427,8 @@ destruct x, x0; cbn in *.
 }
 Qed.
 
-Theorem tensor_layer_funct_l {E F E' F'}:   
-  forall (specE : Spec E) (specF : Spec F) (M : Impl E E') (N : Impl F F'),
+Theorem tensor_layer_funct_l {T E F E' F'}:   
+  forall (specE : Spec T E) (specF : Spec T F) (M : Impl E E') (N : Impl F F'),
   specRefines
     (tensorSpec (overObj (specE :> M)) (overObj (specF :> N)))
     (overObj (tensorLayer (specE :> M) (specF :> N))).
@@ -1463,7 +1463,7 @@ cut (
   right. repeat econstructor. 
 }
 assert (
-  @tensor_system E E' F F' (fun _ => None) (fun _ => None) x0 x a
+  @tensor_system T E E' F F' (fun _ => None) (fun _ => None) x0 x a
 ).
 {
   apply InterSteps_system in H4, H2.
@@ -1471,15 +1471,15 @@ assert (
   cbn in *.
   clear H3 H5.
   assert (
-    @all_active_square E E' F F' (fun _ : ThreadName => None) (fun _ => None) (fun _ => None) (fun _ => None) (fun _ => None) (fun _ => None)
+    @all_active_square T E E' F F' (fun _ : Name T => None) (fun _ => None) (fun _ => None) (fun _ => None) (fun _ => None) (fun _ => None)
   ).
   constructor.
-  generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
-  generalize dependent (fun _ : ThreadName => @None {A & E A}).
-  generalize dependent (fun _ : ThreadName => @None {A & F A}).
-  generalize dependent (fun _ : ThreadName => @None {A & E' A}).
-  generalize dependent (fun _ : ThreadName => @None {A & F' A}).
-  generalize dependent (fun _ : ThreadName => @None {A & (E' |+| F') A}).
+  generalize dependent (fun _ : Name T => @None {A & (E |+| F) A}).
+  generalize dependent (fun _ : Name T => @None {A & E A}).
+  generalize dependent (fun _ : Name T => @None {A & F A}).
+  generalize dependent (fun _ : Name T => @None {A & E' A}).
+  generalize dependent (fun _ : Name T => @None {A & F' A}).
+  generalize dependent (fun _ : Name T => @None {A & (E' |+| F') A}).
   intros.
   assert (tensor_trace_square x0 x a).
   apply get_tensor_trace_square; easy.
@@ -1730,16 +1730,16 @@ assert (
   }
 }
 assert (
-  forall i,
+  forall i : Name T,
     @over_rel E E' F F' ((fun _ => None) i) (allIdle i) (allIdle i)
 ).
 constructor.
-generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
-generalize dependent (fun _ : ThreadName => @None {A & (E' |+| F') A}).
-change (@allIdle (E |+| F) (E' |+| F'))
-with (fun i => tensorTS (@allIdle E E' i) (@allIdle F F' i)).
-generalize dependent (@allIdle E E').
-generalize dependent (@allIdle F F').
+generalize dependent (fun _ : Name T => @None {A & (E |+| F) A}).
+generalize dependent (fun _ : Name T => @None {A & (E' |+| F') A}).
+change (@allIdle T (E |+| F) (E' |+| F'))
+with (fun i => tensorTS (@allIdle T E E' i) (@allIdle T F F' i)).
+generalize dependent (@allIdle T E E').
+generalize dependent (@allIdle T F F').
 intros.
 generalize dependent t. generalize dependent t0.
 generalize dependent (Init specE). generalize dependent (Init specF).
@@ -1750,8 +1750,8 @@ eapply funct_l_help.
 exact H6. exact H4. exact H2. easy.
 Qed.
 
-Lemma join_tensor_steps {E F} :
-  forall (specE : Spec E) (specF : Spec F),
+Lemma join_tensor_steps {T E F} :
+  forall (specE : Spec T E) (specF : Spec T F),
   forall p a tL tR,
   SeqConsistent a p ->
   forall sL sR,
@@ -1833,8 +1833,8 @@ Inductive right_constraint {E E' F F'} : Status (E |+| F) -> ThreadState (E |+| 
     right_constraint (Some (existT _ _ (inl um))) (UCall (inl om) (inl um) (fun x => mapProg (fun _ => inl) (k x))) Idle.
 
 
-Theorem tensor_layer_funct_r {E F E' F'}:   
-  forall (specE : Spec E) (specF : Spec F) (M : Impl E E') (N : Impl F F'),
+Theorem tensor_layer_funct_r {T E F E' F'}:   
+  forall (specE : Spec T E) (specF : Spec T F) (M : Impl E E') (N : Impl F F'),
   specRefines
     (overObj (tensorLayer (specE :> M) (specF :> N)))
     (tensorSpec (overObj (specE :> M)) (overObj (specF :> N))).
@@ -1870,7 +1870,7 @@ cut (
 clear H'.
 repeat rewrite projInterSteps. split; cbn in *.
 cut (
-  exists (tL : ThreadsSt E E') (q : list (ThreadLEvent E E')),
+  exists (tL : ThreadsSt T E E') (q : list (ThreadLEvent T E E')),
     projLeft (projOver x0) = projOver q /\
     InterSteps M (allIdle, Init specE) q (tL, LState)
 ).
@@ -1888,13 +1888,13 @@ cut (
 }
 {
   assert (
-    forall i,
+    forall i : Name T,
       @left_constraint E E' F F' ((fun _ => None) i) (allIdle i) (allIdle i)
   ).
   { constructor. }
-  generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
-  generalize dependent (@allIdle E E').
-  generalize dependent (@allIdle (E |+| F) (E' |+| F')).
+  generalize dependent (fun _ : Name T => @None {A & (E |+| F) A}).
+  generalize dependent (@allIdle T E E').
+  generalize dependent (@allIdle T (E |+| F) (E' |+| F')).
   generalize dependent (Init specE). generalize dependent (Init specF).
   intros.
   generalize dependent o. generalize dependent t1.
@@ -1982,7 +1982,7 @@ cut (
       destruct_all.
       exists x3, ((n, UEvent (Some (RetEv e n0))) :: x4).
       split. easy.
-      eapply StepsMore with (st'':=(fun i : nat => if i =? n then Cont om0 (k0 n0) else t1 i, _)).
+      eapply StepsMore with (st'':=(fun i : Name T => if i =? n then Cont om0 (k0 n0) else t1 i, _)).
       unfold InterStep, ThreadsStep. cbn. split.
       econstructor. econstructor.
       cbn. symmetry. exact x.
@@ -2127,7 +2127,7 @@ cut (
   }
 }
 cut (
-  exists (tL : ThreadsSt F F') (q : list (ThreadLEvent F F')),
+  exists (tL : ThreadsSt T F F') (q : list (ThreadLEvent T F F')),
     projRight (projOver x0) = projOver q /\
     InterSteps N (allIdle, Init specF) q (tL, RState)
 ).
@@ -2145,13 +2145,13 @@ cut (
 }
 {
   assert (
-    forall i,
+    forall i : Name T,
       @right_constraint E E' F F' ((fun _ => None) i) (allIdle i) (allIdle i)
   ).
   { constructor. }
-  generalize dependent (fun _ : ThreadName => @None {A & (E |+| F) A}).
-  generalize dependent (@allIdle F F').
-  generalize dependent (@allIdle (E |+| F) (E' |+| F')).
+  generalize dependent (fun _ : Name T => @None {A & (E |+| F) A}).
+  generalize dependent (@allIdle T F F').
+  generalize dependent (@allIdle T (E |+| F) (E' |+| F')).
   generalize dependent (Init specF). generalize dependent (Init specE).
   intros.
   generalize dependent o. generalize dependent t1.
