@@ -5,63 +5,29 @@ From LHL.Core Require Import
   Traces
   Linearizability
   VCompFacts
-  (* RefinesFacts *)
+  RefinesFacts
   Tensor
-  TensorFacts
-  TracesFacts.
+  TensorFacts.
 
 From LHL.Util Require Import
   TransUtil
   Tactics.
 
-Require Import Coq.Program.Equality.
-
-Ltac ddestruct H := dependent destruction H.
-
-Lemma idSteps_eq_proj {T E} :
-  forall (p : Trace (ThreadLEvent T E E)) s t,
-  Steps (ThreadsStep idImpl) s p t ->
-  projOver p = projUnderThr p.
-Admitted.
-
-Lemma swap_ex {A B} {P : A -> B -> Prop} :
-  (exists x y, P x y) ->
-  (exists y x, P x y).
-intros.
-destruct H as [x [y H]].
-now exists y, x.
-Qed.
-
 (* Observational Refinement *)
-Theorem obs_ref {T E F} : 
-  forall (spec' spec : Spec T E) (impl : Impl E F) ,
+Theorem lin_obs_ref {E F} : 
+  forall (spec' spec : Spec E) (impl : Impl E F) ,
   Lin spec' spec -> 
   layerRefines (spec' :> impl) (spec :> impl).
 Proof.
-  unfold Lin, layerRefines, specRefines.
-  unfold Incl, IsTraceOfSpec, KConc.
-  intros spec' spec impl ref p steps.
-  destruct steps as [st' steps'].
-  rewrite decompOverObj.
-  rewrite decompOverObj in steps'.
-  destruct steps' as [q' [eq_over [steps' [ths_steps is_obj_tr']]]].
-  assert (exists st, Steps (Step spec') (Init spec') (projUnderThr q') st).
-  { now exists (snd st'). }
-  apply ref in H.
-  destruct H as [st lin_steps].
-  rewrite decompOverObj in lin_steps.
-  destruct lin_steps as [q [proj_lay_eq [steps [lin_ths_steps is_obj_tr]]]].
-  cbn in *. clear ref. subst.
-  exists (fst st', snd st), q'. cbn.
-  repeat (easy || constructor).
-  clear is_obj_tr is_obj_tr'.
-  move ths_steps before lin_ths_steps.
-  move st at top. move proj_lay_eq at bottom.
-  move steps' before steps.
-  rewrite proj_lay_eq in *.
-  destruct st' as [ths' st'].
-  destruct st as [ths st].
-  cbn in *.
+intros.
+apply (mkLayer_monotonic _ _ impl) in H.
+assert (H' := layerRefines_VComp_assoc spec idImpl impl).
+rewrite obj_VComp_assoc in H'.
+assert (ID_EUTT := idImpl_is_identity_l impl).
+assert (H'' := eutt_layerRefines spec _ _ ID_EUTT).
+eapply layerRefines_trans. eapply layerRefines_trans.
+apply H. apply H'. apply H''.
+Qed.
 
 (* Locality *)
 Theorem locality {E F} :
