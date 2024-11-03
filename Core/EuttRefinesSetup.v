@@ -9,9 +9,7 @@ From LHL.Core Require Import
   Specs
   Traces
   TracesFacts
-  Eutt
-  Simulates
-  SimulatesFacts.
+  Eutt.
 
 From Coq Require Import
   Program.Equality
@@ -62,7 +60,7 @@ constructor.
 easy.
 Qed.
 
-Inductive euttThreadTrace {E F} : Trace (ThreadLEvent E F) -> Trace (ThreadLEvent E F) -> Prop :=
+Inductive euttThreadTrace {T E F} : Trace (ThreadLEvent T E F) -> Trace (ThreadLEvent T E F) -> Prop :=
 | EuttTraceThreadNil :
     euttThreadTrace nil nil
 | EuttTraceThreadLSilent i p q :
@@ -78,8 +76,8 @@ Inductive euttThreadTrace {E F} : Trace (ThreadLEvent E F) -> Trace (ThreadLEven
     euttThreadTrace p q ->
     euttThreadTrace (cons (i, OEvent e) p) (cons (i, OEvent e) q).
 
-Lemma euttTraceThread_app {E F} :
-  forall p1 p2 q1 q2 : Trace (ThreadLEvent E F),
+Lemma euttTraceThread_app {T E F} :
+  forall p1 p2 q1 q2 : Trace (ThreadLEvent T E F),
   euttThreadTrace p1 q1 ->
   euttThreadTrace p2 q2 ->
   euttThreadTrace (app p1 p2) (app q1 q2).
@@ -100,14 +98,14 @@ constructor.
 easy.
 Qed.
 
-Inductive set_list : list nat -> Type :=
+Inductive set_list {A} : list A -> Type :=
 | SLNil : set_list nil
 | SLCons i is :
   ~In i is ->
   set_list is ->
   set_list (i :: is).
 
-Fixpoint dedup (is : list nat) : list nat :=
+Fixpoint dedup {A} (is : list A) : list A :=
   match is with
   | nil => nil
   | cons i is =>
@@ -117,8 +115,8 @@ Fixpoint dedup (is : list nat) : list nat :=
         cons i (dedup is)
   end.
 
-Lemma dedup_correct :
-  forall i is, List.In i is <-> List.In i (dedup is).
+Lemma dedup_correct {A} :
+  forall (i : A) is, List.In i is <-> List.In i (dedup is).
 firstorder.
 induction is.
 contradiction.
@@ -154,7 +152,7 @@ apply IHis.
 easy.
 Qed.
 
-Lemma dedup_is_set : forall xs, set_list (dedup xs).
+Lemma dedup_is_set {A} : forall xs, set_list (A:=A) (dedup xs).
 intros.
 induction xs.
 constructor.
@@ -175,7 +173,7 @@ Fixpoint projLSilent {E F} (p : Trace (LEvent E F)) : Trace (Event E + Event F) 
   | cons _ p => projLSilent p
   end.
 
-Fixpoint projLESilent {E F} (p : Trace (ThreadLEvent E F)) : Trace (ThreadName * (Event E + Event F)) :=
+Fixpoint projLESilent {T E F} (p : Trace (ThreadLEvent T E F)) : Trace (Name T * (Event E + Event F)) :=
   match p with
   | nil => nil
   | cons (i, UEvent (Some e)) p => cons (i, inl e) (projLESilent p)
@@ -255,7 +253,7 @@ easy.
 easy.
 Qed.
 
-Fixpoint get_nones {E F} i (p : Trace (LEvent E F)) : Trace (ThreadLEvent E F) * Trace (LEvent E F) :=
+Fixpoint get_nones {T E F} i (p : Trace (LEvent E F)) : Trace (ThreadLEvent T E F) * Trace (LEvent E F) :=
   match p with
   | nil => (nil, nil)
   | cons (UEvent None) p =>
@@ -264,10 +262,10 @@ Fixpoint get_nones {E F} i (p : Trace (LEvent E F)) : Trace (ThreadLEvent E F) *
   | cons _ q => (nil, q)
   end.
 
-Lemma get_nones_nil {E F} :
+Lemma get_nones_nil {T E F} :
   forall i j p,
   i <> j ->
-  projPoint i eqb (fst (@get_nones E F j p)) = nil.
+  projPoint i eqb (fst (@get_nones T E F j p)) = nil.
 intros.
 induction p.
 easy.
@@ -277,16 +275,16 @@ destruct ev.
 easy.
 destruct (get_nones j p).
 simpl.
-rewrite eqb_id.
+rewrite eqb_nid.
 easy.
 easy.
 easy.
 Qed.
 
-Lemma get_nones_beh {E F} :
+Lemma get_nones_beh {T E F} :
   forall i n e p,
   e <> UEvent None ->
-  @get_nones E F i (app (nones n) (cons e p)) = (List.map (fun e => (i, e)) (nones n), p).
+  @get_nones T E F i (app (nones n) (cons e p)) = (List.map (fun e => (i, e)) (nones n), p).
 intros.
 induction n.
 simpl.
@@ -331,14 +329,14 @@ Lemma help41 (P Q : Prop) :
 firstorder.
 Qed.
 
-Fixpoint tnones {E F} (qc : nat -> Trace (LEvent E F)) is :=
+Fixpoint tnones {T E F} (qc : Name T -> Trace (LEvent E F)) is :=
   match is with
   | nil => nil
   | cons i is => app (List.map (fun e => (i, e)) (qc i)) (tnones qc is)
   end.
 
-Lemma tnones_notin {E F} :
-  forall i (qc : nat -> Trace (LEvent E F)) is,
+Lemma tnones_notin {T E F} :
+  forall i (qc : Name T -> Trace (LEvent E F)) is,
   ~In i is ->
   projPoint i eqb (tnones qc is) = nil.
 intros.
@@ -361,8 +359,8 @@ apply IHis.
 easy.
 Qed.
 
-Lemma help35 :
-  forall i j : nat, forall xs,
+Lemma help35 A :
+  forall i j : A, forall xs,
   In i xs ->
   ~In j xs ->
   i <> j.
@@ -380,8 +378,8 @@ easy.
 easy.
 Qed.
 
-Lemma tnones_in {E F} :
-  forall i (qc : nat -> Trace (LEvent E F)) is,
+Lemma tnones_in {T E F} :
+  forall i (qc : Name T -> Trace (LEvent E F)) is,
   In i is ->
   set_list is ->
   projPoint i eqb (tnones qc is) = qc i.
@@ -421,11 +419,11 @@ apply IHset_list.
 easy.
 Qed.
 
-Fixpoint interleave {E F}
-  (is : list ThreadName)
-  (p : Trace (ThreadLEvent E F))
-  (qc : nat -> Trace (LEvent E F))
-  : Trace (ThreadLEvent E F) :=
+Fixpoint interleave {T E F}
+  (is : list (Name T))
+  (p : Trace (ThreadLEvent T E F))
+  (qc : Name T -> Trace (LEvent E F))
+  : Trace (ThreadLEvent T E F) :=
   match p with
   | nil => tnones qc is
   | cons (i, UEvent None) p => interleave is p qc
@@ -437,7 +435,7 @@ Fixpoint interleave {E F}
 
 Open Scope list.
 
-Fixpoint interleave_seq i {E F}
+Fixpoint interleave_seq {T} (i : Name T) {E F}
   (p : Trace (LEvent E F))
   (qc : Trace (LEvent E F))
   : Trace (LEvent E F) :=
@@ -507,10 +505,10 @@ exists 0, q.
 easy.
 Qed.
 
-Lemma help37 {E F} :
+Lemma help37 {T E F} :
   forall i n qc t0 p l,
   i <> n ->
-  projPoint i eqb (@interleave E F (dedup l) p (fun j => if n =? j then t0 else qc j)) =
+  projPoint i eqb (@interleave T E F (dedup l) p (fun j => if n =? j then t0 else qc j)) =
   projPoint i eqb (interleave (dedup l) p qc).
 intros.
 generalize dependent qc.
@@ -559,7 +557,7 @@ induction p; intros.
     {
       subst.
       rewrite eqb_id.
-      assert (forall m t, @get_nones E F m t = (fst (get_nones m t), snd (get_nones m t))).
+      assert (forall m t, @get_nones T E F m t = (fst (get_nones m t), snd (get_nones m t))).
       intros. destruct (get_nones m t). easy.
       rewrite H0.
       rewrite (H0 n0 (qc n0)).
@@ -636,7 +634,7 @@ induction p; intros.
     {
       subst.
       rewrite eqb_id.
-      assert (forall m t, @get_nones E F m t = (fst (get_nones m t), snd (get_nones m t))).
+      assert (forall m t, @get_nones T E F m t = (fst (get_nones m t), snd (get_nones m t))).
       intros. destruct (get_nones m t). easy.
       rewrite H0.
       rewrite (H0 n0 (qc n0)).
@@ -709,11 +707,11 @@ induction p; intros.
 }
 Qed.
 
-Lemma projInterleave {E F} :
+Lemma projInterleave {T E F} :
   forall p qc i,
   (~List.In i (dedup (map fst p)) -> qc i = nil) ->
   euttTrace (projPoint i eqb p) (qc i) ->
-  projPoint i eqb (@interleave E F (dedup (map fst p)) p qc) =
+  projPoint i eqb (@interleave T E F (dedup (map fst p)) p qc) =
   interleave_seq i (projPoint i eqb p) (qc i).
 intros.
 generalize dependent (map fst p).
@@ -914,22 +912,19 @@ Qed.
 
 Open Scope list.
 
-Lemma beq_comm : forall n m, n =? m = (m =? n).
-fix rec 1.
-intros.
-destruct n.
-destruct m.
-reflexivity.
-reflexivity.
-destruct m.
-reflexivity.
-simpl.
-apply rec.
+Lemma beq_comm {A} : forall n m : A, n =? m = (m =? n).
+unfold eqb. intros.
+destruct (classicT (n = m)).
+{ subst. now destruct (classicT (m = m)). }
+{
+  destruct (classicT (m = n)).
+  { congruence. }
+  { easy. }
+}
 Qed.
 
-
-Lemma proj_notin {E F} :
-  forall i (p : Trace (ThreadLEvent E F)),
+Lemma proj_notin {T E F} :
+  forall i (p : Trace (ThreadLEvent T E F)),
   ~List.In i (map fst p) ->
   projPoint i eqb p = nil.
 intros.
@@ -945,9 +940,9 @@ easy.
 easy.
 Qed.
 
-Lemma help12 {E F} :
-  forall (p : Trace (ThreadLEvent E F)),
-  forall (qc : nat -> Trace (LEvent E F)),
+Lemma help12 {T E F} :
+  forall (p : Trace (ThreadLEvent T E F)),
+  forall (qc : Name T -> Trace (LEvent E F)),
   (forall i, ~In i (dedup (map fst p)) ->
     qc i = nil) ->
   (forall i,
@@ -970,8 +965,8 @@ split.
     induction pis.
     constructor.
     simpl in *.
-    change (@nil (ThreadLEvent E F))
-    with (@nil (ThreadLEvent E F) ++ nil).
+    change (@nil (ThreadLEvent T E F))
+    with (@nil (ThreadLEvent T E F) ++ nil).
     apply euttTraceThread_app.
     2: easy.
     specialize (H a).
@@ -1156,7 +1151,7 @@ split.
       f_equal.
       easy.
     }
-    change x0 with ((fun _ : nat => x0) i).
+    change x0 with ((fun _ : Name T => x0) i).
     apply IHp.
     easy.
     easy.
@@ -1182,7 +1177,7 @@ split.
       f_equal.
       easy.
     }
-    change x0 with ((fun _ : nat => x0) i).
+    change x0 with ((fun _ : Name T => x0) i).
     apply IHp.
     easy.
     easy.
@@ -1194,9 +1189,9 @@ split.
 }
 Qed.
 
-Lemma help13 {E F} :
-  forall (p : Trace (ThreadLEvent E F)),
-  forall (qc : nat -> Trace (LEvent E F)),
+Lemma help13 {T E F} :
+  forall (p : Trace (ThreadLEvent T E F)),
+  forall (qc : Name T -> Trace (LEvent E F)),
   (forall i, ~In i (dedup (map fst p)) ->
     qc i = nil) ->
   (forall i, In i (dedup (map fst p)) ->
@@ -1229,8 +1224,8 @@ rewrite dedup_correct.
 easy.
 Qed.
 
-Lemma euttOver {E F} :
-  forall (p q : Trace (ThreadLEvent E F)),
+Lemma euttOver {T E F} :
+  forall (p q : Trace (ThreadLEvent T E F)),
   euttThreadTrace p q ->
   projOver p = projOver q.
 intros.

@@ -18,14 +18,13 @@
 ./Core/ProgramRules.v
 
 ./Core/ProgramFacts.v
-# ./Core/EuttRefinesSetup.v
+./Core/EuttRefinesSetup.v
 # ./Core/RefinesFacts.v
 ./Core/VCompFacts.v
 ./Core/SingConds.v
 
 ./Core/VisPoss.v
 
-# Requires Paco
 ./Core/Eutt.v
 
 ./Examples/NameSpec.v
