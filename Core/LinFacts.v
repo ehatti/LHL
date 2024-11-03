@@ -14,8 +14,8 @@ From LHL.Util Require Import
   Tactics.
 
 (* Observational Refinement *)
-Theorem lin_obs_ref {E F} : 
-  forall (spec' spec : Spec E) (impl : Impl E F) ,
+Theorem lin_obs_ref {T E F} : 
+  forall (spec' spec : Spec T E) (impl : Impl E F) ,
   Lin spec' spec -> 
   layerRefines (spec' :> impl) (spec :> impl).
 Proof.
@@ -30,8 +30,8 @@ apply H. apply H'. apply H''.
 Qed.
 
 (* Locality *)
-Theorem locality {E F} :
-  forall (specE specE' : Spec E) (specF specF' : Spec F) ,
+Theorem locality {T E F} :
+  forall (specE specE' : Spec T E) (specF specF' : Spec T F) ,
   Lin specE' specE /\ Lin specF' specF <-> Lin (tensorSpec specE' specF') (tensorSpec specE specF).
 Proof.
   intros.
@@ -41,12 +41,12 @@ Proof.
     assert (H1 := tensor_monotonic _ _ _ _ H H0).
     assert (H2 := tensor_layer_funct_l specE specF idImpl idImpl).
     unfold tensorLayer in H2. simpl in H2.
-    assert (H3 := implEq_refines _ _ (tensorSpec specE specF) _ _ (@tensor_neutral E F)).
+    assert (H3 := implEq_refines _ _ _ (tensorSpec specE specF) _ _ (@tensor_neutral E F)).
     eapply specRefines_trans. eapply specRefines_trans. 
     apply H1. apply H2. apply H3.
   - intros. 
     eapply tensor_monotonic_inv.
-    assert (H1 := implEq_refines _ _ (tensorSpec specE specF) _ _ (implEqSym _ _ _ _ (@tensor_neutral E F))).
+    assert (H1 := implEq_refines _ _ _ (tensorSpec specE specF) _ _ (implEqSym _ _ _ _ (@tensor_neutral E F))).
     assert (H2 := tensor_layer_funct_r specE specF idImpl idImpl); unfold tensorLayer in H2; simpl in H2. 
     eapply specRefines_trans. eapply specRefines_trans.
     apply H. apply H1. apply H2. 

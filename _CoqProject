@@ -19,7 +19,8 @@
 
 ./Core/ProgramFacts.v
 ./Core/EuttRefinesSetup.v
-# ./Core/RefinesFacts.v
+./Core/RefinesFacts.v
+./Core/LinFacts.v
 ./Core/VCompFacts.v
 ./Core/SingConds.v
 
