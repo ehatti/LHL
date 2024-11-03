@@ -847,12 +847,6 @@ Qed.
 Axiom indef :
   forall {A} {P : A -> Prop}, (exists x, P x) -> {x | P x}.
 
-Lemma choose_nemp {T E F} :
-  forall {c : Name T -> Trace (LEvent E F)},
-  ~(forall i, c i = []) ->
-  exists '(i, e, p), c i = e :: p.
-Admitted.
-
 Arguments exist {A P}.
 
 From Equations Require Import Equations.
@@ -899,295 +893,148 @@ Proof.
   }
 Qed.
 
-(*
-p = (i, UEvent m) :: p'  q = (j, OEvent n) :: q'
-  i = j:
-    impossible
-  i <> j:
-    
-p = []            q = (j, n) :: q'
-p = (i, m) :: p'  q = []
-p = []            q = []
-*)
+Import ListNotations.
 
-Equations interleave {T E F G}
-  (c : Name (S T) -> Trace (LEvent E G))
-  (p : Trace (ThreadLEvent (S T) E F))
-  (q : Trace (ThreadLEvent (S T) F G))
-  (Hu : forall i,
-    projUnderSeq (projPoint i eqb p) = projUnderSeq (c i))
-  (Ho : forall i,
-    projOverSeq (projPoint i eqb q) = projOverSeq (c i))
-  (Hr : projUnderThr q = projOver p)
-  : Trace (ThreadLEvent (S T) E G)
-  by wf (sum_f (exist T _) (fun i => length (c i))) lt :=
-interleave c p q Hu Ho Hr :=
-  let x := indef (P:=fun)
+Inductive assoc_traces {T E F G} : Trace (ThreadLEvent T F G) -> Trace (ThreadLEvent T E F) -> Prop :=
+| ANil :
+  assoc_traces [] []
+| AGEvt i e q p :
+  assoc_traces q p ->
+  assoc_traces ((i, OEvent e) :: q) p
+| AFEvt i e q p :
+  assoc_traces q p ->
+  assoc_traces ((i, UEvent (Some e)) :: q) ((i, OEvent e) :: p)
+| AFSil i q p :
+  assoc_traces q p ->
+  assoc_traces ((i, UEvent None) :: q) p
+| AEEvt i e q p :
+  assoc_traces q p ->
+  assoc_traces q ((i, UEvent e) :: p)
+| AESil i q p :
+  assoc_traces q p ->
+  assoc_traces q ((i, UEvent None) :: p).
+
+Equations get_assoc_traces {T E F G} (p : Trace (ThreadLEvent T E F)) (q : Trace (ThreadLEvent T F G)) : 
+  projOver p = projUnderThr q ->
+  assoc_traces q p
+  by wf (length p + length q) lt :=
+get_assoc_traces p q H := _.
+Next Obligation.
+intros.
+destruct p, q.
+constructor.
+{
+  destruct t.
+  destruct l; simpl in *.
+  destruct ev.
+  congruence.
+  constructor.
+  apply get_assoc_traces.
+  simpl.
+  easy.
+  constructor.
+  constructor.
+  apply get_assoc_traces.
+  simpl.
+  easy.
+  simpl. lia.
+}
+{
+  destruct t.
+  destruct l; simpl in *.
+  destruct ev.
+  constructor.
+  apply get_assoc_traces.
+  simpl.
+  easy.
+  constructor.
+  constructor.
+  apply get_assoc_traces.
+  simpl.
+  easy.
+  simpl. lia.
+  easy.
+}
+{
+  destruct t0, t.
+  destruct l, l0.
+  destruct ev, ev0.
+  simpl in *.
+  constructor.
+  apply get_assoc_traces.
+  simpl.
+  easy.
+  simpl in *.
+  constructor.
+  constructor.
+  apply get_assoc_traces.
+  simpl.
+  easy.
+  simpl in *. lia.
+  constructor.
+  apply get_assoc_traces.
+  simpl.
+  easy.
+  simpl in *. lia.
+  constructor.
+  constructor.
+  apply get_assoc_traces.
+  simpl.
+  easy.
+  simpl in *. lia.
+  {
+    destruct ev.
+    {
+      ddestruct H.
+      constructor.
+      apply get_assoc_traces.
+      easy.
+      simpl. lia.
+    }
+    {
+      constructor.
+      apply get_assoc_traces.
+      easy.
+      simpl. lia.
+    }
+  }
+  {
+    cbn in *.
+    constructor.
+    constructor.
+    apply get_assoc_traces.
+    easy.
+    lia.
+  }
+  {
+    cbn in *.
+    constructor.
+    apply get_assoc_traces.
+    easy.
+    simpl. lia.
+  }
+}
+Qed.
+
+Inductive assoc_states {E F G} {impl : Impl E F} {impl' : Impl F G} : ThreadState E F -> ThreadState F G -> ThreadState E G -> Prop :=
+| ASGCall :
+    assoc_states Idle Idle Idle
+| ASFCall A B (gm : G A) (fm : F B) k :
+    assoc_states Idle (Cont gm (Bind fm k)) (Cont gm (NoOp (bindSubstProg impl k (impl _ fm))))
+| ASFNoOp A m p :
+  assoc_states Idle (Cont m (NoOp p)) (Cont m (NoOp (A:=A) (substProg impl p)))
+| ASECall A R B gm fm em ek fk :
+    assoc_states (Cont fm (Bind em ek)) (UCall gm fm fk) (Cont gm (Bind (A:=A) (B:=B) em (fun x => bindSubstProg (R:=R) impl fk (ek x))))
+| ASENoOp A R k om p um :
+    assoc_states (Cont um (NoOp p)) (UCall om um k) (Cont om (NoOp (A:=A) (bindSubstProg (R:=R) impl k p)))
+| ASEBind A B R gm fm em ek fk :
+    assoc_states (UCall (A:=A) fm em ek) (UCall (B:=B) gm fm fk) (UCall gm em (fun x => bindSubstProg (R:=R) impl fk (ek x)))
+| ASERet A B gm fm v fk :
+    assoc_states (Cont fm (Return v)) (UCall (A:=B) gm fm fk) (Cont (A:=A) gm (NoOp (substProg impl (fk v))))
+| ASFRet A (gm : G A) v :
+    assoc_states Idle (Cont gm (Return v)) (Cont gm (Return v))
 .
-
-Next Obligation.
-apply choose_nemp in prf.
-destruct_all.
-destruct x as [i t].
-destruct i as [i e].
-
-
-Next Obligation.
-Admitted.
-
-Lemma exists_interleaving {T E F G} :
-  forall c : Name T -> Trace (LEvent E G),
-  forall p : Trace (ThreadLEvent T E F),
-  forall q : Trace (ThreadLEvent T F G),
-  projUnderThr q = projOver p ->
-  (forall i,
-    projUnderSeq (projPoint i eqb p) = projUnderSeq (c i)) ->
-  (forall i,
-    projOverSeq (projPoint i eqb q) = projOverSeq (c i)) ->
-  exists r,
-    projUnder p = projUnder r /\
-    projOver q = projOver r /\
-    (forall i, projPoint i eqb r = c i).
-Proof.
-  intros.
-  setoid_rewrite <- Interleave_iso.
-  destruct T as [| T].
-  {
-    admit.
-  }
-  exists (interleave c).
-  split.
-  {
-    simp interleave.
-    destruct (classicT (forall i, c i = []));
-    simp interleave.
-    {
-      admit.
-    }
-    {
-
-    }
-  }
-Admitted.
-
-Lemma pullout_under {T E F} :
-  forall i : Name T, forall e : Event E,
-  forall q : Trace (ThreadLEvent T E F),
-  forall p,
-  projUnderThr q = (i, e) :: p ->
-  exists ql qr,
-    q = ql ++ [(i, UEvent (Some e))] ++ qr /\
-    projUnderThr ql = [] /\
-    projUnderThr qr = p.
-Proof.
-  intros i e q.
-  induction q; cbn.
-  { now intros. }
-  {
-    destruct a, l; cbn.
-    {
-      destruct ev; intros.
-      {
-        ddestruct H.
-        now exists [], q.
-      }
-      {
-        apply IHq in H.
-        destruct_all. subst.
-        now exists ((n, UEvent None) :: x), x0.
-      }
-    }
-    {
-      intros.
-      apply IHq in H.
-      destruct_all. subst.
-      now exists ((n, OEvent ev) :: x), x0.
-    }
-  }
-Qed.
-
-Lemma proj_eq {T E F G} :
-  forall p : Trace (ThreadLEvent T E F),
-  forall q : Trace (ThreadLEvent T F G),
-  projUnderThr q = projOver p ->
-  forall i,
-    projUnderThrSeq (projPoint i eqb q) = projOverSeq (projPoint i eqb p).
-Proof.
-  intros p. induction p; cbn.
-  {
-    intros. induction q; cbn.
-    { easy. }
-    {
-      destruct a, l; cbn in *.
-      {
-        destruct ev.
-        { easy. }
-        {
-          destruct (i =? n); cbn;
-          now apply IHq.
-        }
-      }
-      {
-        destruct (i =? n); cbn;
-        now apply IHq.
-      }
-    }
-  }
-  {
-    intros. destruct a, l; cbn in *.
-    {
-      destruct (i =? n); cbn;
-      now apply IHp.
-    }
-    {
-      dec_eq_nats i n.
-      {
-        rewrite eqb_id; cbn.
-        apply pullout_under in H.
-        destruct_all. subst.
-        repeat rewrite projPoint_app.
-        cbn. rewrite eqb_id.
-        repeat rewrite projUnderThrSeq_app.
-        cbn.
-        assert (projUnderThrSeq (projPoint n eqb x) = []).
-        {
-          clear - H0.
-          induction x; cbn. easy.
-          destruct a. cbn in *.
-          destruct l.
-          {
-            destruct ev. easy.
-            destruct (n =? n0); cbn;
-            now apply IHx.
-          }
-          {
-            destruct (n =? n0);
-            now apply IHx.
-          }
-        }
-        rewrite H. cbn.
-        f_equal. now apply IHp.
-      }
-      {
-        rewrite eqb_nid; auto.
-        apply pullout_under in H.
-        destruct_all. subst.
-        repeat rewrite projPoint_app.
-        cbn. rewrite eqb_nid; auto.
-        repeat rewrite projUnderThrSeq_app.
-        cbn.
-        assert (projUnderThrSeq (projPoint i eqb x) = []).
-        {
-          clear - H1.
-          induction x; cbn. easy.
-          destruct a. cbn in *.
-          destruct l.
-          {
-            destruct ev;
-            destruct (i =? n);
-            (easy || now apply IHx).
-          }
-          {
-            destruct (i =? n);
-            now apply IHx.
-          }
-        }
-        rewrite H. now apply IHp.
-      }
-    }
-  }
-Qed.
-
-Lemma merge_fn {I A B} {P : (I -> A) -> (I -> B) -> Prop} :
-  (exists x : I -> A * B, P (fun i => fst (x i)) (fun i => snd (x i))) ->
-  exists x y, P x y.
-intros. destruct_all.
-now exists (fun i => fst (x i)), (fun i => snd (x i)).
-Qed.
-
-Lemma lift_forall {A} {P Q R : A -> Prop} :
-  ((forall i, P i) /\ (forall i, Q i) /\ (forall i, R i)) =
-  (forall i, P i /\ Q i /\ R i).
-Proof.
-  apply propositional_extensionality.
-  split; intros.
-  {
-    destruct H, H0.
-    split.
-    apply H.
-    split.
-    apply H0.
-    apply H1.
-  }
-  {
-    repeat split; intros; apply H.
-  }
-Qed.
-
-Variant tri_event {E F G} :=
-| GEv (m : Event G)
-| FEv (m : option (Event F))
-| EEv (m : option (Event E)).
-Arguments tri_event : clear implicits.
-
-Variant TriTran {E F G} (impl : Impl E F) (impl' : Impl F G) :
-  ThreadState F G * ThreadState E F ->
-  tri_event E F G ->
-  ThreadState F G * ThreadState E F ->
-  Prop :=
-| GInv GR (gm : G GR) :
-  TriTran impl impl' 
-    (Idle, Idle)
-    (GEv (CallEv gm))
-    (Cont gm (impl' _ gm), Idle)
-| GRet GR (gm : G GR) v :
-  TriTran impl impl'
-    (Cont gm (Return v), Idle)
-    (GEv (RetEv gm v))
-    (Idle, Idle)
-| FInv GR (gm : G GR) FR (fm : F FR) gk :
-  TriTran impl impl'
-    (Cont gm (Bind fm gk), Idle)
-    (FEv (Some (CallEv fm)))
-    (UCall gm fm gk, Cont fm (impl _ fm))
-| FRet GR (gm : G GR) FR (fm : F FR) gk v :
-  TriTran impl impl'
-    (UCall gm fm gk, Cont fm (Return v))
-    (FEv (Some (RetEv fm v)))
-    (Cont gm (gk v), Idle)
-| FSil GR (gm : G GR) FR (fm : F FR) gk e :
-  TriTran impl impl'
-    (UCall gm fm gk, Cont fm (NoOp e))
-    (FEv None)
-    (UCall gm fm gk, Cont fm e)
-| EInv GR (gm : G GR) FR (fm : F FR) ER (em : E ER) gk fk :
-  TriTran impl impl'
-    (UCall gm fm gk, Cont fm (Bind em fk))
-    (EEv (Some (CallEv em)))
-    (UCall gm fm gk, UCall fm em fk)
-| ERet GR (gm : G GR) FR (fm : F FR) ER (em : E ER) gk fk v :
-  TriTran impl impl'
-    (UCall gm fm gk, UCall fm em fk)
-    (EEv (Some (RetEv em v)))
-    (UCall gm fm gk, Cont fm (fk v))
-| ESil GR (gm : G GR) FR (fm : F FR) gk e :
-  TriTran impl impl'
-    (UCall gm fm gk, Cont fm (NoOp e))
-    (EEv None)
-    (UCall gm fm gk, Cont fm e).
-
-Inductive assoc_states {E F G} {impl : Impl E F} {impl' : Impl F G} : ThreadState F G -> ThreadState E F -> ThreadState E G -> Prop :=.
-
 Arguments assoc_states {E F G} impl impl'.
-
-(* Lemma get_TriTran {E F G} {impl : Impl E F} {impl' : Impl F G} :
-  forall p : Trace (LEvent E F),
-  forall q : Trace (LEvent F G),
-  forall ps qs pt qt,
-  projUnderThrSeq q = projOver p ->
-  Steps (ThreadStep impl) ps p pt ->
-  Steps (ThreadStep impl') qs q qt ->
-  Steps (TriTran impl impl') (ps, qs) *)
 
 Theorem layerRefines_VComp_assoc {T E F G} : 
   forall  (spec : Spec T E) (impl : Impl E F) (impl' : Impl F G),
@@ -1251,161 +1098,357 @@ Proof.
   rename x0 into q, x1 into p.
   rename t0 into pt, t into qt.
   clear - H H3 H1.
-  cut (
-    exists (tht : ThreadsSt T E G) (qc : Name T -> Trace (LEvent E G)),
-      (forall i,
-        projOverSeq (projPoint i eqb q) = projOverSeq (qc i)) /\
-      (forall i,
-        projUnderSeq (projPoint i eqb p) = projUnderSeq (qc i)) /\
-      (forall i,
-        Steps (ThreadStep (impl |> impl')) (allIdle i) (qc i) (tht i))
+  assert (
+    forall i : Name T,
+      assoc_states impl impl' (allIdle i) (allIdle i) (allIdle i)).
+  { intros. constructor. }
+  assert (
+    assoc_traces q p
   ).
   {
-    intros. destruct_all.
-    assert (
-      exists r,
-        projUnderThr p = projUnderThr r /\
-        projOver q = projOver r /\
-        forall i, projPoint i eqb r = x0 i
-    ).
-    { now eapply interleave with (c:=x0). }
-    destruct_all. exists x, x1.
-    split. easy. split. easy.
-    assert (
-      forall i,
-        Steps (ThreadStep (impl |> impl')) (allIdle i) (projPoint i eqb x1) (x i)
-    ).
-    { intros. rewrite (H7 i). apply H4. }
-    unfold ThreadsStep, ThreadsSt, ThreadLEvent.
-    rewrite decompPointSteps with (ieq:=eqb).
-    easy. apply threadDecEq.
+    now apply get_assoc_traces.
   }
-  cut (
-    exists tht qc,
-      forall i,
-        projOverSeq (projPoint i eqb q) = projOverSeq (qc i) /\
-        projUnderSeq (projPoint i eqb p) = projUnderSeq (qc i) /\
-        Steps (ThreadStep (impl |> impl')) (allIdle i) (qc i) (tht i)
-  ).
+  generalize dependent (@allIdle T F G).
+  generalize dependent (@allIdle T E F).
+  generalize dependent (@allIdle T E G).
+  unfold ThreadsStep.
+  clear H. induction H2;
+  cbn; intros; assert (H0' := H0);
+  try specialize (H0' i).
   {
-    intros. destruct_all.
-    exists x, x0.
-    repeat split; intros; apply H0.
+    ddestruct H1. ddestruct H3.
+    exists t, []. repeat constructor.
   }
-  generalize dependent p.
-  generalize dependent q.
-  generalize dependent pt.
-  generalize dependent qt.
-  cut (
-    forall
-      (qt : ThreadState F G)
-      (pt : ThreadState E F)
-      (q : Trace (LEvent F G))
-      (p : Trace (LEvent E F)),
-    Steps (ThreadStep impl') Idle q qt ->
-    projUnderThrSeq q = projOverSeq p ->
-    Steps (ThreadStep impl) Idle p pt ->
-    exists (tht : ThreadState E G) (r : Trace (LEvent E G)),
-      projOverSeq q = projOverSeq r /\
-      projUnderSeq p = projUnderSeq r /\
-      Steps (ThreadStep (impl |> impl')) Idle r tht
-  ).
   {
-    intros.
-    unfold ThreadsStep, ThreadLEvent, ThreadsSt in *.
-    rewrite decompPointSteps with (ieq:=eqb) in H1.
-    2: apply threadDecEq.
-    rewrite decompPointSteps with (ieq:=eqb) in H3.
-    2: apply threadDecEq.
-    apply merge_fn.
-    apply choice with
-      (R:=fun i xi =>
-        projOverSeq (projPoint i eqb q) = projOverSeq (snd xi) /\
-        projUnderSeq (projPoint i eqb p) = projUnderSeq (snd xi) /\
-        Steps (ThreadStep (impl |> impl')) (allIdle i) (snd xi) (fst xi)).
-    intros.
-    eassert _.
-    {
-      eapply H.
-      { apply H1. }
-      { eapply proj_eq with (i:=x). exact H0. }
-      { apply H3. }
-    }
-    destruct X, H2.
-    now exists (x0, x1).
-  }
-  intros.
-  assert (assoc_states impl impl' Idle Idle Idle).
-  { admit. }
-  generalize dependent p.
-  generalize dependent (@Idle E F).
-  generalize dependent (@Idle F G).
-  generalize dependent (@Idle E G).
-  induction q; cbn; intros.
-  {
+    ddestruct H1. ddestruct H.
+    unfold ThreadStep in H. cbn in *.
     ddestruct H.
-    generalize dependent t1.
-    induction p;
-    cbn in *; intros.
     {
-      exists t, [].
-      repeat constructor.
+      rewrite H in H0'.
+      ddestruct H0'.
+      eapply IHassoc_traces
+        with (t:=fun j =>
+          if i =? j then
+            Cont m (substProg impl (impl' A m))
+          else
+            t j)
+        in H3.
+      2:{ exact H1. }
+      2:{
+        intros.
+        specialize (H4 i0).
+        dec_eq_nats i0 i.
+        {
+          rewrite <- x1, eqb_id, <- x0.
+          rewrite frobProgId with (p:= substProg _ _).
+          remember (impl' A m). destruct p0; cbn; try constructor.
+        }
+        { now rewrite eqb_nid, <- H0. }
+      }
+      destruct_all.
+      exists x2, ((i, OEvent (CallEv m)) :: x3).
+      split.
+      { now rewrite H3. }
+      split.
+      { easy. }
+      {
+        econstructor.
+        2: exact H6.
+        constructor; cbn.
+        {
+          rewrite <- x, eqb_id.
+          now constructor.
+        }
+        { intros. now rewrite eqb_nid. }
+      }
     }
     {
-      destruct a; cbn in *.
-      {
-        ddestruct H1.
-        unfold ThreadStep in H.
-        ddestruct H; subst.
+      rewrite H in H0'.
+      ddestruct H0'.
+      eapply IHassoc_traces
+        with (t:=fun j =>
+          if i =? j then
+            Idle
+          else
+            t j)
+        in H3.
+      2:{ exact H1. }
+      2:{
+        intros.
+        dec_eq_nats i0 i.
         {
-          admit.
+          rewrite eqb_id, <- x1, <- x0.
+          constructor.
         }
         {
-          admit.
-        }
-        {
-          admit.
+          specialize (H4 i0).
+          now rewrite eqb_nid, <- H0.
         }
       }
+      destruct_all.
+      exists x2, ((i, OEvent (RetEv m v)) :: x3).
+      split.
+      { now rewrite H3. }
+      split.
+      { easy. }
       {
-        ddestruct H1.
-        unfold ThreadStep in H.
-        ddestruct H; subst.
+        econstructor.
+        2: exact H6.
+        econstructor; cbn.
         {
-          admit.
+          rewrite <- x, eqb_id.
+          now constructor.
         }
-        {
-          admit.
-        }
+        { intros. now rewrite eqb_nid. }
       }
     }
   }
   {
-    destruct a.
+    ddestruct H3. ddestruct H.
+    ddestruct H1. ddestruct H1.
+    cbn in *. ddestruct H; ddestruct H1;
+    rewrite H1, H in H0'; ddestruct H0'.
     {
-      ddestruct H.
-      unfold ThreadStep in H.
-      ddestruct H; subst.
-      {
-        admit.
+      eapply IHassoc_traces
+        with (t:=fun j =>
+          if i =? j then
+            Cont om (bindSubstProg impl k (impl _ m))
+          else
+            t j)
+        in H3.
+      2:{ exact H5. }
+      2:{
+        intros.
+        dec_eq_nats i0 i.
+        {
+          rewrite <- x0, <- x1, <- x, eqb_id.
+          rewrite frobProgId with (p:= bindSubstProg _ _ _).
+          destruct (impl A m); cbn; constructor.
+        }
+        {
+          specialize (H6 i0).
+          now rewrite <- H4, <- H0, eqb_nid.
+        }
       }
+      destruct_all.
+      exists x2, ((i, UEvent None) :: x3).
+      split. easy.
+      split. easy.
+      econstructor.
+      2: exact H8.
+      constructor; cbn.
       {
-        admit.
+        rewrite eqb_id, <- x.
+        now econstructor.
       }
-      {
-        admit.
-      }
+      { intros. now rewrite eqb_nid. }
     }
     {
-      ddestruct H.
-      unfold ThreadStep in H.
-      ddestruct H; subst.
-      {
-        admit.
+      eapply IHassoc_traces
+        with (t:=fun j =>
+          if i =? j then
+            Cont om (substProg impl (k v))
+          else
+            t j)
+        in H3.
+      2:{ exact H5. }
+      2:{
+        intros.
+        dec_eq_nats i0 i.
+        {
+          rewrite <- x0, <- x1, <- x.
+          rewrite frobProgId with (p:= substProg _ _).
+          rewrite eqb_id. destruct (k v); constructor.
+        }
+        {
+          rewrite <- H0, <- H4, eqb_nid.
+          apply H6. easy. easy. easy.
+        }
       }
+      destruct_all.
+      exists x2, ((i, UEvent None) :: x3).
+      split. easy.
+      split. easy.
+      econstructor.
+      2: exact H8.
+      constructor; cbn.
       {
-        admit.
+        rewrite eqb_id, <- x.
+        now econstructor.
       }
+      { intros. now rewrite eqb_nid. }
     }
+  }
+  {
+    ddestruct H1. ddestruct H.
+    cbn in *. ddestruct H.
+    rewrite H in H0'. ddestruct H0'.
+    eapply IHassoc_traces
+      with (t:=fun j =>
+        if i =? j then
+          Cont om (substProg impl p0)
+        else
+          t j)
+      in H3.
+    2:{ exact H1. }
+    2:{
+      intros.
+      dec_eq_nats i0 i.
+      {
+        rewrite <- x1, <- x0, <- x, eqb_id.
+        rewrite frobProgId with (p:= substProg _ _).
+        destruct p0; constructor.
+      }
+      { now rewrite eqb_nid, <- H0. }
+    }
+    destruct_all.
+    exists x2, ((i, UEvent None) :: x3).
+    split. easy.
+    split. easy.
+    econstructor.
+    2: exact H6.
+    constructor; cbn.
+    {
+      rewrite eqb_id, <- x.
+      now econstructor.
+    }
+    { intros. now rewrite eqb_nid. }
+  }
+  {
+    ddestruct H3. ddestruct H.
+    cbn in *. ddestruct H.
+    {
+      rewrite H in H0'. ddestruct H0'.
+      eapply IHassoc_traces
+        with (t:=fun j =>
+          if i =? j then
+            UCall gm um (fun x => bindSubstProg impl fk (k x))
+          else
+            t j)
+        in H3.
+      2: exact H1.
+      2:{
+        intros.
+        dec_eq_nats i0 i.
+        {
+          rewrite <- x0, <- x1, <- x, eqb_id.
+          constructor.
+        }
+        { now rewrite <- H0, eqb_nid. }
+      }
+      destruct_all.
+      exists x2, ((i, UEvent (Some (CallEv um))) :: x3).
+      split. easy.
+      split. now rewrite H5.
+      econstructor.
+      2: exact H6.
+      constructor; cbn.
+      {
+        rewrite eqb_id, <- x.
+        now econstructor.
+      }
+      { intros. now rewrite eqb_nid. }
+    }
+    {
+      rewrite H in H0'. ddestruct H0'.
+      eapply IHassoc_traces
+        with (t:=fun j =>
+          if i =? j then
+            Cont gm (bindSubstProg impl fk (k v))
+          else
+            t j)
+        in H3.
+      2: exact H1.
+      2:{
+        intros.
+        dec_eq_nats i0 i.
+        {
+          rewrite eqb_id, <- x1, <- x0.
+          rewrite frobProgId with (p:= bindSubstProg _ _ _).
+          destruct (k v); constructor.
+        }
+        { now rewrite eqb_nid, <- H0. }
+      }
+      destruct_all.
+      exists x2, ((i, UEvent (Some (RetEv um v))) :: x3).
+      split. easy.
+      split. now rewrite H5.
+      econstructor.
+      2: exact H6.
+      constructor; cbn.
+      {
+        rewrite eqb_id, <- x.
+        now econstructor.
+      }
+      { intros. now rewrite eqb_nid. }
+    }
+    {
+      rewrite H in H0'. ddestruct H0'.
+      eapply IHassoc_traces
+        with (t:=fun j =>
+          if i =? j then
+            Cont om0 (bindSubstProg impl k p0)
+          else
+            t j)
+        in H3.
+      2: exact H1.
+      2:{
+        intros.
+        dec_eq_nats i0 i.
+        {
+          rewrite eqb_id, <- x0, <- x1.
+          rewrite frobProgId with (p:= bindSubstProg _ _ _).
+          destruct p0; constructor.
+        }
+        { now rewrite eqb_nid, <- H0. }
+      }
+      destruct_all.
+      exists x2, ((i, UEvent None) :: x3).
+      split. easy.
+      split. easy.
+      econstructor.
+      2: exact H6.
+      constructor; cbn.
+      {
+        rewrite eqb_id, <- x.
+        now econstructor.
+      }
+      { intros. now rewrite eqb_nid. }
+    }
+  }
+  {
+    ddestruct H3. ddestruct H.
+    cbn in *. ddestruct H.
+    rewrite H in H0'. ddestruct H0'.
+    eapply IHassoc_traces
+      with (t:=fun j =>
+        if i =? j then
+          Cont om0 (bindSubstProg impl k p0)
+        else
+          t j)
+      in H3.
+    2: exact H1.
+    2:{
+      intros.
+      dec_eq_nats i0 i.
+      {
+        rewrite eqb_id, <- x0, <- x1.
+        rewrite frobProgId with (p:= bindSubstProg _ _ _).
+        destruct p0; constructor.
+      }
+      { now rewrite eqb_nid, <- H0. }
+    }
+    destruct_all.
+    exists x2, ((i, UEvent None) :: x3).
+    split. easy.
+    split. easy.
+    econstructor.
+    2: exact H6.
+    constructor; cbn.
+    {
+      rewrite eqb_id, <- x.
+      now econstructor.
+    }
+    { intros. now rewrite eqb_nid. }
   }
 Qed.
