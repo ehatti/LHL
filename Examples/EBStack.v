@@ -83,127 +83,116 @@ Definition Post T A R := R -> SRelt (VE T A) (VF T A).
 Notation stkSt s := (RState (snd s)).
 Notation exchSt s := (LState (snd s)).
 
+Notation pendSet s := (
+  match exchSt s with
+  | ExchDef ps _ => ps
+  end
+).
+
+Notation doneSet s := (
+  match exchSt s with
+  | ExchDef _ ds => ds
+  end
+).
+
 Notation IStep s i e t :=
   (InterStep (EBStack _) s (i, UEvent (Some e)) t).
 
-Variant EBTran {T A} : Relt T A :=
+Notation ISt := (InterState (F _) (VE _ _)).
+
+Variant EBTran {T A} : Name T -> Relt T A :=
 | StkInvoke i s x t y :
     InvokeAny (EBStack A) i s (eq x) t (eq y) ->
-    EBTran s x t y
+    EBTran i s x t y
 | StkReturn i s x t y :
     ReturnAny (EBStack A) i s (eq x) t (eq y) ->
-    EBTran s x t y
+    EBTran i s x t y
 | StkCallPush s x t i v :
     IStep s i (CallEv (inr (WFPush v))) t ->
-    EBTran s x t x
-| StkPushPass s x t y i v :
+    EBTran i s x t x
+| StkPushPass (s : ISt) x t y i v :
+    forall (nin_pend :
+      forall v, (i, v) ∈ pendSet s -> doneSet s <> {}
+    ),
     IStep s i (RetEv (inr (WFPush v)) (PASS tt)) t ->
     VisPossSteps x [(i, CallEv (Push v)); (i, RetEv (Push v) tt)] y ->
-    EBTran s x t y
+    EBTran i s x t y
 | StkPushFail s x t i v :
     IStep s i (RetEv (inr (WFPush v)) FAIL) t ->
-    EBTran s x t x
+    EBTran i s x t x
 | StkCallPop s x t i :
     IStep s i (CallEv (inr WFPop)) t ->
-    EBTran s x t x
-| StkPopPass s x t y i v :
+    EBTran i s x t x
+| StkPopPass (s : ISt) x t y i v :
+    forall (nin_pend :
+      forall v, (i, v) ∈ pendSet s -> doneSet s <> {}
+    ),
     IStep s i (RetEv (inr WFPop) (PASS v)) t ->
     VisPossSteps x [(i, CallEv Pop); (i, RetEv Pop v)] y ->
-    EBTran s x t y
+    EBTran i s x t y
 | StkPopFail s x t i :
     IStep s i (RetEv (inr WFPop) FAIL) t ->
-    EBTran s x t x
+    EBTran i s x t x
 | StkOffer s x t i v :
+    forall (i_wait :
+      match v with
+      | Some v => Waiting i (Push v) x
+      | None => Waiting i Pop x
+      end),
     IStep s i (CallEv (inl (Exch v))) t ->
-    EBTran s x t x
+    EBTran i s x t x
 | StkRevoke s x t i v :
     IStep s i (RetEv (inl (Exch v)) None) t ->
-    EBTran s x t x
-| StkPushAccept s x t y i j v :
+    EBTran i s x t x
+| StkPushAccept (s : ISt) x t y i j v :
+    forall (seq :
+      exchSt s = ExchDef {i => Some v, j => None} {}
+    ),
     IStep s i (RetEv (inl (Exch (Some v))) (Some None)) t ->
     VisPossSteps
       x
       [(i, CallEv (Push v)); (i, RetEv (Push v) tt);
        (j, CallEv Pop); (j, RetEv Pop (Some v))]
       y ->
-    EBTran s x t y
-| StkPopAccept s x t y i j v :
-    IStep s i (RetEv (inl (Exch None)) (Some (Some v))) t ->
-    VisPossSteps
-      x
-      [(i, CallEv (Push v)); (i, RetEv (Push v) tt);
-       (j, CallEv Pop); (j, RetEv Pop (Some v))]
-      y ->
-    EBTran s x t y
-| StkPushFinish s x t i v :
-    IStep s i (RetEv (inl (Exch (Some v))) (Some None)) t ->
-    EBTran s x t x
-| StkPushConflict s x t i v w :
+    EBTran i s x t y
+| StkPushConflict (s : ISt) x t i j v w :
+    forall (seq :
+      exchSt s = ExchDef {i => Some v, j => Some w} {}
+    ),
     IStep s i (RetEv (inl (Exch (Some v))) (Some (Some w))) t ->
-    EBTran s x t x
-| StkPopFinish s x t i v :
+    EBTran i s x t x
+| StkPopAccept (s : ISt) x t y i j v :
+    forall (seq :
+      exchSt s = ExchDef {i => None, j => Some v} {}
+    ),
     IStep s i (RetEv (inl (Exch None)) (Some (Some v))) t ->
-    EBTran s x t x
-| StkPopConflict s x t i :
+    VisPossSteps
+      x
+      [(i, CallEv (Push v)); (i, RetEv (Push v) tt);
+       (j, CallEv Pop); (j, RetEv Pop (Some v))]
+      y ->
+    EBTran i s x t y
+| StkPopConflict (s : ISt) x t i j :
+    forall (seq :
+      exchSt s = ExchDef {i => None, j => None} {}
+    ),
     IStep s i (RetEv (inl (Exch None)) (Some None)) t ->
-    EBTran s x t x
+    EBTran i s x t x
+| StkFinish (s : ISt) x t i j (v w : option A) :
+    forall (seq :
+      exchSt s = ExchDef {j => w} {i => v}
+    ),
+    IStep s i (RetEv (inl (Exch v)) (Some w)) t ->
+    EBTran i s x t x
 | StkNoOp s x t i :
     InterStep (EBStack _) s (i, UEvent None) t ->
-    EBTran s x t x.
+    EBTran i s x t x.
 
-Definition Guar {T A} : Relt T A :=
-  EBTran.
+Definition Guar {T A} (i : Name T) : Relt T A :=
+  EBTran i.
 
-Definition Rely {T A} : Relt T A :=
-  SRTC EBTran.
-
-Record Waiting {T A R} (i : Name T) (m : F A R)
-  (x : Poss (VF T A))
-:= {
-  call_waiting : PCalls x i = CallPoss m;
-  ret_waiting : PRets x i = RetIdle;
-}.
-
-Record Done {T A R} (i : Name T) (m : F A R) (v : R)
-  (x : Poss (VF T A))
-:= {
-  call_done : PCalls x i = CallDone m;
-  ret_done : PRets x i = RetPoss m v
-}.
-
-Record Offered1 {T A} (i : Name T) (v : option A)
-  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
-:= {
-  exch_offered : exchSt s = ExchDef {i => v} {};
-}.
-
-Record Offered2 {T A} (i j : Name T) (v w : option A)
-  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
-:= {
-  exchs_offered : exchSt s = ExchDef {i => v, j => w} {};
-}.
-
-Record Accepted {T A} (i j : Name T) (v : A)
-  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
-:= {
-  accepted : exchSt s = ExchDef {j => None} {i => Some v};
-  push_done : Done i (Push v) tt x;
-  (* pop_done : Done i Pop (Some v) x *)
-}.
-
-Record PopAccepted {T A} (i j : Name T) (v : A)
-  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
-:= {
-  paccepted : exchSt s = ExchDef {j => Some v} {i => None};
-  pop_done : Done i Pop (Some v) x
-}.
-
-
-Record Conflicted {T A} (i j : Name T) (v w : A)
-  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
-:= {
-  conflicted : exchSt s = ExchDef {i => Some v} {j => Some w}
-}.
+Definition Rely {T A} (i : Name T) : Relt T A :=
+  SRTC (fun s x t y => exists j, i <> j /\ EBTran j s x t y).
 
 Record Inv {T A}
   (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
@@ -212,13 +201,57 @@ Record Inv {T A}
     exists vs pu,
       stkSt s = WaitFreeStackDef vs pu /\
       PState x = AtomicStackDef vs None;
-  pop_offer_waiting :
-    forall i os cs,
-      exchSt s = ExchDef os cs ->
-      (i, None) ∈ os ->
-      ~(exists v j,
-        (j, Some v) ∈ cs) ->
-      Waiting i Pop x
+  wait_inv :
+    forall i v,
+      contains (i, v) (pendSet s) ->
+      doneSet s = {} ->
+      match v with
+      | Some v => Waiting i (Push v) x
+      | None => Waiting i Pop x
+      end
+}.
+
+Record Ready {T A} (i : Name T)
+  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
+:= {
+  ready_inv : Inv s x;
+  ready_lazy :
+    forall v,
+      contains (i, v) (pendSet s) ->
+      doneSet s <> {}
+}.
+
+Record Complete {T A} (i : Name T) (v : option A)
+  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
+:= {
+  comp_inv : Inv s x;
+  comp_pres : contains (i, v) (pendSet s);
+  comp_emp : doneSet s = {}
+}.
+
+Record ReadyWaiting {T A} (i : Name T) {R} (m : F A R)
+  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
+:= {
+  wait_ready : Ready i s x;
+  ready_wait : Waiting i m x
+}.
+
+Record ReadyDone {T A} (i : Name T) {R} (m : F A R) (r : R)
+  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
+:= {
+  done_ready : Ready i s x;
+  ready_done : Done i m r x;
+}.
+
+Record ReadyDoneExch {T A} (i : Name T) {R} (m : F A R) (r : R)
+  (s : InterState (F A) (VE T A)) (x : Poss (VF T A))
+:= {
+  exch_ready : ReadyDone i m r s x;
+  ready_proper :
+    match m with
+    | Push v => exists j, exchSt s = ExchDef {j => None} {i => Some v}
+    | Pop => exists j v, exchSt s = ExchDef {j => Some v} {i => None}
+    end
 }.
 
 Lemma foldProg {E A} :
@@ -269,20 +302,19 @@ Lemma eq_inj {A} {x y : A} :
 intros. now rewrite H.
 Qed.
 
+Ltac easycons := repeat (easy || constructor).
+
+Ltac recons := repeat econstructor.
+
 Ltac eq_inj H :=
   apply eq_inj in H; subst.
 
 Ltac begin_commit :=
   unfold Commit, LiftSPrec; intros.
 
-Ltac inst_eqs :=
-  repeat match goal with
-  | [ H : forall (x : Poss (VF _ _)), eq ?y = eq x -> _ |- _ ] =>
-      specialize (H ?y eq_refl); psimpl
-  end.
-
 Ltac begin_stable :=
-  unfold Stable, stablePost, stableRelt, sub, subRelt;
+  unfold Stable, stablePost, stableRelt, sub, subRelt, subPrec;
+  unfold SStable, stableSRelt, stableSPrec, ssub, subSRelt, subSPrec;
   unfold ReltToPrec, LiftSPrec, LiftSRelt;
   intros; psimpl.
 
@@ -293,15 +325,35 @@ Ltac simp_sets :=
   | [ H : {} = {?i => ?v} |- _ ] =>
       symmetry in H;
       now apply disj_cons in H
-  | [ H : insert ?x ?xs = insert ?y ?ys |- _ ] =>
+  | [ H : insert ?x emp = insert ?y emp |- _ ] =>
+      apply insert_cong1 in H;
+      ddestruct H
+  | [ H : insert (?i, ?x) (insert (?j, ?y) emp) =
+          insert (?i, ?x) (insert (?k, ?z) emp),
+      H0 : ?i <> ?j
+    |-
+      _
+    ] =>
+      apply (insert_cong2_pad _ _ _ _ _ _ H0) in H;
+      ddestruct H
+  (* | [ H : insert ?x ?xs = insert ?y ?ys |- _ ] =>
       let H2 := fresh in
       let H3 := fresh in
       apply insert_cong in H;
       destruct H as [H2 H3];
-      ddestruct H2
+      ddestruct H2 *)
   | [ H : emp = emp |- _ ] =>
       clear H
+  | [ H : contains ?x (insert ?y ?s) |- _ ] =>
+      let HL := fresh in
+      let HR := fresh in
+      apply contains_invert in H;
+      destruct H as [HL | HR];
+      [ddestruct HL | idtac]
+  | [ H : contains ?x emp |- _ ] =>
+      now apply contains_contr in H
   end.
+
 
 Lemma SRTC_stable {T A} {P : Prec T A} {R : Relt T A} :
   (forall s x t y,
@@ -316,38 +368,630 @@ intros. induction H1. easy.
 eapply IHSRTC, H. exact H0. easy.
 Qed.
 
-Lemma Inv_stable {T A} :
-  SStable (T:=T) Rely (Inv (A:=A)).
-unfold SStable, stableSPrec, ssub, subSPrec.
-intros. psimpl.
-eapply SRTC_stable.
-2: exact H. 2: exact H0.
-intros. ddestruct H2.
-{
-  admit.
-}
-{
-  admit.
-}
-{
-  admit.
-}
-all: admit.
+Axiom StkRet_inj : forall A B, StkRet A = StkRet B -> A = B.
+
+Ltac dsteps :=
+do 10 try (
+  do 2 psimpl;
+  match goal with
+  | [ H : IStep ?s ?i ?m ?t |- _ ] =>
+    unfold InterStep, ThreadsStep, StateStep in H;
+    destruct H
+  | [ H : PointStep ?M ?s ?m ?t |- _ ] =>
+    ddestruct H
+  | [ H : WaitFreeStackStep ?s ?m ?t |- _ ] =>
+    ddestruct H
+  | [ H : ExchStep ?s ?m ?t |- _ ] =>
+    ddestruct H
+  | [ H1 : ?s = ?y, H2 : AtomicStackStep ?y ?m ?z |- _ ] =>
+    rewrite H1 in H2 at 1;
+    ddestruct H2
+  | [ H : AtomicStackStep ?x ?m ?y |- _ ] =>
+    ddestruct H
+  | [ H : InterStep ?M ?s ?m ?t |- _ ] =>
+    unfold InterStep, ThreadsStep, StateStep in H;
+    destruct H
+  end;
+  do 2 psimpl
+).
+
+Ltac drecs :=
+do 10 try (
+  match goal with
+  | [ H : Inv ?s ?x |- _ ] =>
+    destruct H
+  | [ H : Ready ?i ?s ?x |- _ ] =>
+    destruct H
+  end
+).
+
+Ltac simp_eqs :=
+do 10 try (
+  lazymatch goal with
+  | [ H1 : ?y = ?x, H2 : ?z = ?x |- _ ] =>
+    rewrite <- H2 in H1 at 1;
+    ddestruct H1
+  | [ H1 : ?x = ?y, H2 : ?z = ?x |- _ ] =>
+    rewrite H1 in H2;
+    ddestruct H2
+  | [ H1 : ?x = ?y, H2 : ?y = ?z |- _ ] =>
+    rewrite H2 in H1 at 1;
+    ddestruct H1
+  | [ H1 : ?x = ?y, H2 : ?z = ?y |- _ ] =>
+    rewrite <- H2 in H1 at 1;
+    ddestruct H1
+  | [ H : StkRet ?A = StkRet ?B |- _ ] =>
+    apply StkRet_inj in H;
+    subst
+  | [ H : existT ?F ?A ?x = existT ?F ?A ?y |- _ ] =>
+    ddestruct H
+  end
+).
+
+Lemma sing_elem {A} {P : A -> Prop} :
+  forall x : A,
+  eq x = P ->
+  P x.
+intros. now rewrite <- H.
+Qed.
+
+Lemma Inv_stable {T A} (self : Name T) :
+  SStable (Rely self) (@Inv T A).
+Proof.
+  begin_stable.
+  eapply SRTC_stable.
+  2: exact H. 2: exact H0.
+  clear. intros. cbn in *.
+  destruct H0 as [j [neq H0]].
+  ddestruct H0.
+  {
+    unfold InvokeAny, TInvoke, TIdle in H0.
+    psimpl. apply sing_elem in H3. psimpl.
+    specialize (H4 x2 eq_refl). psimpl.
+    destruct H1. cbn in *. ddestruct H1.
+    drecs. constructor.
+    {
+      setoid_rewrite <- H2.
+      setoid_rewrite H5.
+      easy.
+    }
+    {
+      intros.
+      dec_eq_nats i0 i.
+      {
+        destruct v.
+        {
+          assert (Waiting i (Push a) x2).
+          {
+            apply wait_inv0 with (v:= Some a);
+            now rewrite H2 at 1.
+          }
+          destruct H11.
+          now rewrite H3 in call_waiting.
+        }
+        {
+          assert (Waiting i Pop x2).
+          {
+            apply wait_inv0 with (v:= None);
+            now rewrite H2 at 1.
+          }
+          destruct H11.
+          now rewrite H3 in call_waiting.
+        }
+      }
+      {
+        assert (
+          match v with
+          | Some v0 => Waiting i0 (Push v0) x2
+          | None => Waiting i0 Pop x2
+          end
+        ).
+        {
+          apply wait_inv0;
+          now rewrite H2 at 1.
+        }
+        destruct v; destruct H12;
+        constructor; now rewrite ?H8, ?H9.
+      }
+    }
+  }
+  {
+    unfold ReturnAny, TReturn, mapRetPoss in H0.
+    psimpl. apply sing_elem in H3. psimpl.
+    drecs. constructor.
+    {
+      setoid_rewrite <- H2.
+      setoid_rewrite H10.
+      easy.
+    }
+    {
+      intros.
+      destruct H1. cbn in *. ddestruct H1.
+      symmetry in x4. apply H0 in x4.
+      specialize (x4 x3 eq_refl). psimpl.
+      dec_eq_nats i0 i.
+      {
+        destruct v.
+        {
+          assert (Waiting i (Push a) x3).
+          {
+            apply wait_inv0 with (v:= Some a);
+            now rewrite H2 at 1.
+          }
+          destruct H15.
+          now rewrite H12 in call_waiting.
+        }
+        {
+          assert (Waiting i Pop x3).
+          {
+            apply wait_inv0 with (v:= None);
+            now rewrite H2 at 1.
+          }
+          destruct H15.
+          now rewrite H12 in call_waiting.
+        }
+      }
+      {
+        assert (
+          match v with
+          | Some v0 => Waiting i0 (Push v0) x3
+          | None => Waiting i0 Pop x3
+          end
+        ).
+        {
+          apply wait_inv0;
+          now rewrite H2 at 1.
+        }
+        destruct v; destruct H16;
+        constructor; now rewrite ?H8, ?H9.
+      }
+    }
+  }
+  {
+    dsteps; drecs;
+    psimpl; simp_eqs.
+    {
+      constructor.
+      {
+        setoid_rewrite <- x at 1.
+        recons. easy.
+      }
+      { now setoid_rewrite <- H6. }
+    }
+    {
+      constructor.
+      {
+        setoid_rewrite <- x at 1.
+        recons. easy.
+      }
+      { now setoid_rewrite <- H6. }
+    }
+  }
+  {
+    dsteps; simp_eqs.
+    drecs. psimpl. simp_eqs.
+    constructor.
+    {
+      setoid_rewrite <- x at 1.
+      destruct_big_steps. dsteps.
+      simp_eqs. rewrite H2 in x5.
+      ddestruct x5. recons. easy.
+    }
+    {
+      setoid_rewrite <- H6. intros.
+      dec_eq_nats i0 i.
+      { now apply nin_pend in H8. }
+      {
+        apply wait_inv0 in H8.
+        2: easy. destruct_big_steps.
+        destruct v0, H21;
+        constructor; cbn;
+        now rewrite ?H19, ?H20, ?H12, ?H13.
+      }
+    }
+  }
+  {
+    dsteps; simp_eqs.
+    drecs. psimpl. simp_eqs.
+    constructor.
+    {
+      setoid_rewrite <- x at 1.
+      recons. easy.
+    }
+    { now setoid_rewrite <- H7. }
+  }
+  {
+    dsteps; simp_eqs.
+    {
+      drecs. psimpl. simp_eqs.
+      constructor.
+      {
+        setoid_rewrite <- x at 1.
+        recons. easy.
+      }
+      { now setoid_rewrite <- H6. }
+    }
+    {
+      drecs. psimpl. simp_eqs.
+      constructor.
+      {
+        setoid_rewrite <- x at 1.
+        recons. easy.
+      }
+      { now setoid_rewrite <- H6. }
+    }
+  }
+  {
+    dsteps; simp_eqs;
+    drecs; psimpl; simp_eqs.
+    {
+      constructor.
+      {
+        setoid_rewrite <- x at 1.
+        destruct_big_steps. dsteps.
+        {
+          simp_eqs. rewrite H2 in x4.
+          ddestruct x4. recons. easy.
+        }
+        {
+          simp_eqs. rewrite H2 in x4.
+          ddestruct x4.
+        }
+      }
+      {
+        setoid_rewrite <- H6. intros.
+        dec_eq_nats i0 i.
+        { now apply nin_pend in H8. }
+        {
+          apply wait_inv0 in H8.
+          2: easy. destruct_big_steps.
+          destruct v1, H21;
+          constructor; cbn;
+          now rewrite ?H19, ?H20, ?H12, ?H13.
+        }
+      }
+    }
+    {
+      constructor.
+      {
+        setoid_rewrite <- x at 1.
+        destruct_big_steps. dsteps.
+        {
+          simp_eqs. rewrite H2 in x4.
+          ddestruct x4.
+        }
+        {
+          simp_eqs. rewrite H2 in x4.
+          ddestruct x4. recons. easy.
+        }
+      }
+      {
+        setoid_rewrite <- H6. intros.
+        dec_eq_nats i0 i.
+        { now apply nin_pend in H8. }
+        {
+          apply wait_inv0 in H8.
+          2: easy. destruct_big_steps.
+          destruct v0, H21;
+          constructor; cbn;
+          now rewrite ?H19, ?H20, ?H12, ?H13.
+        }
+      }
+    }
+  }
+  {
+    dsteps; simp_eqs.
+    drecs. psimpl. simp_eqs.
+    constructor.
+    {
+      setoid_rewrite <- x at 1.
+      recons. easy.
+    }
+    { now setoid_rewrite <- H7. }
+  }
+  {
+    dsteps; simp_eqs;
+    drecs. simp_eqs.
+    {
+      constructor.
+      { now setoid_rewrite <- H6. }
+      {
+        intros.
+        rewrite <- x in H at 1.
+        simp_sets. now destruct v.
+      }
+    }
+    {
+      constructor.
+      { now setoid_rewrite <- H6. }
+      {
+        intros.
+        rewrite <- x in H at 1.
+        simp_sets.
+        { now destruct v. }
+        {
+          apply wait_inv0.
+          {
+            rewrite <- x2 at 1.
+            apply contains_triv.
+          }
+          { now rewrite <- x2 at 1. }
+        }
+      }
+    }
+  }
+  {
+    dsteps. simp_eqs.
+    drecs. simp_eqs.
+    constructor.
+    { now setoid_rewrite <- H6. }
+    {
+      intros.
+      rewrite <- x in H at 1.
+      simp_sets.
+    }
+  }
+  {
+    dsteps; simp_eqs;
+    drecs; simp_eqs.
+    {
+      simp_sets.
+      destruct_big_steps.
+      simp_eqs. dsteps.
+      constructor.
+      {
+        setoid_rewrite <- H6.
+        setoid_rewrite H0.
+        recons.
+        rewrite <- x in x8.
+        ddestruct x8. 
+        rewrite <- x12 in x14.
+        ddestruct x14.
+        rewrite H9 in x4.
+        ddestruct x4.
+        rewrite <- x9 in x11.
+        ddestruct x11.
+        easy.
+      }
+      {
+        intros.
+        rewrite <- x2 in H10 at 1.
+        simp_sets.
+      }
+    }
+    {
+      simp_sets.
+    }
+  }
+  {
+    dsteps; simp_eqs;
+    drecs; simp_eqs;
+    simp_sets.
+    constructor.
+    { now setoid_rewrite <- H6. }
+    {
+      intros.
+      rewrite <- x0 in H7 at 1.
+      simp_sets.
+    }
+  }
+  {
+    dsteps; simp_eqs;
+    drecs; simp_eqs;
+    simp_sets; simp_eqs.
+    psimpl. destruct_big_steps.
+    rewrite H8 in H7. dsteps. simp_eqs.
+    constructor.
+    {
+      setoid_rewrite <- H6.
+      setoid_rewrite H.
+      recons.
+      rewrite <- x10 in x7.
+      ddestruct x7.
+      easy.
+    }
+    {
+      intros.
+      rewrite <- x4 in H7 at 1.
+      simp_sets.
+    }
+  }
+  {
+    dsteps; simp_eqs;
+    drecs; simp_eqs;
+    simp_sets.
+    constructor.
+    { now setoid_rewrite <- H6. }
+    {
+      intros.
+      rewrite <- x0 in H7 at 1.
+      simp_sets.
+    }
+  }
+  {
+    dsteps; simp_eqs;
+    simp_sets. drecs.
+    constructor.
+    { now setoid_rewrite <- H6. }
+    {
+      intros.
+      rewrite <- x2 in H at 1.
+      simp_sets.
+    }
+  }
+  {
+    dsteps. drecs.
+    constructor;
+    now setoid_rewrite <- H2.
+  }
+Qed.
+
+Lemma ready_stable {T A} (i : Name T) :
+  SStable (Rely i) (Ready (A:=A) i).
+Proof.
+  begin_stable.
+  eapply SRTC_stable.
+  2: exact H. 2: exact H0.
+  clear. intros.
+  destruct H.
+  constructor.
+  {
+    eapply Inv_stable.
+    psplit. exact ready_inv0.
+    econstructor.
+    2: constructor.
+    exact H0.
+  }
+  destruct H0 as [j [neq H0]].
+  ddestruct H0.
+  {
+    unfold InvokeAny, TInvoke in H. psimpl.
+    now setoid_rewrite <- H1.
+  }
+  {
+    unfold ReturnAny, TReturn in H. psimpl.
+    now setoid_rewrite <- H1.
+  }
+  { dsteps; now setoid_rewrite <- H5. }
+  {
+    dsteps.
+    now setoid_rewrite <- H7.
+    now setoid_rewrite <- H5.
+  }
+  { dsteps. now setoid_rewrite <- H6. }
+  { dsteps; now setoid_rewrite <- H5. }
+  {
+    dsteps.
+    now setoid_rewrite <- H7.
+    now setoid_rewrite <- H5.
+    now setoid_rewrite <- H5.
+  }
+  { dsteps. now setoid_rewrite <- H6. }
+  {
+    dsteps; drecs; intros.
+    {
+      rewrite <- x in H1.
+      now simp_sets.
+    }
+    {
+      rewrite <- x in H6.
+      simp_sets.
+      { easy. }
+      {
+        exfalso.
+        eapply ready_lazy0.
+        {
+          rewrite <- x2 at 1.
+          apply contains_triv.
+        }
+        { now rewrite <- x2 at 1. }
+      }
+    }
+  }
+  {
+    dsteps. drecs. intros.
+    rewrite <- x in H1 at 1.
+    simp_sets.
+  }
+  {
+    dsteps; simp_eqs; simp_sets.
+    intros. rewrite <- x0 in H7 at 1.
+    now simp_sets.
+  }
+  {
+    dsteps; simp_eqs; simp_sets.
+    intros. rewrite <- x0 in H6 at 1.
+    now simp_sets.
+  }
+  {
+    dsteps; simp_eqs; simp_sets.
+    intros. rewrite <- x0 in H7 at 1.
+    now simp_sets.
+  }
+  {
+    dsteps; simp_eqs; simp_sets.
+    intros. rewrite <- x0 in H6 at 1.
+    now simp_sets.
+  }
+  {
+    dsteps; simp_eqs; simp_sets.
+    intros. rewrite <- x2 in H6 at 1.
+    now simp_sets.
+  }
+  {
+    dsteps.
+    now setoid_rewrite <- H1.
+  }
+Qed.
+
+Lemma ready_waiting_stable {T A} (i : Name T) {R} (m : F A R) :
+  SStable (Rely i) (ReadyWaiting i m).
+Proof.
+  begin_stable.
+  eapply SRTC_stable.
+  2: exact H. 2: exact H0.
+  clear. intros.
+  destruct H.
+  constructor.
+  {
+    eapply ready_stable.
+    psplit. exact wait_ready0.
+    econstructor.
+    2: constructor.
+    easy.
+  }
 Admitted.
 
-Axiom StkRet_inj : forall A B, StkRet A = StkRet B -> A = B.
+Lemma ready_done_stable {T A} (i : Name T) {R} (m : F A R) (r : R) :
+  SStable Rely (ReadyDone i m r).
+begin_stable.
+eapply SRTC_stable.
+2: exact H. 2: exact H0.
+clear. intros.
+destruct H.
+constructor.
+{
+  eapply ready_stable.
+  psplit. exact done_ready0.
+  econstructor.
+  2: constructor.
+  easy.
+}
+Admitted.
+
+Lemma ready_done_exch_stable {T A} (i : Name T) {R} (m : F A R) (r : R) :
+  SStable Rely (ReadyDoneExch i m r).
+begin_stable.
+eapply SRTC_stable.
+2: exact H. 2: exact H0.
+clear. intros.
+destruct H.
+constructor.
+{
+  eapply ready_done_stable.
+  psplit. exact exch_ready0.
+  econstructor.
+  2: constructor.
+  easy.
+}
+Admitted.
+
+Lemma complete_tran {T A} (i : Name T) (v : option A) {R} (m : F A R) (r : R) :
+  forall s x t y,
+  Complete i v s x ->
+  Rely s x t y ->
+  Complete i v t y \/ ReadyDoneExch i m r t y.
+Admitted.
 
 Lemma push_correct {T A} {i : Name T} {v : A} :
   VerifyProg i (LiftSRelt Rely) (LiftSRelt Guar)
-    (prComp (LiftSPrec Inv) (TInvoke (EBStack A) i _ (Push v)) ->> LiftSRelt Rely)
+    (prComp (LiftSPrec (Ready i))
+            (TInvoke (EBStack A) i _ (Push v)) ->>
+     LiftSRelt Rely)
     (push v)
-    (fun _ _ _ => LiftSPrec (fun s x =>
-      Inv s x /\
-      Returned i (Push v) tt s (eq x))).
+    (fun _ _ _ => LiftSPrec (ReadyDone i (Push v) tt)).
 eapply weakenPrec with
-  (P:=fun _ _ => LiftSPrec (fun s x =>
-    Inv s x /\
-    Waiting i (Push v) x)).
+  (P:=fun _ _ => LiftSPrec (ReadyWaiting i (Push v))).
 2:{
   unfold sub, subRelt, LiftSPrec, LiftSRelt.
   intros. psimpl.
@@ -375,64 +1019,85 @@ eapply weakenPrec with
   }
   subst. specialize (H0 _ eq_refl).
   psimpl. exists x0. split. easy.
+  assert (ReadyWaiting i (Push v) x (invPoss i x1 (Push v))).
+  {
+    assert (snd s = snd x).
+    { unfold TInvoke in H1. now psimpl. }
+    drecs.
+    constructor.
+    {
+      constructor.
+      {
+        constructor; cbn.
+        { now setoid_rewrite <- H. }
+        {
+          setoid_rewrite <- H. intros.
+          dec_eq_nats i0 i.
+          { now apply ready_lazy0 in H2. }
+          {
+            assert (
+              match v0 with
+              | Some v => Waiting i0 (Push v) x1
+              | None => Waiting i0 Pop x1
+              end
+            ).
+            { now apply wait_inv0. }
+            destruct v0; destruct H5;
+            constructor; cbn;
+            now rewrite eqb_nid.
+          }
+        }
+      }
+      { now rewrite <- H. }
+    }
+    {
+      constructor; cbn;
+      now rewrite eqb_id.
+    }
+  }
+  {
+    apply ready_waiting_stable.
+    psplit. exact H. easy.
+  }
 }
 cut (
   forall P,
-  P ==> (fun _ _ => LiftSPrec (fun s x =>
-    Inv s x /\
-    Waiting i (Push v) x)) ->
+  P ==> (fun _ _ => LiftSPrec (ReadyWaiting i (Push v))) ->
     VerifyProg i (LiftSRelt Rely) (LiftSRelt Guar)
       P
       (push v)
-      (fun _ _ _ => LiftSPrec (fun s x =>
-        Inv s x /\
-        Returned i (Push v) tt s (eq x)))
+      (fun _ _ _ => LiftSPrec (ReadyDone i (Push v) tt))
 ).
 { intros. now apply H. }
 cofix rec. intros P impH. unfold push, loop.
 rewrite stepLoopBind, stepCall.
 eapply SafeBind with
-  (QI:=fun _ _ => LiftSPrec (fun s x =>
-    Inv s x /\
-    Waiting i (Push v) x))
+  (QI:=fun _ _ => LiftSPrec (ReadyWaiting i (Push v)))
   (QR:=fun r _ _ => LiftSPrec (fun s x =>
-    Inv s x /\
     match r with
-    | PASS tt => Done i (Push v) tt x
-    | FAIL => Waiting i (Push v) x
+    | PASS tt => ReadyDone i (Push v) tt s x
+    | FAIL => ReadyWaiting i (Push v) s x
     end)).
 {
   clear rec impH. begin_stable.
   specialize (H0 x1 eq_refl). psimpl.
   exists x0. split. easy.
-  split.
-  {
-    apply Inv_stable.
-    psplit. exact H1.
-    easy.
-  }
-  {
-    admit.
-  }
+  apply ready_waiting_stable.
+  psplit. exact H1. easy.
 }
 {
   clear rec impH. begin_stable.
   specialize (H0 x1 eq_refl). psimpl.
   exists x0. split. easy.
-  split.
-  {
-    apply Inv_stable.
-    psplit. exact H1.
-    easy.
-  }
+  destruct v0.
   {
     destruct v0.
-    {
-      admit.
-    }
-    {
-      admit.
-    }
+    eapply ready_done_stable.
+    psplit. exact H1. easy.
+  }
+  {
+    eapply ready_waiting_stable.
+    psplit. exact H1. easy.
   }
 }
 {
@@ -442,50 +1107,43 @@ eapply SafeBind with
   unfold LiftSPrec in H. psimpl.
   exists (eq x).
   split.
-  { now exists x. }
+  { recons. }
   split.
-  {
-    intros. subst. exists σ.
-    repeat (constructor || easy).
-  }
+  { intros. subst. recons. }
   split.
   {
     exists x. split. easy.
-    split.
+    destruct H7, wait_ready0, ready_inv0.
+    psimpl. constructor.
     {
-      destruct H7. psimpl.
-      ddestruct H2.
+      constructor.
       {
         constructor.
+        ddestruct H2.
         {
-          eexists vs, _.
-          split. symmetry. exact x.
-          rewrite <- x3 in H. ddestruct H.
-          exact H7.
+          rewrite H in x3.
+          ddestruct x3. eexists _, _.
+          split. symmetry. exact x. easy.
         }
-        { now setoid_rewrite <- H6 at 1. }
-      }
-      {
-        constructor.
         {
-          eexists vs, _.
-          split. symmetry. exact x.
-          rewrite <- x3 in H. ddestruct H.
-          exact H7.
+          rewrite H in x3.
+          ddestruct x3. eexists _, _.
+          split. symmetry. exact x. easy.
         }
-        { now setoid_rewrite <- H6 at 1. }
+        { now setoid_rewrite <- H6. }
       }
+      { now setoid_rewrite <- H6. }
     }
     { easy. }
   }
   {
-    exists x. split. easy.
-    eq_inj H. apply StkCallPush with
+    exists x. split. easy. eq_inj H.
+    eapply StkCallPush with
       (i:=i) (v:=v).
     constructor.
     {
-      constructor; cbn.
-      easy. intros. now rewrite H0.
+      constructor; cbn. easy.
+      intros. now rewrite H0.
     }
     { easy. }
   }
@@ -511,6 +1169,10 @@ intros. destruct v0.
       subst. ddestruct x2.
       easy.
     }
+    destruct H3, wait_ready0.
+    destruct ready_wait0, ready_inv0.
+    destruct_all. rewrite H in x1 at 1.
+    ddestruct x1. rename x2 into vs.
     exists (eq (
       comRetPoss i
         (comInvPoss i
@@ -524,7 +1186,7 @@ intros. destruct v0.
     assert (
       VisPossSteps
         x3
-        ([(i, CallEv (Push v))] ++ [(i, RetEv (Push v) tt)])
+        (([] ++ [(i, CallEv (Push v))]) ++ [(i, RetEv (Push v) tt)])
         (comRetPoss i
           (comInvPoss i
             x3
@@ -535,55 +1197,48 @@ intros. destruct v0.
           tt)
     ).
     {
-      apply retStep.
-      apply callStep with (p:=[]).
+      apply retStep. apply callStep.
       constructor.
-      {
-        destruct H3, H4. psimpl.
-        rewrite <- x1 in H. ddestruct H.
-        rewrite H3. repeat (constructor || easy).
-      }
-      {
-        cbn. rewrite eqb_id.
-        destruct H4, H3. psimpl.
-        repeat (constructor || easy).
-      }
+      { rewrite H3. easycons. }
+      { cbn. rewrite eqb_id. easycons. }
     }
     split.
-    { repeat eexists. }
+    { recons. }
     split.
     {
       intros. subst.
-      eexists. split. easy.
-      eapply erase_vis. exact H.
+      exists x3. split. easy.
+      eapply erase_vis. exact H7.
     }
     split.
     {
       eexists. split. easy.
-      split.
+      constructor.
       {
-        destruct H3. psimpl.
         constructor.
         {
-          exists (v :: vs), None.
-          cbn. repeat (constructor || easy).
-        }
-        {
-          setoid_rewrite <- H7.
-          intros. apply pop_offer_waiting0
-            with (i:=i0) in H9. 2: easy.
-          assert (i <> i0).
+          constructor.
           {
-            unfold not. intros. subst.
-            destruct H4, H9.
-            rewrite call_waiting0 in call_waiting1.
-            ddestruct call_waiting1.
+            setoid_rewrite <- x at 1.
+            recons.
           }
-          destruct H9.
-          constructor; cbn;
-          now rewrite eqb_nid.
-          easy.
+          {
+            setoid_rewrite <- H6.
+            intros.
+            dec_eq_nats i0 i.
+            {
+              apply ready_lazy0 in H8.
+              now rewrite H9 in H8 at 1.
+            }
+            {
+              apply wait_inv0 in H8.
+              2: easy. destruct v0;
+              destruct H8; constructor;
+              cbn; now rewrite eqb_nid.
+            }
+          }
         }
+        { now setoid_rewrite <- H6. }
       }
       {
         constructor; cbn;
@@ -591,31 +1246,29 @@ intros. destruct v0.
       }
     }
     {
-      eexists. split. easy.
-      apply StkPushPass with
+      eexists. split. easy. eq_inj H8.
+      eapply StkPushPass with
         (i:=i) (v:=v).
+      { easy. }
       {
         constructor.
         {
-          constructor; cbn.
-          easy. intros. now rewrite H0.
+          constructor; cbn. easy.
+          intros. now rewrite H0.
         }
-        {
-          cbn. split. 2: easy.
-          rewrite <- x1, <- x at 1.
-          constructor.
+        { 
+          cbn. rewrite H, <- x at 1.
+          easycons.
         }
       }
-      { now eq_inj H8. }
+      { easy. }
     }
   }
   {
     rewrite stepLoopBreak. apply SafeReturn.
     unfold sub, subRelt. intros. psimpl.
     unfold LiftSPrec in H1. psimpl.
-    exists x3. destruct H3.
-    repeat (easy || constructor).
-    all: (subst; easy).
+    now exists x3.
   }
 }
 {
@@ -623,244 +1276,157 @@ intros. destruct v0.
   {
     clear rec. begin_commit.
     do 5 destruct H. clear H.
-    psimpl. psimpl. exists (eq x3).
+    do 2 psimpl. exists (eq x3). ddestruct H.
+    apply StkRet_inj in x2. psimpl. clear x5.
+    destruct H3, wait_ready0, ready_wait0, ready_inv0.
+    psimpl. rewrite <- x1 in H3 at 1. ddestruct H3.
+    ddestruct H2.
     split.
-    { now exists x3. }
+    { recons. }
     split.
     {
-      intros. subst. eexists.
-      repeat (constructor || easy).
+      intros. subst.
+      recons.
     }
     split.
     {
-      exists x3. split. easy.
-      split.
+      eexists.
+      split. easy.
+      constructor.
       {
-        destruct H3. psimpl.
-        constructor. ddestruct H.
+        constructor.
         {
-          eexists vs, _. split.
-          symmetry. exact x.
-          rewrite <- x4 in H3.
-          ddestruct H3. exact H8.
+          constructor.
+          {
+            exists x2, (Some (None, MkWFSPend i0 mo)).
+            easycons.
+          }
+          { now setoid_rewrite <- H7. }
         }
-        { now setoid_rewrite <- H7 at 1. }
+        { now setoid_rewrite <- H7. }
       }
-      { easy. }
+      { constructor; easy. }
     }
     {
-      eexists. split. easy.
-      eq_inj H8. apply StkPushFail with
+      eexists. split. easy. eq_inj H2.
+      eapply StkPushFail with
         (i:=i) (v:=v).
       constructor.
       {
-        constructor; cbn.
-        easy. intros. now rewrite H0.
+        constructor; cbn. easy.
+        intros. now rewrite H0.
       }
-      { easy. }
+      {
+        cbn. rewrite <- x1, <- x at 1.
+        easycons.
+      }
     }
   }
   {
     rewrite stepLoopBind, stepCall.
     eapply SafeBind with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
-        Inv s x /\
-        ((Waiting i (Push v) x /\
-          (Offered1 i (Some v) s x \/
-           exists j w, i <> j /\ Offered2 i j (Some v) w s x)) \/
-         (Done i (Push v) tt x /\
-          exists j, i <> j /\ Accepted i j v s x))))
+        Complete i (Some v) s x \/
+        ReadyDoneExch i (Push v) tt s x))
       (QR:=fun r _ _ => LiftSPrec (fun s x =>
-        Inv s x /\
-        (match r with
-         | Some None => Done i (Push v) tt x
-         | _ => Waiting i (Push v) x
-         end))).
+        match r with
+        | Some None => ReadyDone i (Push v) tt s x
+        | _ => ReadyWaiting i (Push v) s x
+        end)).
     {
       clear rec. begin_stable.
       specialize (H0 x1 eq_refl). psimpl.
       exists x0. split. easy.
-      split.
+      destruct H1.
       {
-        apply Inv_stable.
-        psplit. exact H1.
-        easy.
+        eapply complete_tran.
+        exact H. easy.
       }
       {
-        admit.
+        right.
+        eapply ready_done_exch_stable.
+        psplit. exact H. easy.
       }
     }
     {
       clear rec. begin_stable.
       specialize (H0 x1 eq_refl). psimpl.
-      exists x0. split. easy. split.
+      exists x0. split. easy.
+      destruct v0. destruct o.
       {
-        apply Inv_stable.
-        psplit. exact H1.
-        easy.
+        apply ready_waiting_stable.
+        psplit. exact H1. easy.
       }
       {
-        admit.
+        apply ready_done_stable.
+        psplit. exact H1. easy.
+      }
+      {
+        apply ready_waiting_stable.
+        psplit. exact H1. easy.
       }
     }
     {
       clear rec. begin_commit.
       rewrite <- reltCompAssoc in H.
       do 5 destruct H. clear H. do 2 psimpl.
-      ddestruct H. 2: destruct x1.
-      {
-        exists (eq x3).
-        split.
-        { repeat econstructor. }
-        split.
+      destruct H3, wait_ready0, ready_wait0, ready_inv0.
+      psimpl. exists (eq x3).
+      split.
+      { recons. }
+      split.
+      { intros. subst. recons. }
+      split.
+      2:{
+        eexists. split. easy.
+        eq_inj H8. eapply StkOffer with
+          (i:=i) (v:= Some v).
+        { constructor; easy. }
+        constructor.
         {
-          intros. subst.
-          repeat econstructor.
+          constructor; cbn. easy.
+          intros. now rewrite H0.
         }
-        split.
+        { easy. }
+      }
+      eexists. split. easy.
+      {
+        left.
+        constructor.
         {
-          exists x3. split. easy.
-          split.
+          constructor.
           {
-            destruct H3. psimpl.
-            constructor.
+            exists x, x1.
+            now rewrite <- H6 at 1.
+          }
+          {
+            intros.
+            ddestruct H.
             {
-              exists x2, x4.
-              rewrite <- H7 at 1. easy.
-            }
-            {
-              intros.
               rewrite <- x in H8 at 1.
-              ddestruct H8. apply contains_invert in H9.
-              destruct H9. easy. now apply contains_contr in H8.
-            }
-          }
-          {
-            left. split. easy.
-            left. easy.
-          }
-        }
-        {
-          exists x3. split. easy.
-          eq_inj H. eapply StkOffer.
-          constructor; cbn.
-          {
-            constructor; cbn.
-            exact H1. intros. now rewrite H0.
-          }
-          {
-            rewrite <- x1, <- x at 1.
-            repeat (easy || constructor).
-          }
-        }
-      }
-      {
-        exists (eq x3).
-        split.
-        { repeat econstructor. }
-        split.
-        {
-          intros. subst.
-          repeat econstructor.
-        }
-        split.
-        {
-          exists x3. split. easy.
-          split.
-          {
-            destruct H3. psimpl.
-            constructor.
-            {
-              exists x1, x4.
-              rewrite <- H7 at 1. easy.
+              now simp_sets.
             }
             {
-              intros.
-              rewrite <- x in H9 at 1. ddestruct H9.
-              apply contains_invert in H10.
-              destruct H10. easy.
-              apply contains_invert in H9.
-              destruct H9. easy.
-              now apply contains_contr in H9.
-            }
-          }
-          {
-            left. split. easy.
-            right. exists i0, (Some a).
-            easy.
-          }
-        }
-        {
-          exists x3. split. easy.
-          eq_inj H8. eapply StkOffer.
-          constructor; cbn.
-          {
-            constructor; cbn.
-            exact H1. intros. now rewrite H0.
-          }
-          {
-            rewrite <- x2, <- x at 1.
-            repeat (easy || constructor).
-          }
-        }
-      }
-      {
-        exists (eq x3).
-        split.
-        { repeat econstructor. }
-        split.
-        {
-          intros. subst.
-          repeat econstructor.
-        }
-        split.
-        {
-          exists x3. split. easy.
-          split.
-          {
-            destruct H3. psimpl.
-            constructor.
-            {
-              exists x1, x4.
-              rewrite <- H7 at 1. easy.
-            }
-            {
-              intros.
-              symmetry in x2.
-              dec_eq_nats i1 i0.
+              rewrite <- x in H8 at 1.
+              simp_sets.
+              { easy. }
               {
-                apply pop_offer_waiting0 with (i:=i0) in x2.
-                2: apply contains_triv. easy.
-                unfold not. intros. psimpl. now apply contains_contr in H12.
-              }
-              {
-                rewrite <- x in H9 at 1. ddestruct H9.
-                apply contains_invert in H10.
-                destruct H10. ddestruct H9.
-                apply contains_invert in H9.
-                destruct H9. now ddestruct H9.
-                now apply contains_contr in H9.
+                apply wait_inv0.
+                rewrite <- x5 at 1.
+                { apply contains_triv. }
+                { now rewrite <- x5 at 1. }
               }
             }
           }
-          {
-            left. split. easy.
-            right. exists i0, None.
-            easy.
-          }
         }
         {
-          exists x3. split. easy.
-          eq_inj H8. eapply StkOffer.
-          constructor; cbn.
-          {
-            constructor; cbn.
-            exact H1. intros. now rewrite H0.
-          }
-          {
-            rewrite <- x2, <- x at 1.
-            repeat (easy || constructor).
-          }
+          ddestruct H;
+          rewrite <- x at 1;
+          apply contains_triv.
+        }
+        {
+          ddestruct H;
+          now rewrite <- x at 1.
         }
       }
     }
@@ -877,179 +1443,188 @@ intros. destruct v0.
       {
         begin_commit. do 5 destruct H.
         clear H. do 2 psimpl.
-        destruct H3. psimpl. rename x into vs.
-        repeat match goal with
-        | [ H : ?P \/ ?Q |- _ ] =>
-            destruct H
-        | [ H : ?P /\ ?Q |- _ ] =>
-            destruct H
-        end; psimpl.
+        destruct H3.
         {
-          (*
-          revoke case is impossible here because
-          we have assumed the return value is
-          Some None. the revoke case is handled
-          in the v0 <> Some None branch
-          *)
-          destruct H9.
-          rewrite exch_offered0 in H at 1.
-          ddestruct H; simp_sets.
-        }
-        {
-          (* accept *)
-          destruct H10.
-          rewrite exchs_offered0 in H at 1.
-          remember (Some None). move Heqo at bottom.
-          ddestruct H; simp_sets. ddestruct Heqo.
-          rename x5 into j.
-          set (x3' :=
+          destruct H3, comp_inv0.
+          psimpl. remember (Some None).
+          move Heqo at bottom. ddestruct H.
+          2:{
+            rewrite <- x5 in comp_emp0.
+            simp_sets.
+          }
+          2:{ easy. }
+          ddestruct Heqo.
+          rename x4 into vs.
+          epose (p' :=
             comRetPoss j
               (comInvPoss j
                 (comRetPoss i
                   (comInvPoss i
                     x3
                     (Push v)
-                    (AtomicStackDef vs (Some (MkStkPend i (Push v)))))
+                    (AtomicStackDef vs _))
                   (Push v)
-                  (AtomicStackDef (v :: vs) None)
+                  (AtomicStackDef (v :: vs) _)
                   tt)
                 Pop
-                (AtomicStackDef (v :: vs) (Some (MkStkPend j Pop))))
+                (AtomicStackDef (v :: vs) _))
               Pop
-              (AtomicStackDef vs None)
+              (AtomicStackDef vs _)
               (Some v)
           ).
           assert (
             VisPossSteps
               x3
               ([] ++
-               [(i, CallEv (Push v))] ++ [(i, RetEv (Push v) tt)] ++
-               [(j, CallEv Pop)]      ++ [(j, RetEv Pop (Some v))])
-              x3'
+               [(i, CallEv (Push v))] ++
+               [(i, RetEv (Push v) tt)] ++
+               [(j, CallEv Pop)] ++
+               [(j, RetEv Pop (Some v))])
+              p'
           ).
           {
-            apply pop_offer_waiting0
-              with (i:=j)
-              in exchs_offered0.
-            2:{ rewrite insert_perm. apply contains_triv. }
-            2:{
-              unfold not. intros. psimpl.
-              now apply contains_contr in H10.
+            assert (Waiting i (Push v) x3).
+            {
+              eapply wait_inv0 with (v:= Some v).
+              {
+                rewrite <- x2 at 1.
+                apply contains_triv.
+              }
+              { now rewrite <- x2 at 1. }
             }
-            destruct exchs_offered0.
+            assert (Waiting j Pop x3).
+            {
+              eapply wait_inv0 with (v:= None).
+              {
+                rewrite <- x2 at 1.
+                rewrite insert_perm.
+                apply contains_triv.
+              }
+              { now rewrite <- x2 at 1. }
+            }
+            destruct H8, H9.
             repeat rewrite app_assoc.
             apply retStep. apply callStep.
             apply retStep. apply callStep.
             constructor.
-            {
-              destruct H4. rewrite H8.
-              repeat (easy || constructor).
-            }
-            {
-              cbn. rewrite eqb_id. destruct H4.
-              repeat (easy || constructor).
-            }
-            {
-              cbn. rewrite eqb_nid; try easy.
-              repeat (easy || constructor).
-            }
-            {
-              cbn. rewrite eqb_id, eqb_nid.
-              repeat (easy || constructor).
-              easy.
-            } 
+            { rewrite H7. easycons. }
+            { cbn. rewrite eqb_id. easycons. }
+            { cbn. rewrite eqb_nid; easycons. }
+            { cbn. rewrite eqb_id, eqb_nid; easycons. }
           }
-          exists (eq x3').
+          exists (eq p').
           split.
-          { repeat econstructor. }
+          { recons. }
           split.
           {
             intros. subst.
-            exists x3. split. easy.
-            eapply erase_vis.
-            exact H10.
+            eexists. split. easy.
+            eapply erase_vis. exact H8.
           }
           split.
           {
-            exists x3'. split. easy.
-            split.
+            exists p'.
+            split. easy.
+            constructor.
             {
               constructor.
               {
-                exists vs, x1.
-                now rewrite <- H7 at 1.
+                constructor.
+                {
+                  exists vs, x1.
+                  now rewrite <- H6 at 1.
+                }
+                {
+                  intros.
+                  rewrite <- x in H10 at 1.
+                  simp_sets.
+                }
               }
               {
-                intros. rewrite <- x in H11 at 1.
-                ddestruct H11. apply contains_invert in H12.
-                destruct H12. ddestruct H11.
-                now apply contains_contr in H11.
+                intros.
+                rewrite <- x at 1.
+                apply disj_cons.
               }
             }
             {
-              subst x3'.
               constructor; cbn;
               now rewrite eqb_id, eqb_nid.
             }
           }
           {
-            exists x3'. split. easy.
-            eq_inj H11. eapply StkPushAccept
-              with (i:=i) (v:=v).
-            {
-              constructor; cbn.
-              {
-                constructor; cbn.
-                easy. intros. now rewrite H0.
-              }
-              {
-                rewrite exchs_offered0, <- x at 1.
-                repeat (easy || constructor).
-              }
-            }
-            { exact H10. }
-          }
-        }
-        {
-          (* finish *)
-          destruct H10.
-          exists (eq x3).
-          split.
-          { repeat econstructor. }
-          split.
-          {
-            intros. subst. eexists.
-            repeat constructor.
-          }
-          split.
-          {
-            exists x3. split. easy.
-            split.
+            exists p'. split. easy. eq_inj H9.
+            eapply StkPushAccept with
+              (i:=i) (j:=j) (v:=v).
+            { easy. }
             {
               constructor.
               {
-                exists vs, x1.
-                now rewrite <- H7 at 1.
+                constructor; cbn. easy.
+                intros. now rewrite H0.
+              }
+              {
+                cbn. rewrite <- x2, <- x at 1.
+                easycons.
+              }
+            }
+            { exact H8. }
+          }
+        }
+        {
+          exists (eq x3).
+          split.
+          { recons. }
+          split.
+          { intros. subst. recons. }
+          split.
+          {
+            exists x3. split. easy.
+            destruct H3, exch_ready0.
+            destruct done_ready0, ready_inv0.
+            constructor.
+            {
+              constructor.
+              {
+                constructor.
+                { now setoid_rewrite <- H6 at 1. }
+                {
+                  intros.
+                  ddestruct H.
+                  {
+                    rewrite <- x in H7 at 1.
+                    simp_sets.
+                  }
+                  {
+                    rewrite <- x in H3 at 1.
+                    simp_sets.
+                  }
+                }
               }
               {
                 intros.
-                rewrite accepted0 in H at 1.
-                ddestruct H; simp_sets.
-                rewrite <- x in H10 at 1.
-                ddestruct H10.
-                now apply contains_contr in H11.
+                ddestruct H.
+                {
+                  rewrite <- x at 1.
+                  apply disj_cons.
+                }
+                {
+                  rewrite <- x in H3 at 1.
+                  simp_sets.
+                }
               }
             }
             { easy. }
           }
           {
-            exists x3. split. easy.
-            eq_inj H10. eapply StkPushFinish
-              with (i:=i) (v:=v).
+            eexists. split. easy. eq_inj H7.
+            destruct H3. psimpl.
+            eapply StkFinish with
+              (i:=i) (v:= Some v).
+            { exact H3. }
             constructor.
             {
-              constructor; cbn.
-              easy. intros. now rewrite H0.
+              constructor; cbn. easy.
+              intros. now rewrite H0.
             }
             { easy. }
           }
@@ -1060,9 +1635,7 @@ intros. destruct v0.
         apply SafeReturn.
         unfold sub, subRelt.
         intros. unfold LiftSPrec in H.
-        psimpl. exists x4. destruct H3.
-        repeat (easy || constructor).
-        all: (subst; easy).
+        psimpl. exists x4. now destruct H3.
       }
     }
     {
@@ -1070,145 +1643,131 @@ intros. destruct v0.
       {
         begin_commit.
         repeat rewrite <- reltCompAssoc in H0.
-        do 5 destruct H0. clear H0. psimpl.
-        destruct H4. psimpl. rename x into vs.
-        destruct H5; destruct H5; psimpl.
-        {
-          ddestruct H0; simp_sets.
+        do 5 destruct H0. clear H0. do 2 psimpl.
+        destruct H4.
+        2:{
+          destruct H4, exch_ready0.
+          destruct done_ready0, ready_inv0.
+          psimpl.
+          ddestruct H0.
           {
-            assert (exists z, y = Some z).
-            {
-              clear - H. destruct y.
-              repeat econstructor.
-              easy.
-            }
-            psimpl. rename x4 into w.
-            exists (eq x3).
-            split.
-            { repeat econstructor. }
-            split.
-            {
-              intros. subst.
-              repeat econstructor.
-            }
-            split.
-            {
-              exists x3. split. easy.
-              split.
-              {
-                constructor.
-                {
-                  exists vs, x1.
-                  now rewrite <- H7 at 1.
-                }
-                {
-                  intros.
-                  rewrite <- x in H11 at 1.
-                  ddestruct H11.
-                  apply contains_invert in H12.
-                  destruct H12. ddestruct H11.
-                  now apply contains_contr in H11.
-                }
-              }
-              { easy. }
-            }
-            {
-              exists x3. split. easy.
-              eq_inj H11. eapply StkPushConflict
-                with (i:=i) (v:=v) (w:=w).
-              constructor; cbn.
-              {
-                constructor; cbn. easy.
-                intros. now rewrite H1.
-              }
-              {
-                rewrite <- x, <- x2 at 1.
-                repeat (easy || constructor).
-              }
-            }
+            rewrite H4 in x4 at 1.
+            ddestruct x4. simp_sets.
           }
           {
-            assert (exists z, x2 = Some z).
+            rewrite H4 in x6 at 1.
+            ddestruct x6. now simp_sets.
+          }
+          {
+            rewrite H4 in x4 at 1.
+            ddestruct x4. simp_sets.
+          }
+        }
+        {
+          destruct H4, comp_inv0.
+          ddestruct H0.
+          2:{
+            rewrite <- x2 in comp_emp0 at 1.
+            simp_sets.
+          }
+          {
+            assert (exists w, y = Some w).
             {
-              clear - H. destruct x2.
-              repeat econstructor.
-              easy.
+              destruct y.
+              { now exists a. }
+              { easy. }
             }
-            psimpl.
-            rename i0 into j.
-            rename x5 into w.
+            destruct H4 as [w]. subst.
             exists (eq x3).
             split.
-            { repeat econstructor. }
+            { recons. }
+            split.
+            { intros. subst. recons. }
             split.
             {
-              intros. subst.
-              repeat econstructor.
-            }
-            split.
-            {
-              exists x3. split. easy.
-              split.
+              eexists. split. easy.
+              constructor.
               {
                 constructor.
                 {
-                  exists vs, x1.
-                  now rewrite <- H7 at 1.
+                  constructor.
+                  { now setoid_rewrite <- H7 at 1. }
+                  {
+                    intros.
+                    rewrite <- x in H8 at 1.
+                    simp_sets.
+                  }
                 }
                 {
                   intros.
-                  rewrite <- x in H11 at 1. ddestruct H11.
-                  now apply contains_contr in H12.
+                  rewrite <- x at 1.
+                  apply disj_cons.
                 }
               }
-              { easy. }
+              {
+                eapply wait_inv0 with (v:= Some v).
+                {
+                  rewrite <- x1 at 1.
+                  apply contains_triv.
+                }
+                { now rewrite <- x1 at 1. }
+              }
             }
             {
-              exists x3. split. easy.
-              eq_inj H11. eapply StkPushConflict
-                with (i:=i) (v:=v) (w:=w).
+              eexists. split. easy. eq_inj H4.
+              eapply StkPushConflict with
+                (i:=i) (v:=v) (w:=w).
+              { symmetry. exact x1. }
               constructor.
               {
                 constructor; cbn. easy.
                 intros. now rewrite H1.
               }
               {
-                cbn. rewrite <- x4, <- x at 1.
-                repeat (easy || constructor).
+                cbn. rewrite <- x, <- x1 at 1.
+                easycons.
               }
             }
           }
           {
             exists (eq x3).
             split.
-            { repeat econstructor. }
+            { recons. }
+            split.
+            { intros. subst. recons. }
             split.
             {
-              intros. subst.
-              repeat econstructor.
-            }
-            split.
-            {
-              exists x3. split. easy.
-              split.
+              eexists. split. easy.
+              constructor.
               {
                 constructor.
                 {
-                  exists vs, x1.
-                  now rewrite <- H7 at 1.
+                  constructor.
+                  { now setoid_rewrite <- H7. }
+                  {
+                    intros.
+                    rewrite <- x in H0 at 1.
+                    simp_sets.
+                  }
                 }
                 {
                   intros.
                   rewrite <- x in H0 at 1.
-                  ddestruct H0.
-                  now apply contains_contr in H11.
+                  simp_sets.
                 }
               }
-              { easy. }
+              {
+                eapply wait_inv0 with (v:= Some v).
+                {
+                  rewrite <- x1 at 1.
+                  apply contains_triv.
+                }
+                { now rewrite <- x1 at 1. }
+              }
             }
             {
-              exists x3. split. easy.
-              eq_inj H0. eapply StkRevoke with
+              eexists. split. easy. eq_inj H0.
+              eapply StkRevoke with
                 (i:=i) (v:= Some v).
               constructor.
               {
@@ -1216,70 +1775,10 @@ intros. destruct v0.
                 intros. now rewrite H1.
               }
               {
-                cbn. rewrite <- x2, <- x at 1.
-                repeat (easy || constructor).
+                cbn. rewrite <- x1, <- x at 1.
+                easycons.
               }
             }
-          }
-        }
-        {
-          destruct H11.
-          remember v0.
-          move Heqo at bottom.
-          ddestruct H0.
-          {
-            rewrite accepted0 in x2 at 1.
-            ddestruct x2. simp_sets.
-          }
-          {
-            rewrite accepted0 in x5 at 1.
-            ddestruct x5. simp_sets. subst.
-            exists (eq x3).
-            split.
-            { repeat econstructor. }
-            split.
-            {
-              intros. subst.
-              repeat econstructor.
-            }
-            split.
-            {
-              exists x3. split. easy.
-              split.
-              {
-                constructor.
-                {
-                  exists vs, x1.
-                  now rewrite <- H7 at 1.
-                }
-                {
-                  intros.
-                  rewrite <- x5 in H11 at 1.
-                  ddestruct H11.
-                  now apply contains_contr in H12.
-                }
-              }
-              { easy. }
-            }
-            {
-              exists x3. split. easy.
-              eq_inj H11. eapply StkPushFinish
-                with (i:=i) (v:=v).
-              constructor.
-              {
-                constructor; cbn. easy.
-                intros. now rewrite H1.
-              }
-              {
-                cbn. rewrite accepted0, <- x5 at 1.
-                repeat (easy || constructor).
-              }
-            }
-          }
-          {
-            subst.
-            rewrite accepted0 in x2 at 1.
-            ddestruct x2. simp_sets.
           }
         }
       }
@@ -1299,63 +1798,78 @@ intros. destruct v0.
         rewrite stepLoopCont.
         apply SafeNoOp with
           (QS:=fun _ _ => LiftSPrec (fun s x =>
-            Inv s x /\
-            Waiting i (Push v) x)).
+            match v0 with
+            | Some None => ReadyDone i (Push v) tt s x
+            | _ => ReadyWaiting i (Push v) s x
+            end)).
         {
           (* Inv and Waiting stable *)
           clear rec. begin_stable.
           specialize (H1 x1 eq_refl). psimpl.
-          exists x0. split. easy. split.
+          exists x0. split. easy.
+          destruct v0. destruct o.
           {
-            apply Inv_stable.
-            psplit. exact H2.
-            easy.
+            apply ready_waiting_stable.
+            psplit. exact H2. easy.
           }
           {
-            admit.
+            apply ready_done_stable.
+            psplit. exact H2. easy.
+          }
+          {
+            apply ready_waiting_stable.
+            psplit. exact H2. easy.
           }
         }
         {
           unfold SilentStep. intros.
-          unfold LiftSPrec in H0.
+          unfold LiftSPrec in *.
           repeat rewrite <- reltCompAssoc in H0.
           do 5 destruct H0. clear H0. psimpl.
           split.
           {
-            exists x3. split. easy.
-            ddestruct H2. destruct H3. psimpl.
-            split.
+            eexists. split. easy.
+            ddestruct H2. destruct v0.
             {
-              constructor.
+              destruct o.
               {
-                exists x4, x5.
-                easy.
+                destruct H3, wait_ready0, ready_inv0.
+                easycons.
               }
-              { easy. }
+              {
+                destruct H3, done_ready0, ready_inv0.
+                easycons.
+              }
             }
             {
-              destruct v0. destruct o.
-              all: easy.
+              destruct H3, wait_ready0, ready_inv0.
+              easycons.
             }
           }
           {
-            exists x3. split. easy.
-            eq_inj H0. eapply StkNoOp.
-            split. 2: easy.
-            constructor; cbn.
-            exact H2. intros. now rewrite H1.
+            eexists. split. easy. eq_inj H0.
+            eapply StkNoOp with (i:=i).
+            constructor.
+            {
+              constructor; cbn. easy.
+              intros. now rewrite H1.
+            }
+            { easy. }
           }
         }
         {
           eapply rec.
           unfold sub, subRelt.
-          intros. psimpl. easy.
+          intros. psimpl.
+          destruct v0.
+          destruct o.
+          all: easy.
         }
       }
     }
   }
 }
-Admitted.
+Qed.
 
 Lemma pop_correct {T A} {i : Name T} :
   VerifyProg i (LiftSRelt Rely) (LiftSRelt Guar)
@@ -1753,11 +2267,11 @@ intros. destruct v.
       {
         exists (eq x3).
         split.
-        { repeat econstructor. }
+        { recons. }
         split.
         {
           intros. subst.
-          repeat econstructor.
+          recons.
         }
         split.
         {
@@ -1800,11 +2314,11 @@ intros. destruct v.
       {
         exists (eq x3).
         split.
-        { repeat econstructor. }
+        { recons. }
         split.
         {
           intros. subst.
-          repeat econstructor.
+          recons.
         }
         split.
         {
