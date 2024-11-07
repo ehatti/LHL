@@ -35,4 +35,5 @@ Program Definition snapshotSpec {T A} : Spec T (SnapshotSig A) := {|
   Init := SnapDef emp (fun _ => false)
 |}.
 
-Admit Obligations.
+Next Obligation.
+generalize dependent p.
