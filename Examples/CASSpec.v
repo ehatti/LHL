@@ -55,10 +55,161 @@ Variant CASStep {T A} : CASState T A -> ThreadEvent T (CASSig A) -> CASState T A
       (i, RetEv Get a)
       (CASDef a None).
 
-Program Definition casSpec {T A} : Spec T (CASSig A) := {|
+Require Import Coq.Lists.List.
+
+Import ListNotations.
+
+Lemma double_ind {A} :
+  forall (P : list A -> Prop),
+  P [] ->
+  (forall x, P [x]) ->
+  (forall x y xs, P xs -> P (x :: y :: xs)) ->
+  forall xs,
+  P xs.
+intros.
+generalize dependent xs.
+fix rec 1.
+intros.
+destruct xs.
+{ apply H. }
+destruct xs.
+{ apply H0. }
+{
+  apply H1.
+  apply rec.
+}
+Qed.
+
+Lemma casSeqCons {T A} :
+  forall (p : list (ThreadEvent T (CASSig A))) (s : CASState T A),
+    TransUtil.Steps CASStep (CASDef None None) p s ->
+    SeqConsistent (fun _ : Name T => None) p.
+intros.
+generalize dependent (@None A).
+apply double_ind with
+  (P:=fun p =>
+    forall o,
+      TransUtil.Steps CASStep (CASDef o None) p s ->
+      SeqConsistent (fun _ => None) p);
+intros.
+{
+  constructor.
+}
+{
+  ddestruct H.
+  ddestruct H.
+  eapply SCCall with
+    (a':=fun j =>
+      if i =? j then
+        Some (existT _ _ _)
+      else
+        None).
+  { easy. }
+  { now rewrite eqb_id. }
+  { apply differ_pointwise_trivial. }
+  { constructor. }
+  eapply SCCall with
+    (a':=fun j =>
+      if i =? j then
+        Some (existT _ _ _)
+      else
+        None).
+  { easy. }
+  { now rewrite eqb_id. }
+  { apply differ_pointwise_trivial. }
+  { constructor. }
+}
+ddestruct H0. ddestruct H1.
+ddestruct H0.
+{
+  ddestruct H1.
+  eapply SCCall with
+    (a':=fun j =>
+      if i =? j then
+        Some (existT _ _ _)
+      else
+        None).
+  { easy. }
+  { now rewrite eqb_id. }
+  { apply differ_pointwise_trivial. }
+  remember (CAS o n).
+  move Heqc at bottom.
+  {
+    ddestruct Heqc.
+    eapply SCRet with
+      (a':=fun j => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    {
+      eapply H.
+      exact H2.
+    }
+  }
+  eapply SCCall with
+    (a':=fun j =>
+      if i =? j then
+        Some (existT _ _ _)
+      else
+        None).
+  { easy. }
+  { now rewrite eqb_id. }
+  { apply differ_pointwise_trivial. }
+  remember (CAS o n).
+  move Heqc at bottom.
+  {
+    ddestruct Heqc.
+    eapply SCRet with
+      (a':=fun j => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    {
+      eapply H.
+      exact H2.
+    }
+  }
+}
+{
+  ddestruct H1.
+  eapply SCCall with
+    (a':=fun j =>
+      if i =? j then
+        Some (existT _ _ _)
+      else
+        None).
+  { easy. }
+  { now rewrite eqb_id. }
+  { apply differ_pointwise_trivial. }
+  remember (Get (A:=A)).
+  move Heqc at bottom.
+  {
+    ddestruct Heqc.
+    eapply SCRet with
+      (a':=fun j => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    {
+      eapply H.
+      exact H2.
+    }
+  }
+}
+Qed.
+
+Definition casSpec {T A} : Spec T (CASSig A) := {|
   State := CASState T A;
   Step := CASStep;
-  Init := CASDef None None
+  Init := CASDef None None;
+  seq_cons := casSeqCons
 |}.
-
-Admit Obligations.

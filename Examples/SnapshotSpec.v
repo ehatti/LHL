@@ -5,7 +5,6 @@ From LHL.Core Require Import
 From LHL.Util Require Import
   Util.
 
-
 Variant SnapshotSig {A} : ESig :=
 | Update (v : A) : SnapshotSig (set A).
 Arguments SnapshotSig : clear implicits.
