@@ -46,7 +46,7 @@ Variant AtomicStackStep {T A} : AtomicStackState T A -> ThreadEvent T (AtomicSta
 From Coq Require Import Program.Wf.
 Require Import Lia.
 
-Program Fixpoint stk_seq_cons {T A} l s p {measure (length p)} :
+Program Fixpoint stk_seq_cons {T A} {l} p s {measure (length p)} :
   Steps AtomicStackStep (AtomicStackDef (A:=A) l None) p s ->
   SeqConsistent (T:=T) (fun _ => None) p := _.
 Next Obligation.
@@ -80,22 +80,49 @@ destruct p.
   ddestruct H0. ddestruct H.
   {
     eapply SCRet with
-      (a':=fun k =>
-        if i =? k then
-          None
-        else if i =? k then
-          Some (existT _ _ (Push v))
-        else
-          (fun _ : Name T => None) k).
+      (a':=fun k => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    eapply stk_seq_cons.
+    simpl. lia.
+    exact H0.
+  }
+  {
+    eapply SCRet with
+      (a':=fun k => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    eapply stk_seq_cons.
+    simpl. lia.
+    exact H0.
+  }
+  {
+    eapply SCRet with
+      (a':=fun k => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    eapply stk_seq_cons.
+    simpl. lia.
+    exact H0.
   }
 }
+Qed.
 
-
-Program Definition atomicStackSpec {T A} : Spec T (AtomicStackSig A) := {|
+Definition atomicStackSpec {T A} : Spec T (AtomicStackSig A) := {|
   State := AtomicStackState T A;
   Step := AtomicStackStep;
-  Init := AtomicStackDef nil None
+  Init := AtomicStackDef nil None;
+  seq_cons := stk_seq_cons
 |}.
-
-Next Obligation.
-generalize dependent p.
