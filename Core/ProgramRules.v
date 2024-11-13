@@ -327,6 +327,84 @@ pcofix rec. intros. punfold H2. dependent destruction H2.
 }
 Qed.
 
+Lemma lemWhile2 {P} {I : Post VE VF bool} {B : Prog E bool} {C : Prog E unit} {Q: Post VE VF unit} {S : Relt VE VF} :
+  Stable R S ->
+  SilentStep i G Q S ->
+  Q ->> S ==> P ->
+  VerifyProg i R G P B I ->
+  VerifyProg i R G (I true) C Q ->
+  VerifyProg i R G P (while B C) (UnitRet (I false)).
+Proof.
+  unfold while, VerifyProg.
+  rewrite ! paco_eqv.
+  intros S_stable H_silent HInv HPI HIQ. 
+  cut (
+    forall B' P',
+    paco_safe i R G P' B' I ->
+    paco_safe i R G P' (whileAux B C B' C) (UnitRet (I false))
+  ).
+  { intros. apply H. easy. }
+  pcofix rec. intros. punfold H0. dependent destruction H0.
+  { destruct v.
+    { cut(
+        forall C' P',
+        paco_safe i R G P' C' Q ->
+        paco2 (paco_safeF i R G (UnitRet (I false))) r P' (whileAux B C (Return true) C')).
+      { intros. apply H0. rewrite <- paco_eqv. eapply weakenPrec. 
+        { unfold VerifyProg. rewrite paco_eqv. apply HIQ. }
+        { apply H. }
+      }
+      pcofix rec'. intros. punfold H1. dependent destruction H1.
+      { rewrite frobProgId. cbn. pfold. econstructor. exact S_stable.
+        { unfold SilentStep in *.
+          intros.
+          destruct v.
+          assert(ReltToPrec (PostToRelt Q) (ths, s) ρs).
+          { unfold PostToRelt. unfold ReltToPrec.
+            unfold ReltToPrec in H1.
+            destruct H1 as [s' [ρs' ?]].
+            specialize (H0 _ _ _ _ H1).
+            do 3 eexists.
+            apply H0.
+          }
+          specialize (H_silent s ths ρs tht H4 H2 H3).
+          easy.
+        }
+        { right. apply rec. rewrite <- paco_eqv. eapply weakenPrec. 
+          { unfold VerifyProg. rewrite paco_eqv. eapply HPI. }
+          { eapply subReltTrans. 2: apply HInv.
+            apply reltComposeMono1. destruct v. unfold PostToRelt.
+            unfold sub, subRelt. intros. exists tt. apply H0. apply H1.
+          }
+        }
+      }
+      { rewrite frobProgId. cbn. pfold. econstructor.
+        { apply H0. }
+        { apply H1. }
+        { apply H2. }
+        { intros. specialize (H3 v). destruct H3.
+          split; [easy |]. 
+          destruct H4. 2: inversion H4.
+          right. apply rec'. easy.
+        }
+      }
+      { rewrite frobProgId. cbn. pfold. econstructor.
+        { apply H0. }
+        { apply H1. }
+        { right. apply rec'. destruct H2. 2: inversion H2. easy. }
+      }
+    }
+    { rewrite frobProgId. cbn. pfold. econstructor. unfold UnitRet. easy. }
+  }
+  { rewrite frobProgId. cbn. pfold. econstructor. exact H. exact H0. easy.
+    intros. specialize (H2 v). destruct H2. split; [easy |].
+    destruct H3. 2: inversion H3. right. apply rec. easy.
+  }
+  { rewrite frobProgId. cbn. pfold. econstructor. exact H. easy.
+    destruct H1. 2: inversion H1. right. apply rec. easy.
+  }
+Qed.
+
 Lemma strongCommit {P Q : Relt VE VF} {e} :
   Commit i G P e Q ->
   Commit i G P e (prComp P Q).

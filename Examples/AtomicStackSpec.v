@@ -27,9 +27,9 @@ Arguments AtomicStackState : clear implicits.
 
 Variant AtomicStackStep {T A} : AtomicStackState T A -> ThreadEvent T (AtomicStackSig A) -> AtomicStackState T A -> Prop :=
 | AtomicStackCall i R (m : _ R) vs : AtomicStackStep
-  (AtomicStackDef vs None)
-  (i, CallEv m)
-  (AtomicStackDef vs (Some (MkStkPend i m)))
+    (AtomicStackDef vs None)
+    (i, CallEv m)
+    (AtomicStackDef vs (Some (MkStkPend i m)))
 | RetPush i v vs : AtomicStackStep
     (AtomicStackDef vs (Some (MkStkPend i (Push v))))
     (i, RetEv (Push v) tt)

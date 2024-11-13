@@ -197,6 +197,36 @@ exact H0.
 easy.
 Qed.
 
+Lemma reltComposeMono1 {T E F} {VE: Spec T E} {VF: Spec T F} :
+  forall (R1 R2 Q : Relt VE VF),
+    R1 ==> R2 -> R1 ->> Q ==> R2 ->> Q.
+unfold ReltCompose, sub, subRelt.
+intros.
+destruct_all.
+exists x, x0.
+split; [apply H, H0 | apply H1].
+Qed.
+
+Lemma reltComposeMono2 {T E F} {VE: Spec T E} {VF: Spec T F} :
+  forall (P R1 R2 : Relt VE VF),
+    R1 ==> R2 -> P ->> R1 ==> P ->> R2.
+unfold ReltCompose, sub, subRelt.
+intros.
+destruct_all.
+exists x, x0.
+split; [apply H0 | apply H, H1].
+Qed.
+
+Lemma subReltTrans {T E F} {VE: Spec T E} {VF: Spec T F} :
+  forall (R1 R2 R3 : Relt VE VF),
+    R1 ==> R2 -> R2 ==> R3 -> R1 ==> R3.
+  unfold sub, subRelt, ReltCompose.
+  intros.
+  specialize (H _ _ _ _ H1).
+  specialize (H0 _ _ _ _ H).
+  assumption.
+Qed.
+
 Lemma rtcTrans {T E F VE VF} {R : @Relt T E F VE VF} :
   (RTC R ->> RTC R) ==> RTC R.
 unfold sub, subRelt, ReltCompose.

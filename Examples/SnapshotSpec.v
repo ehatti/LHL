@@ -43,7 +43,7 @@ Variant SnapStep {T A} : SnapState T A -> ThreadEvent T (SnapSig A) -> SnapState
     differ_pointwise m m' i ->
     SnapStep (SnapDef vs m c) (i, RetEv (WriteSnap v) None) (SnapDef vs m' c).
 
-Program Definition SnapSpec {T A} : Spec T (SnapSig A) := {|
+Program Definition snapSpec {T A} : Spec T (SnapSig A) := {|
   State := SnapState T A;
   Step := SnapStep;
   Init := SnapDef emp (fun _ => SnapIdle) (fun _ => false)

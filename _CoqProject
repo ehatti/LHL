@@ -16,6 +16,7 @@
 ./Core/Tensor.v
 ./Core/TensorFacts.v
 ./Core/ProgramRules.v
+./Core/UBLayer.v
 
 ./Core/ProgramFacts.v
 ./Core/EuttRefinesSetup.v
@@ -28,6 +29,14 @@
 
 ./Core/Eutt.v
 
+./Examples/LockSpec.v
+# ./Examples/CounterSpec.v
+# ./Examples/FAISpec.v
+# ./Examples/YieldSpec.v
+./Examples/OMemSpec.v
+./Examples/LocalVarSpec.v
+./Examples/SnapshotSpec.v
+./Examples/ThreadLocal.v
 ./Examples/NameSpec.v
 ./Examples/CASSpec.v
 ./Examples/ExchangerSpec.v
