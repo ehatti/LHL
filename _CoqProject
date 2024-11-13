@@ -37,3 +37,6 @@
 ./Examples/ElimArray.v
 ./Examples/AtomicStackSpec.v
 ./Examples/WaitFreeStackSpec.v
+
+./Examples/RegSpec.v
+./Examples/SnapshotSpec.v
