@@ -52,3 +52,5 @@
 ./Examples/SnapshotSpec.v
 
 # ./Examples/SpinLock.v
+
+./Examples/Array.v

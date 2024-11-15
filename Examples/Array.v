@@ -40,10 +40,10 @@ Fixpoint E (U : ESig) N :=
   | S N => U |+| E U N
   end.
 
-Fixpoint VE {T U} (V : Spec T U) N : Spec T (E U N) :=
+Fixpoint ntensor {T U} (V : Spec T U) N : Spec T (E U N) :=
   match N with
   | 0 => unitSpec
-  | S N => tensorSpec V (VE V N)
+  | S N => tensorSpec V (ntensor V N)
   end.
 
 Definition F U N := ArraySig U N.
@@ -62,20 +62,20 @@ getIndex (N:= 0) (@exist _ _ i p) m := _.
 Next Obligation. lia. Qed.
 Next Obligation. lia. Qed.
 
-Section indexVE.
+Section indexntensor.
 
 Context {T U} {V : Spec T U}.
 
-Equations indexVE {N} (i : Index N) (s : (VE V N).(State))
+Equations indexntensor {N} (i : Index N) (s : (ntensor V N).(State))
   : V.(State) by wf (proj1_sig i) lt :=
-indexVE (N:= S N) (@exist _ _ 0 p) s := LState s;
-indexVE (N:= S N) (@exist _ _ (S i) p) s := indexVE (@exist _ _ i _) (RState s);
-indexVE (N:= 0) (@exist _ _ i p) s := _.
+indexntensor (N:= S N) (@exist _ _ 0 p) s := LState s;
+indexntensor (N:= S N) (@exist _ _ (S i) p) s := indexntensor (@exist _ _ i _) (RState s);
+indexntensor (N:= 0) (@exist _ _ i p) s := _.
 
 Next Obligation. lia. Qed.
 Next Obligation. lia. Qed.
 
-End indexVE.
+End indexntensor.
 
 Definition index {U N R} (i : Index N) (m : U R) : Prog (E U N) R :=
   Bind (getIndex i m)
@@ -98,15 +98,15 @@ Variant StRel {T U} {V : Spec T U} {N} :
   StRel (Cont (At i m) (Return v)) (CallDone (At i m)) (RetPoss (At i m) v).
 
 Record Inv {T U} {V : Spec T U} {N}
-  (s : InterState (F U N) (VE V N)) (ρ : Poss (VF V N))
+  (s : InterState (F U N) (ntensor V N)) (ρ : Poss (VF V N))
 := {
-  st_cons : forall i, PState ρ i = indexVE i (snd s);
+  st_cons : forall i, PState ρ i = indexntensor i (snd s);
   th_cons : forall i, StRel (V:=V) (fst s i) (PCalls ρ i) (PRets ρ i)
 }.
 
 Lemma Return_pres_single {U T N R} {V : Spec T U} :
   forall (m : F U N R) v i s ρ t σs,
-  TReturn (VE:= VE V N) (VF:= VF V N) arrayImpl i m v s (eq ρ) t σs ->
+  TReturn (VE:= ntensor V N) (VF:= VF V N) arrayImpl i m v s (eq ρ) t σs ->
   σs = eq (retPoss i ρ).
 intros.
 unfold TReturn, mapRetPoss in H. psimpl.
@@ -132,7 +132,7 @@ Qed.
 
 Lemma Invoke_pres_single {U T N R} {V : Spec T U} :
   forall (m : F U N R) i s ρ t σs,
-  TInvoke (VE:= VE V N) (VF:= VF V N) arrayImpl i R m s (eq ρ) t σs ->
+  TInvoke (VE:= ntensor V N) (VF:= VF V N) arrayImpl i R m s (eq ρ) t σs ->
   σs = eq (invPoss i ρ m).
 intros.
 unfold TInvoke in H. psimpl.
@@ -157,10 +157,10 @@ Qed.
 
 Require Import Coq.Logic.ProofIrrelevance.
 
-Lemma convert_call {N T U} {V : Spec T U} :
+Lemma conntensorrt_call {N T U} {V : Spec T U} :
   forall s i A (m : U A) t n,
-  Step (VE V N) s (i, CallEv (getIndex n m)) t ->
-  ArrayStep V (fun k => indexVE k s) (i, CallEv (At n m)) (fun k => indexVE k t).
+  Step (ntensor V N) s (i, CallEv (getIndex n m)) t ->
+  ArrayStep V (fun k => indexntensor k s) (i, CallEv (At n m)) (fun k => indexntensor k t).
 intros.
 induction N; cbn in *. easy.
 destruct n, x; simp getIndex in *;
@@ -168,8 +168,8 @@ psimpl.
 {
   econstructor.
   { easy. }
-  { now simp indexVE. }
-  { now simp indexVE. }
+  { now simp indexntensor. }
+  { now simp indexntensor. }
   {
     unfold differ_pointwise.
     intros. destruct j, x.
@@ -179,30 +179,110 @@ psimpl.
       apply proof_irrelevance.
     }
     {
-      simp indexVE.
+      simp indexntensor.
       now rewrite H3 at 1.
     }
   }
   { easy. }
 }
 {
+  clear H0 H1 H2.
   apply IHN in H. clear IHN.
-  econstructor.
-  { easy. }
-  { easy. }
-  { easy. }
+  ddestruct H.
   {
-    unfold differ_pointwise. intros.
-    
+    econstructor.
+    5: exact H3.
+    { easy. }
+    {
+      simp indexntensor.
+      f_equal. f_equal.
+      apply proof_irrelevance.
+    }
+    {
+      simp indexntensor.
+      f_equal. f_equal.
+      apply proof_irrelevance.
+    }
+    {
+      unfold differ_pointwise in *.
+      intros. destruct j, x0;
+      simp indexntensor in *.
+      { easy. }
+      {
+        apply H2.
+        unfold not. intros.
+        apply H1. ddestruct H4.
+        f_equal.
+        apply proof_irrelevance.
+      }
+    }
   }
 }
+Qed.
 
-Lemma convert_ret {N T U} {V : Spec T U} :
+Lemma conntensorrt_ret {N T U} {V : Spec T U} :
   forall s i A (m : U A) v t n,
-  Step (VE V N) s (i, RetEv (getIndex n m) v) t ->
-  ArrayStep V (fun k => indexVE k s) (i, RetEv (At n m) v) (fun k => indexVE k t).
+  Step (ntensor V N) s (i, RetEv (getIndex n m) v) t ->
+  ArrayStep V (fun k => indexntensor k s) (i, RetEv (At n m) v) (fun k => indexntensor k t).
 intros.
-Admitted.
+intros.
+induction N; cbn in *. easy.
+destruct n, x; simp getIndex in *;
+psimpl.
+{
+  econstructor.
+  { easy. }
+  { now simp indexntensor. }
+  { now simp indexntensor. }
+  {
+    unfold differ_pointwise.
+    intros. destruct j, x.
+    {
+      exfalso. apply H4.
+      f_equal.
+      apply proof_irrelevance.
+    }
+    {
+      simp indexntensor.
+      now rewrite H3 at 1.
+    }
+  }
+  { easy. }
+}
+{
+  clear H0 H1 H2.
+  apply IHN in H. clear IHN.
+  ddestruct H.
+  {
+    econstructor.
+    5: exact H3.
+    { easy. }
+    {
+      simp indexntensor.
+      f_equal. f_equal.
+      apply proof_irrelevance.
+    }
+    {
+      simp indexntensor.
+      f_equal. f_equal.
+      apply proof_irrelevance.
+    }
+    {
+      unfold differ_pointwise in *.
+      intros. destruct j, x0;
+      simp indexntensor in *.
+      { easy. }
+      {
+        apply H2.
+        unfold not. intros.
+        apply H1. ddestruct H4.
+        f_equal.
+        apply proof_irrelevance.
+      }
+    }
+  }
+}
+Qed.
 
 Lemma sing_elem {A} {P : A -> Prop} :
   forall x : A,
@@ -212,14 +292,15 @@ intros. now rewrite <- H.
 Qed.
 
 Lemma getIndex_eq {U A N} :
-  forall i1 i2 (m1 m2 : U A),
+  forall (i1 i2 : Index N),
+  forall (m1 m2 : U A),
   getIndex (N:=N) i1 m1 = getIndex i2 m2 ->
   i1 = i2 /\ m1 = m2.
+fix rec1 1.
 intros.
-generalize dependent m1.
-generalize dependent m2.
-destruct i1, i2, N. lia.
-induction x, x0; intros;
+destruct N.
+{ destruct i1. lia. }
+destruct i1, i2, x, x0;
 simp getIndex in *.
 {
   ddestruct H.
@@ -230,16 +311,12 @@ simp getIndex in *.
   }
   { easy. }
 }
-{
+{ ddestruct H. }
+{ ddestruct H. }
+(* {
   ddestruct H.
-}
-{
-  ddestruct H.
-}
-{
-  ddestruct H.
-  admit.
-}
+  apply rec1 in x.
+} *)
 Admitted.
 
 Lemma wk P : P -> P /\ P.
@@ -256,7 +333,7 @@ Qed.
 Ltac eq_inj H := apply eq_inj in H; subst.
 
 Theorem arrayCorrect T U N (V : Spec T U) :
-  VerifyImpl (VE V N) (VF V N)
+  VerifyImpl (ntensor V N) (VF V N)
     (fun i => LiftSRelt (fun s ρ t σ =>
       fst s i = fst t i /\
       PCalls ρ i = PCalls σ i /\
@@ -455,14 +532,7 @@ constructor.
   eexists. split. easy.
   constructor.
   {
-    cbn.
-    intros.
-    destruct i0.
-    destruct N. lia.
-    induction x; simp indexVE.
-    {
-      easy.
-    }
+    admit.
   }
   {
     intros. cbn.
@@ -584,11 +654,11 @@ constructor.
       }
     }
     clear H8.
-    apply convert_call in H2.
+    apply conntensorrt_call in H2.
     exists (eq (
       comInvPoss i x0
         (At i0 m)
-        (fun k => indexVE k (snd t))
+        (fun k => indexntensor k (snd t))
     )).
     unfold TInvoke in H4. psimpl.
     apply sing_elem in H10. psimpl.
@@ -615,7 +685,7 @@ constructor.
       {
         econstructor.
         {
-          assert ((fun k : Index N => indexVE k (snd s)) = PState x0).
+          assert ((fun k : Index N => indexntensor k (snd s)) = PState x0).
           {
             extensionality k.
             symmetry. apply H.
@@ -643,7 +713,7 @@ constructor.
         easy.
       }
     }
-    assert (Inv t (comInvPoss i x0 (At i0 m) (fun k => indexVE k (snd t)))).
+    assert (Inv t (comInvPoss i x0 (At i0 m) (fun k => indexntensor k (snd t)))).
     {
       destruct H.
       constructor.
@@ -704,11 +774,11 @@ constructor.
   {
     unfold Commit, LiftSRelt, LiftSPrec.
     intros. psimpl.
-    apply convert_ret in H2.
+    apply conntensorrt_ret in H2.
     exists (eq (
       comRetPoss i x4
         (At i0 m)
-        (fun k => indexVE k (snd t))
+        (fun k => indexntensor k (snd t))
         v
     )).
     split.
@@ -730,7 +800,7 @@ constructor.
       {
         econstructor 2.
         {
-          assert (PState x4 = (fun k => indexVE k (snd s))).
+          assert (PState x4 = (fun k => indexntensor k (snd s))).
           {
             extensionality k.
             apply H4.
@@ -746,7 +816,7 @@ constructor.
       { easy. }
       { cbn. intros. now rewrite eqb_nid. }
     }
-    assert (Inv t (comRetPoss i x4 (At i0 m) (fun k => indexVE k (snd t)) v)).
+    assert (Inv t (comRetPoss i x4 (At i0 m) (fun k => indexntensor k (snd t)) v)).
     {
       destruct H4.
       constructor.
@@ -893,3 +963,4 @@ constructor.
     }
   }
 }
+Admitted.
