@@ -93,9 +93,10 @@ Proof.
 Qed.
 
 
-Definition lockClientSpec {T} : forall A, LockSig A -> Name T -> LockState -> Prop :=
-  fun A m i s => 
-    match m with
-    | Acq => (s <> LockOwned i) /\ (s <> LockAcqRan i) /\ (s <> LockRelRan i)
-    | Rel => s = LockOwned i
+Definition lockClientSpec {T} : ClientSpec T LockSig LockState :=
+  fun '(i, e) s =>
+    match e with
+    | CallEv Acq => s = LockUnowned
+    | CallEv Rel => s = LockOwned i
+    | _ => True
     end.

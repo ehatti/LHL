@@ -237,6 +237,9 @@ Definition acf T := @LockActiveMap T.
 Definition HAcf T : @acf_sound T F lockSpec (acf T) := @LockActiveMapSound T.
 Definition VE T : Spec T E:= @casSpec T bool.
 Definition VF T := @lockSpec T.
+Definition Vξ T : ClientSpec T F (VF T).(State) :=
+  fun m s =>
+    match m with.
 Definition VFU T := SpecWithUB (@lockSpec T) (acf T) (HAcf T).
 Definition ReltU T := Relt (VE T) (VFU T).
 Definition Relt T := Relt (VE T) (VF T).

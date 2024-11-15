@@ -48,7 +48,7 @@ Definition E := Underlay.
 Definition F := CntSig.
 Definition VE T :=
   tensorSpec (T:=T)
-    (SpecWithUB lockSpec _ LockActiveMapSound)
+    (SpecWithUB lockSpec lockClientSpec _ LockActiveMapSound)
     rcntSpec.
 Definition VF T := acntSpec (T:=T).
 
@@ -97,7 +97,7 @@ Notation owner s := (
   end
 ).
 
-Definition OwnsLock {T} (i : Name T) (s : (SpecWithUB lockSpec _ LockActiveMapSound).(State)) := (
+Definition OwnsLock {T} (i : Name T) (s : (SpecWithUB lockSpec lockClientSpec _ LockActiveMapSound).(State)) := (
   exists s',
     s = inl s' /\
     owner s' = Some i
@@ -478,12 +478,9 @@ constructor.
         ddestruct H; cbn in *.
         2:{
           exfalso. destruct H3.
-          apply not_forall in H.
-          apply H. clear H.
+          destruct unown_inv0. psimpl.
+          rewrite H3 in x2. ddestruct x2.
           unfold OwnsLock in loc_unown0.
-          destruct s, s, LState; cbn in *.
-          2: easy. destruct s. cbn in *.
-          ddestruct x2.
         }
         2:{
           destruct H3, unown_inv0.

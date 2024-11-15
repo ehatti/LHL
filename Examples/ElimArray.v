@@ -135,7 +135,7 @@ Record Ready {T A} {i : Name T}
 }.
 Arguments Ready {T A} i s x.
 
-Record Complete {T A} {n : nat} {i : Name T} {v : A}
+Record Complete {T A} {n : Index T} {i : Name T} {v : A}
   {s : InterState (F A) (VE T A)} {x : Poss (VF T A)}
 := {
   comp_inv : Inv s x;
@@ -148,24 +148,6 @@ Record Complete {T A} {n : nat} {i : Name T} {v : A}
       doneSet s m <> {}
 }.
 Arguments Complete {T A} n i v s x.
-
-Record Offered {T A} {n : nat} {i : Name T} {v : A}
-  {s : InterState (F A) (VE T A)} {x : Poss (VF T A)}
-:= {
-  offered_inv : Inv s x;
-  offer_present : contains (i, v) (pendSet s n);
-  offer_waiting : doneSet s n = {}
-}.
-Arguments Offered {T A} n i v s x.
-
-Record Accepted {T A} {n : nat} {i j : Name T} {v w : A}
-  {s : InterState (F A) (VE T A)} {x : Poss (VF T A)}
-:= {
-  accepted_inv : Inv s x;
-  accept_done : contains (i, v) (doneSet s n);
-  accept_wait : contains (j, w) (pendSet s n)
-}.
-Arguments Accepted {T A} n i j v w s x.
 
 Notation IStep s i e t :=
   (InterStep (elimArray _ _) s (i, UEvent (Some e)) t).
@@ -2704,7 +2686,7 @@ Ltac join H1 H2 :=
     end
   end.
 
-Lemma complete_stable {T A} (k : nat) (i : Name T) (v : A) (w : option A) :
+Lemma complete_stable {T A} (k : Index T) (i : Name T) (v : A) (w : option A) :
   forall s x t y,
   Complete k i v s x \/ (Ready i s x /\ Done i (Exch v) w x) ->
   Rely i s x t y ->

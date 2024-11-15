@@ -522,14 +522,11 @@ assert (
         subst.
         exists (S x0), (Cont m0 (Bind e0 x2)).
         split.
-        exists x2.
-        easy.
+        exists x2. easy.
         simpl.
         econstructor.
         eapply USilentThreadStep.
-        easy.
-        easy.
-        easy.
+        easy. easy. easy.
         subst.
         exists (S x0), (Cont m0 (Return a)).
         split.
@@ -537,9 +534,7 @@ assert (
         simpl.
         econstructor.
         eapply USilentThreadStep.
-        easy.
-        easy.
-        easy.
+        easy. easy. easy.
         subst.
         exists (S x0), (Cont m0 (NoOp p1)).
         split.
@@ -547,9 +542,7 @@ assert (
         simpl.
         econstructor.
         eapply USilentThreadStep.
-        easy.
-        easy.
-        easy.
+        easy. easy. easy.
       }
     }
   }
@@ -708,11 +701,6 @@ apply H in H0.
 destruct_all.
 eexists (fst x, x1).
 exists x0.
-split.
-easy.
-simpl.
-split.
-easy.
 easy.
 Qed.
 
@@ -930,13 +918,11 @@ constructor.
   congruence.
   constructor.
   apply get_assoc_traces.
-  simpl.
-  easy.
+  simpl. easy.
   constructor.
   constructor.
   apply get_assoc_traces.
-  simpl.
-  easy.
+  simpl. easy.
   simpl. lia.
 }
 {
@@ -945,13 +931,11 @@ constructor.
   destruct ev.
   constructor.
   apply get_assoc_traces.
-  simpl.
-  easy.
+  simpl. easy.
   constructor.
   constructor.
   apply get_assoc_traces.
-  simpl.
-  easy.
+  simpl. easy.
   simpl. lia.
   easy.
 }
@@ -962,25 +946,21 @@ constructor.
   simpl in *.
   constructor.
   apply get_assoc_traces.
-  simpl.
-  easy.
+  simpl. easy.
   simpl in *.
   constructor.
   constructor.
   apply get_assoc_traces.
-  simpl.
-  easy.
+  simpl. easy.
   simpl in *. lia.
   constructor.
   apply get_assoc_traces.
-  simpl.
-  easy.
+  simpl. easy.
   simpl in *. lia.
   constructor.
   constructor.
   apply get_assoc_traces.
-  simpl.
-  easy.
+  simpl. easy.
   simpl in *. lia.
   {
     destruct ev.

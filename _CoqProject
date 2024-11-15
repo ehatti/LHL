@@ -35,7 +35,7 @@
 # ./Examples/YieldSpec.v
 ./Examples/OMemSpec.v
 ./Examples/LocalVarSpec.v
-./Examples/SnapshotSpec.v
+# ./Examples/SnapshotSpec.v
 ./Examples/ThreadLocal.v
 ./Examples/NameSpec.v
 ./Examples/CASSpec.v
@@ -46,6 +46,9 @@
 ./Examples/ElimArray.v
 ./Examples/AtomicStackSpec.v
 ./Examples/WaitFreeStackSpec.v
+./Examples/EBStack.v
 
 ./Examples/RegSpec.v
 ./Examples/SnapshotSpec.v
+
+# ./Examples/SpinLock.v

@@ -55,38 +55,46 @@ Proof.
     econstructor; eassumption.
 Qed.
 
+Definition ClientSpec T F S :=
+  ThreadEvent T F -> S -> Prop.
+
 Definition ActiveF {T F} {State: Type} (step: State -> ThreadEvent T F -> State -> Prop):= State -> ActiveMap T F.
 
 Inductive StepWithUB {T F} {State: Type}
+                     (cspec : ClientSpec T F State)
                      (step: State -> ThreadEvent T F -> State -> Prop)
                      (acf: ActiveF step) : 
       StateWithUB State -> ThreadEvent T F -> StateWithUB State -> Prop :=
 | NormalStep: forall s te s', 
-      step s te s' -> StepWithUB step acf (inl s) te (inl s')
+      (* forall cholds : cspec te s, *)
+      step s te s' -> StepWithUB cspec step acf (inl s) te (inl s')
 | ErrorStep: forall s te a', 
-      (forall s', (~ step s te s')) -> ActiveMapStep (acf s) te a' -> StepWithUB step acf (inl s) te (inr (UBState_, a'))
+      ~cspec te s ->
+      ActiveMapStep (acf s) te a' ->
+      StepWithUB cspec step acf (inl s) te (inr (UBState_, a'))
 | UBStep: forall a te a', 
-      ActiveMapStep a te a' -> StepWithUB step acf (inr (UBState_, a)) te (inr (UBState_, a')).
+      ActiveMapStep a te a' ->
+      StepWithUB cspec step acf (inr (UBState_, a)) te (inr (UBState_, a')).
 
 Definition acf_sound {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) :=
   acf (spec.(Init)) = ActiveMapIdle /\ forall s te s', spec.(Step) s te s' -> ActiveMapStep (acf s) te (acf s').
 
-Definition StateWithUB_acf {T F} {State: Type} (step: State -> ThreadEvent T F -> State -> Prop) (acf: ActiveF step) : ActiveF (StepWithUB step acf) :=
+Definition StateWithUB_acf {T F} {State: Type} cspec (step: State -> ThreadEvent T F -> State -> Prop) (acf: ActiveF step) : ActiveF (StepWithUB cspec step acf) :=
   fun s =>
     match s with
     | inl s' => acf s'
     | inr (_, a') => a'
     end.
 
-Program Definition SpecWithUB {T F} (spec: Spec T F) (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf): Spec T F :=
+Program Definition SpecWithUB {T F} (spec: Spec T F) cspec (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf): Spec T F :=
 {|
   State := StateWithUB spec.(State);
-  Step := StepWithUB spec.(Step) acf;
+  Step := StepWithUB cspec spec.(Step) acf;
   Init := inl spec.(Init);
 |}.
 
 Next Obligation.
-  replace (fun _ : Name T => None) with ((StateWithUB_acf (Step spec) acf) (@inl (@State T F spec) (prod UBState (ActiveMap T F)) (@Init T F spec))) by (destruct HAcf; auto).
+  replace (fun _ : Name T => None) with ((StateWithUB_acf cspec (Step spec) acf) (@inl (@State T F spec) (prod UBState (ActiveMap T F)) (@Init T F spec))) by (destruct HAcf; auto).
   generalize dependent (@inl (@State T F spec) (prod UBState (ActiveMap T F)) (@Init T F spec)).
   generalize dependent s.
   destruct HAcf as [Hinit HStep].
@@ -103,68 +111,68 @@ Next Obligation.
     - apply (ActiveMapStepSeqcons _ _ _ _ H0 IHp).
 Qed.
 
-Definition PossWithUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρ: Poss spec) : Poss (SpecWithUB spec acf HAcf).
+Definition PossWithUB {T F} {spec: Spec T F} cspec (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρ: Poss spec) : Poss (SpecWithUB spec cspec acf HAcf).
 constructor.
 + exact (inl ρ.(PState)).
 + exact ρ.(PCalls).
 + exact ρ.(PRets).
 Defined.
 
-Definition PossSetWithUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρs: PossSet spec) : PossSet (SpecWithUB spec acf HAcf) :=
-  fun ρ' => exists ρ, ρs ρ /\ ρ' = PossWithUB acf HAcf ρ.
+Definition PossSetWithUB {T F} {spec: Spec T F} cspec (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρs: PossSet spec) : PossSet (SpecWithUB spec cspec acf HAcf) :=
+  fun ρ' => exists ρ, ρs ρ /\ ρ' = PossWithUB cspec acf HAcf ρ.
 
-Definition PossSetRemoveUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρs: PossSet (SpecWithUB spec acf HAcf)) : PossSet spec :=
-  fun ρ => ρs (PossWithUB acf HAcf ρ).
+Definition PossSetRemoveUB {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρs: PossSet (SpecWithUB spec cspec acf HAcf)) : PossSet spec :=
+  fun ρ => ρs (PossWithUB cspec acf HAcf ρ).
 
-Definition PossSetUBFree {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρs: PossSet (SpecWithUB spec acf HAcf)) : Prop :=
-  forall ρ : Poss (SpecWithUB spec acf HAcf), 
+Definition PossSetUBFree {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρs: PossSet (SpecWithUB spec cspec acf HAcf)) : Prop :=
+  forall ρ : Poss (SpecWithUB spec cspec acf HAcf), 
     (exists a, PState ρ = inr (UBState_, a)) -> ~ ρs ρ.
 
-Definition PrecWithUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (prec: Prec VE VF) : Prec VE (SpecWithUB VF acf HAcf) :=
+Definition PrecWithUB {T E F} {VE: Spec T E} {VF: Spec T F} cspec acf HAcf (prec: Prec VE VF) : Prec VE (SpecWithUB VF cspec acf HAcf) :=
   fun s ρs => prec s (PossSetRemoveUB acf HAcf ρs).
 
-Definition ReltWithUBEmp {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (relt: Relt VE VF) : Relt VE (SpecWithUB VF acf HAcf) :=
+Definition ReltWithUBEmp {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf (relt: Relt VE VF) : Relt VE (SpecWithUB VF cspec acf HAcf) :=
   fun s1 ρs1 s2 ρs2 => 
-    exists ρs1' ρs2', relt s1 ρs1' s2 ρs2' /\ ρs1 = PossSetWithUB acf HAcf ρs1' /\ ρs2 = PossSetWithUB acf HAcf ρs2'.
+    exists ρs1' ρs2', relt s1 ρs1' s2 ρs2' /\ ρs1 = PossSetWithUB cspec acf HAcf ρs1' /\ ρs2 = PossSetWithUB cspec acf HAcf ρs2'.
 
-Definition ReltWithUBFull {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (relt: Relt VE VF) : Relt VE (SpecWithUB VF acf HAcf) :=
+Definition ReltWithUBFull {T E F} {VE: Spec T E} {VF: Spec T F} cspec acf HAcf (relt: Relt VE VF) : Relt VE (SpecWithUB VF cspec acf HAcf) :=
   fun s1 ρs1 s2 ρs2 => 
     relt s1 (PossSetRemoveUB acf HAcf ρs1) s2 (PossSetRemoveUB acf HAcf ρs2).
 
-Definition RelyWithUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (R: Name T -> Relt VE VF) (i: Name T) : Relt VE (SpecWithUB VF acf HAcf) :=
-  ReltWithUBFull acf HAcf (R i).
+Definition RelyWithUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf (R: Name T -> Relt VE VF) (i: Name T) : Relt VE (SpecWithUB VF cspec acf HAcf) :=
+  ReltWithUBFull cspec acf HAcf (R i).
 
-Definition GuarWithUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf (G: Name T -> Relt VE VF) (i: Name T) : Relt VE (SpecWithUB VF acf HAcf) :=
-  ReltWithUBFull acf HAcf (G i).
+Definition GuarWithUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf (G: Name T -> Relt VE VF) (i: Name T) : Relt VE (SpecWithUB VF cspec acf HAcf) :=
+  ReltWithUBFull cspec acf HAcf (G i).
 
-Definition PostWithUBFull {T E F A} {VE: Spec T E} {VF: Spec T F} acf HAcf (post: Post VE VF A) : Post VE (SpecWithUB VF acf HAcf) A :=
+Definition PostWithUBFull {T E F A} {VE: Spec T E} {VF: Spec T F} cspec acf HAcf (post: Post VE VF A) : Post VE (SpecWithUB VF cspec acf HAcf) A :=
   fun v s1 ρs1 s2 ρs2 => 
     post v s1 (PossSetRemoveUB acf HAcf ρs1) s2 (PossSetRemoveUB acf HAcf ρs2).
 
-Definition PostWithUBEmp{T E F A} {VE: Spec T E} {VF: Spec T F} acf HAcf (post: Post VE VF A) : Post VE (SpecWithUB VF acf HAcf) A :=
+Definition PostWithUBEmp{T E F A} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf (post: Post VE VF A) : Post VE (SpecWithUB VF cspec acf HAcf) A :=
   fun v s1 ρs1 s2 ρs2 => 
-    exists ρs1' ρs2', post v s1 ρs1' s2 ρs2' /\ ρs1 = PossSetWithUB acf HAcf ρs1' /\ ρs2 = PossSetWithUB acf HAcf ρs2'.
-
-Lemma PossWithUBUnfold {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+    exists ρs1' ρs2', post v s1 ρs1' s2 ρs2' /\ ρs1 = PossSetWithUB cspec acf HAcf ρs1' /\ ρs2 = PossSetWithUB cspec acf HAcf ρs2'.
+ 
+Lemma PossWithUBUnfold {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
   forall ρ, 
-    PossWithUB acf HAcf ρ = 
-    MkPoss T F (@SpecWithUB T F spec acf HAcf)
+    PossWithUB cspec acf HAcf ρ = 
+    MkPoss T F (@SpecWithUB T F spec cspec acf HAcf)
       (@inl (@State T F spec) (prod UBState (ActiveMap T F))
       (@PState T F spec ρ))
       (@PCalls T F spec ρ) (@PRets T F spec ρ).
 Proof. reflexivity. Qed.
 
-Lemma PossSetEmbedding {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
-  forall ρs ρ, ρs ρ -> (PossSetWithUB acf HAcf ρs) (PossWithUB acf HAcf ρ).
+Lemma PossSetEmbedding {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+  forall ρs ρ, ρs ρ -> (PossSetWithUB cspec acf HAcf ρs) (PossWithUB cspec acf HAcf ρ).
 Proof.
   intros.
   unfold PossSetWithUB, PossWithUB.
   exists ρ. split; easy.
 Qed.
 
-Lemma PossSetRemoveEmbedding {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+Lemma PossSetRemoveEmbedding {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
   forall ρs, PossSetUBFree acf HAcf ρs -> 
-    ρs = PossSetWithUB acf HAcf (PossSetRemoveUB acf HAcf ρs).
+    ρs = PossSetWithUB cspec acf HAcf (PossSetRemoveUB acf HAcf ρs).
 Proof.
   intros.
   unfold PossSetWithUB, PossSetRemoveUB, PossSetUBFree in *.
@@ -191,8 +199,8 @@ Proof.
     apply H0. 
 Qed.
 
-Lemma PossUBInv {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
-  forall ρ1 ρ2, PossWithUB acf HAcf ρ1 = PossWithUB acf HAcf ρ2 -> ρ1 = ρ2.
+Lemma PossUBInv {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+  forall ρ1 ρ2, PossWithUB cspec acf HAcf ρ1 = PossWithUB cspec acf HAcf ρ2 -> ρ1 = ρ2.
 Proof.
   intros.
   unfold PossWithUB in H.
@@ -201,8 +209,8 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma possSetUBInv_aux {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρs: PossSet spec) (x: Poss spec) :
-  (exists ρ : Poss spec, ρs ρ /\ PossWithUB acf HAcf x = PossWithUB acf HAcf ρ) = (ρs x).
+Lemma possSetUBInv_aux {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) (ρs: PossSet spec) (x: Poss spec) :
+  (exists ρ : Poss spec, ρs ρ /\ PossWithUB cspec acf HAcf x = PossWithUB cspec acf HAcf ρ) = (ρs x).
 Proof.
   apply propositional_extensionality.
   split; intros.
@@ -212,28 +220,28 @@ Proof.
   + exists x. split; try reflexivity. exact H.
 Qed. 
 
-Lemma possSetUBInv {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
-  forall ρs1 ρs2, PossSetWithUB acf HAcf ρs1 = PossSetWithUB acf HAcf ρs2 -> ρs1 = ρs2.
+Lemma possSetUBInv {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+  forall ρs1 ρs2, PossSetWithUB cspec acf HAcf ρs1 = PossSetWithUB cspec acf HAcf ρs2 -> ρs1 = ρs2.
 Proof.
   intros.
   apply functional_extensionality.
   intros.
   apply propositional_extensionality.
   unfold PossSetWithUB in H.
-  remember ((fun ρ' : Poss (SpecWithUB spec acf HAcf) =>
+  remember ((fun ρ' : Poss (SpecWithUB spec cspec acf HAcf) =>
     exists ρ : Poss spec,
-    ρs1 ρ /\ ρ' = PossWithUB acf HAcf ρ)) as f.
-  remember (fun ρ' : Poss (SpecWithUB spec acf HAcf) =>
+    ρs1 ρ /\ ρ' = PossWithUB cspec acf HAcf ρ)) as f.
+  remember (fun ρ' : Poss (SpecWithUB spec cspec acf HAcf) =>
     exists ρ : Poss spec,
-    ρs2 ρ /\ ρ' = PossWithUB acf HAcf ρ) as g.
-  assert (f (PossWithUB acf HAcf x) = g (PossWithUB acf HAcf x)) by (rewrite H; reflexivity).
+    ρs2 ρ /\ ρ' = PossWithUB cspec acf HAcf ρ) as g.
+  assert (f (PossWithUB cspec acf HAcf x) = g (PossWithUB cspec acf HAcf x)) by (rewrite H; reflexivity).
   subst.
   rewrite! possSetUBInv_aux in H0.
   rewrite H0; easy.
 Qed.
 
-Lemma PossSetEmbedForgetUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
-  forall ρs, PossSetRemoveUB acf HAcf (PossSetWithUB acf HAcf ρs) = ρs.
+Lemma PossSetEmbedForgetUB {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+  forall ρs, PossSetRemoveUB acf HAcf (PossSetWithUB cspec acf HAcf ρs) = ρs.
 Proof.
   unfold PossSetRemoveUB, PossSetWithUB, PossWithUB.
   intros.
@@ -247,9 +255,9 @@ Proof.
   + exists s. split; [assumption | reflexivity].
 Qed.
 
-Lemma reltUBEmbedding {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma reltUBEmbedding {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall (R: Relt VE VF) s ρs t σs,
-    R s ρs t σs -> ReltWithUBFull acf HAcf R s (PossSetWithUB acf HAcf ρs) t (PossSetWithUB acf HAcf σs).
+    R s ρs t σs -> ReltWithUBFull cspec acf HAcf R s (PossSetWithUB cspec acf HAcf ρs) t (PossSetWithUB cspec acf HAcf σs).
 Proof.
   intros.
   unfold ReltWithUBFull.
@@ -257,9 +265,9 @@ Proof.
   assumption.
 Qed.
 
-Lemma reltCompUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma reltCompUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall R1 R2 : Relt VE VF,
-    ReltWithUBFull acf HAcf (R1 ->> R2) = ReltWithUBFull acf HAcf R1 ->> ReltWithUBFull acf HAcf R2.
+    ReltWithUBFull cspec acf HAcf (R1 ->> R2) = ReltWithUBFull cspec acf HAcf R1 ->> ReltWithUBFull cspec acf HAcf R2.
 Proof.
   intros.
   extensionality s.
@@ -271,7 +279,7 @@ Proof.
   + unfold ReltCompose in *.
     unfold ReltWithUBFull in H.
     destruct_all; subst.
-    exists x, (PossSetWithUB acf HAcf x0).
+    exists x, (PossSetWithUB cspec acf HAcf x0).
     unfold ReltWithUBFull.
     rewrite !PossSetEmbedForgetUB.
     easy.
@@ -300,8 +308,8 @@ Proof.
     easy. 
 Qed.
 
-Lemma precToReltUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
-  forall P : Prec VE VF, PrecToRelt (PrecWithUB acf HAcf P) ==> ReltWithUBFull acf HAcf (PrecToRelt P).
+Lemma precToReltUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
+  forall P : Prec VE VF, PrecToRelt (PrecWithUB cspec acf HAcf P) ==> ReltWithUBFull cspec acf HAcf (PrecToRelt P).
 Proof.
   unfold PrecToRelt, PrecWithUB, ReltWithUBFull, sub, subRelt.
   intros.
@@ -309,8 +317,8 @@ Proof.
   easy.
 Qed.
 
-Lemma reltToPrecUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
-  forall R : Relt VE VF, ReltToPrec (ReltWithUBFull acf HAcf R) = PrecWithUB acf HAcf (ReltToPrec R).
+Lemma reltToPrecUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
+  forall R : Relt VE VF, ReltToPrec (ReltWithUBFull cspec acf HAcf R) = PrecWithUB cspec acf HAcf (ReltToPrec R).
 Proof.
   unfold ReltToPrec, PrecWithUB, ReltWithUBFull.
   intros.
@@ -322,7 +330,7 @@ Proof.
     exists x, (PossSetRemoveUB acf HAcf x0).
     easy.
   + destruct_all; subst.
-    exists x, (PossSetWithUB acf HAcf x0).
+    exists x, (PossSetWithUB cspec acf HAcf x0).
     rewrite PossSetEmbedForgetUB.  
     easy.
 Qed.
@@ -337,8 +345,8 @@ Proof.
   reflexivity.
 Qed. *)
 
-Lemma reltCompInvokeUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
-  forall (R : Relt VE VF) (impl : Impl E F) i A m, (ReltWithUBFull acf HAcf R) ->> (TInvoke impl i A m) ==> ReltWithUBFull acf HAcf (R ->> (TInvoke impl i A m)).
+Lemma reltCompInvokeUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
+  forall (R : Relt VE VF) (impl : Impl E F) i A m, (ReltWithUBFull cspec acf HAcf R) ->> (TInvoke impl i A m) ==> ReltWithUBFull cspec acf HAcf (R ->> (TInvoke impl i A m)).
 Proof.
   intros.
   unfold sub, subRelt.
@@ -383,15 +391,15 @@ Proof.
       inversion H5.
     }
   - destruct_all. 
-    exists (PossWithUB acf HAcf x0).
+    exists (PossWithUB cspec acf HAcf x0).
     unfold PossWithUB. simpl in *.
     repeat split; try assumption.
     f_equal. assumption.
 Qed.
 
-Lemma ReltPostUBEmbedding {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma ReltPostUBEmbedding {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall (R : Relt VE VF) Ret (Q: Post VE VF Ret) (v: Ret),
-    R ==> (Q v) -> ReltWithUBFull acf HAcf R ==> (PostWithUBFull acf HAcf Q v).
+    R ==> (Q v) -> ReltWithUBFull cspec acf HAcf R ==> (PostWithUBFull cspec acf HAcf Q v).
 Proof.
   unfold sub, subRelt in *.
   intros.
@@ -403,9 +411,9 @@ Proof.
   easy.
 Qed.
 
-Lemma PostValueUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma PostValueUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall A (Q: Post VE VF A) v, 
-    (PostWithUBFull acf HAcf Q) v = ReltWithUBFull acf HAcf (Q v).
+    (PostWithUBFull cspec acf HAcf Q) v = ReltWithUBFull cspec acf HAcf (Q v).
 Proof.
   intros.
   unfold PostWithUBFull, ReltWithUBFull.
@@ -416,9 +424,9 @@ Proof.
   split.
 Qed.
 
-Lemma reltSubUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma reltSubUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall (R Q : Relt VE VF), 
-    R ==> Q -> ReltWithUBFull acf HAcf R ==> ReltWithUBFull acf HAcf Q.
+    R ==> Q -> ReltWithUBFull cspec acf HAcf R ==> ReltWithUBFull cspec acf HAcf Q.
 Proof.
   intros.
   unfold sub, subRelt in *.
@@ -429,9 +437,9 @@ Proof.
   easy.
 Qed.
 
-Lemma stableReltUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma stableReltUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall (R Q : Relt VE VF), 
-    stableRelt R Q -> stableRelt (ReltWithUBFull acf HAcf R) (ReltWithUBFull acf HAcf Q).
+    stableRelt R Q -> stableRelt (ReltWithUBFull cspec acf HAcf R) (ReltWithUBFull cspec acf HAcf Q).
 Proof.
   intros.
   unfold stableRelt in *.
@@ -440,9 +448,9 @@ Proof.
   apply H.
 Qed.
 
-Lemma stablePostUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma stablePostUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall (R : Relt VE VF) Ret (Q: Post VE VF Ret),
-    stablePost R Q -> stablePost (ReltWithUBFull acf HAcf R) (PostWithUBFull acf HAcf Q).
+    stablePost R Q -> stablePost (ReltWithUBFull cspec acf HAcf R) (PostWithUBFull cspec acf HAcf Q).
 Proof.
   intros.
   unfold stablePost in *.
@@ -451,9 +459,9 @@ Proof.
   apply stableReltUB, H.
 Qed.
 
-Lemma silentStepUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma silentStepUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall (i: Name T) (G: Relt VE VF) P Q,
-    SilentStep i G P Q -> SilentStep i (ReltWithUBFull acf HAcf G) (PrecWithUB acf HAcf P) (ReltWithUBFull acf HAcf Q).
+    SilentStep i G P Q -> SilentStep i (ReltWithUBFull cspec acf HAcf G) (PrecWithUB cspec acf HAcf P) (ReltWithUBFull cspec acf HAcf Q).
 Proof.
   intros.
   unfold SilentStep in *.
@@ -467,40 +475,38 @@ Proof.
   { unfold ReltWithUBFull. easy. }
 Qed.
 
-Lemma stepSpecCallUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+Lemma stepSpecCallUB {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
   forall ρ σ A i (m : F A),
     spec.(Step) (PState ρ) (i, CallEv m) (PState σ) ->
-    StepWithUB spec.(Step) acf (PState (PossWithUB acf HAcf ρ)) (i, CallEv m) (PState (PossWithUB acf HAcf σ)).
+    StepWithUB cspec spec.(Step) acf (PState (PossWithUB cspec acf HAcf ρ)) (i, CallEv m) (PState (PossWithUB cspec acf HAcf σ)).
 Proof.
   intros.
-  constructor.
-  exact H.
+  now constructor.
 Qed.
 
-Lemma stepSpecRetUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+Lemma stepSpecRetUB {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
   forall ρ σ A i (m : F A) v,
     spec.(Step) (PState ρ) (i, RetEv m v) (PState σ) ->
-    StepWithUB spec.(Step) acf (PState (PossWithUB acf HAcf ρ)) (i, RetEv m v) (PState (PossWithUB acf HAcf σ)).
+    StepWithUB cspec spec.(Step) acf (PState (PossWithUB cspec acf HAcf ρ)) (i, RetEv m v) (PState (PossWithUB cspec acf HAcf σ)).
 Proof.
   intros.
-  constructor.
-  exact H.
+  now constructor.
 Qed.
 
-Lemma stepSpecUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+Lemma stepSpecUB {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
   forall ρ σ te,
     spec.(Step) (PState ρ) te (PState σ) ->
-    StepWithUB spec.(Step) acf (PState (PossWithUB acf HAcf ρ)) te (PState (PossWithUB acf HAcf σ)).
+    StepWithUB cspec spec.(Step) acf (PState (PossWithUB cspec acf HAcf ρ)) te (PState (PossWithUB cspec acf HAcf σ)).
 Proof.
   intros.
   destruct te.
   destruct e.
-  + apply stepSpecCallUB, H.
-  + apply stepSpecRetUB, H.
+  + now apply stepSpecCallUB, H.
+  + now apply stepSpecRetUB, H.
 Qed.
 
-Lemma possStepUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
-  forall i ρ σ, PossStep i ρ σ -> PossStep i (PossWithUB acf HAcf ρ) (PossWithUB acf HAcf σ).
+Lemma possStepUB {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+  forall i ρ σ, PossStep i ρ σ -> PossStep i (PossWithUB cspec acf HAcf ρ) (PossWithUB cspec acf HAcf σ).
 Proof.
   intros.
   unfold PossWithUB. simpl.
@@ -519,8 +525,8 @@ Proof.
     - assumption.
 Qed.
 
-Lemma possStepsUB {T F} {spec: Spec T F} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
-  forall ρ σ, PossSteps ρ σ -> PossSteps (PossWithUB acf HAcf ρ) (PossWithUB acf HAcf σ).
+Lemma possStepsUB {T F} {spec: Spec T F} {cspec} (acf: ActiveF spec.(Step)) (HAcf: acf_sound acf) :
+  forall ρ σ, PossSteps ρ σ -> PossSteps (PossWithUB cspec acf HAcf ρ) (PossWithUB cspec acf HAcf σ).
 Proof.
   intros.
   induction H.
@@ -539,10 +545,10 @@ Proof.
       { assumption. }
 Qed.
 
-Lemma commitUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma commitUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall i (e: Event E) (G: Relt VE VF) P Q,
     Commit i G P e Q -> 
-      Commit i (ReltWithUBFull acf HAcf G) (PrecWithUB acf HAcf P) e (ReltWithUBFull acf HAcf Q).
+      Commit i (ReltWithUBFull cspec acf HAcf G) (PrecWithUB cspec acf HAcf P) e (ReltWithUBFull cspec acf HAcf Q).
 Proof.
   intros.
   unfold Commit in *.
@@ -553,9 +559,9 @@ Proof.
   destruct_all.
   rename x into σs.
   rename x0 into σ.
-  exists (PossSetWithUB acf HAcf σs).
+  exists (PossSetWithUB cspec acf HAcf σs).
   repeat split.
-  + exists (PossWithUB acf HAcf σ).
+  + exists (PossWithUB cspec acf HAcf σ).
     apply PossSetEmbedding, H.
   + intros.
     destruct σ0.
@@ -566,7 +572,7 @@ Proof.
       inversion H8; subst.
       specialize (H4 σ' H7).
       destruct H4 as [ρ' [? ?]].
-      exists (PossWithUB acf HAcf ρ').
+      exists (PossWithUB cspec acf HAcf ρ').
       split.
       { unfold PossSetRemoveUB in H4. easy. }
       { rewrite <- PossWithUBUnfold. apply possStepsUB, H9. } 
@@ -582,10 +588,10 @@ Proof.
     easy.
 Qed.
 
-Lemma SafeProgUB {T E F} {VE: Spec T E} {VF: Spec T F} acf HAcf:
+Lemma SafeProgUB {T E F} {VE: Spec T E} {VF: Spec T F} {cspec} acf HAcf:
   forall i A (R: Relt VE VF) (G: Relt VE VF) P (Q: Post VE VF A) prog,
     SafeProg i R G P prog Q ->
-       SafeProg i (ReltWithUBFull acf HAcf R) (ReltWithUBFull acf HAcf G) (ReltWithUBFull acf HAcf P) prog (PostWithUBFull acf HAcf Q).
+       SafeProg i (ReltWithUBFull cspec acf HAcf R) (ReltWithUBFull cspec acf HAcf G) (ReltWithUBFull cspec acf HAcf P) prog (PostWithUBFull cspec acf HAcf Q).
 Proof.
   intros.
   rewrite paco_eqv.
@@ -655,6 +661,7 @@ Lemma VerifyWithUB
   {T E F}
   {VE : Spec T E}
   {VF : Spec T F}
+  {cspec}
   {R G : Name T -> Relt VE VF}
   {P : Name T -> forall Ret, F Ret -> Prec VE VF}
   {impl : Impl E F}
@@ -665,9 +672,9 @@ Lemma VerifyWithUB
       (impl _ m)
       (Q i A m)) ->
         (VerifyProg i (RelyWithUB acf HAcf R i) (GuarWithUB acf HAcf G i)
-        (prComp (PrecWithUB acf HAcf (P i A m)) (TInvoke impl i _ m) ->> (RelyWithUB acf HAcf R i))
+        (prComp (PrecWithUB cspec acf HAcf (P i A m)) (TInvoke impl i _ m) ->> (RelyWithUB acf HAcf R i))
         (impl _ m)
-        (PostWithUBFull acf HAcf (Q i A m))).
+        (PostWithUBFull cspec acf HAcf (Q i A m))).
 Proof.
   unfold VerifyProg.
   rewrite! precToReltComp.
@@ -675,11 +682,11 @@ Proof.
   cut(
     SafeProg i (RelyWithUB acf HAcf R i)
       (GuarWithUB acf HAcf G i)
-      ((ReltWithUBFull acf HAcf (PrecToRelt (P i A m)) ->>
+      ((ReltWithUBFull cspec acf HAcf (PrecToRelt (P i A m)) ->>
           TInvoke impl i A m) ->>
           (RelyWithUB acf HAcf R i))
       (impl A m) 
-      (PostWithUBFull acf HAcf (Q i A m))
+      (PostWithUBFull cspec acf HAcf (Q i A m))
   ). {
     apply weakenSafe.
     apply reltComposeMono1.
@@ -689,14 +696,14 @@ Proof.
   cut(
     SafeProg i (RelyWithUB acf HAcf R i)
       (GuarWithUB acf HAcf G i)
-      (ReltWithUBFull acf HAcf (PrecToRelt (P i A m) ->> (TInvoke impl i A m)) ->>
+      (ReltWithUBFull cspec acf HAcf (PrecToRelt (P i A m) ->> (TInvoke impl i A m)) ->>
           (RelyWithUB acf HAcf R i))
       (impl A m) 
-      (PostWithUBFull acf HAcf (Q i A m))
+      (PostWithUBFull cspec acf HAcf (Q i A m))
   ). {
     apply weakenSafe.
-    assert((ReltWithUBFull acf HAcf (PrecToRelt (P i A m)) ->> TInvoke impl i A m) ==>
-           ReltWithUBFull acf HAcf (PrecToRelt (P i A m) ->> TInvoke impl i A m)). 
+    assert((ReltWithUBFull cspec acf HAcf (PrecToRelt (P i A m)) ->> TInvoke impl i A m) ==>
+           ReltWithUBFull cspec acf HAcf (PrecToRelt (P i A m) ->> TInvoke impl i A m)). 
     { apply reltCompInvokeUB. }
     apply reltComposeMono1.
     apply H0.
@@ -710,7 +717,7 @@ Qed.
 Definition ReltToPost {T E F} {VE: Spec T E} {VF: Spec T F} A (R: Relt VE VF): Post VE VF A :=
   fun _ s1 ρs1 s2 ρs2 => R s1 ρs1 s2 ρs2.
 
-Definition ClientSpec {T F} (VF: Spec T F) := forall A, F A -> Name T -> (VF.(State)) -> Prop.
+(* Definition ClientSpec {T F} (VF: Spec T F) := forall A, F A -> Name T -> (VF.(State)) -> Prop.
 
 Definition vioClientSpecPossSet {T F} {spec: Spec T F} (i: Name T) (A: Type) (m: F A) (client: ClientSpec spec) (ρs: PossSet spec) :=
   exists ρ, ρs ρ /\ ~client A m i (PState ρ).
@@ -1586,4 +1593,4 @@ Proof.
       { apply reltComposeMono1, H2. }
       { rewrite UBReltIdem2. easy. }
     }
-Qed.
+Qed. *)

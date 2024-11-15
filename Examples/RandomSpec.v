@@ -3,13 +3,16 @@ From LHL.Core Require Import
   Specs
   Logic.
 
+From LHL.Examples Require Import
+  ArraySpec.
+
 From LHL.Util Require Import
   Tactics
   TransUtil
   Util.
 
 Variant RandSig : ESig :=
-| Random (k : nat) : RandSig nat.
+| Random (k : nat) : RandSig (Index k).
 
 Definition RandState T := ActiveMap T RandSig.
 
@@ -18,7 +21,7 @@ Variant RandStep {T} : RandState T -> ThreadEvent T RandSig -> RandState T -> Pr
     (fun j => if i =? j then None else m j)
     (i, CallEv (Random k))
     (fun j => if i =? j then Some (existT _ _ (Random k)) else m j)
-| RetRand i m k n : n < k -> RandStep
+| RetRand i m k n : True -> RandStep
     (fun j => if i =? j then Some (existT _ _ (Random k)) else m j)
     (i, RetEv (Random k) n)
     (fun j => if i =? j then None else m j).

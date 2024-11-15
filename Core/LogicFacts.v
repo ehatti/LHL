@@ -78,10 +78,8 @@ Context {T E F VE VF} {R : @Relt T E F VE VF}.
 
 Lemma reltCompIdLeft {Q : Relt VE VF} :
   Q ->> id = Q.
-extensionality s.
-extensionality ρ.
-extensionality t.
-extensionality σ.
+extensionality s. extensionality ρ.
+extensionality t. extensionality σ.
 apply propositional_extensionality.
 unfold ReltCompose.
 firstorder.
@@ -91,10 +89,8 @@ Qed.
 
 Lemma reltCompIdRight {Q : Relt VE VF} :
   id ->> Q = Q.
-extensionality s.
-extensionality ρ.
-extensionality t.
-extensionality σ.
+extensionality s. extensionality ρ.
+extensionality t. extensionality σ.
 apply propositional_extensionality.
 unfold ReltCompose.
 firstorder.
@@ -153,31 +149,21 @@ extensionality ρ.
 apply propositional_extensionality.
 unfold PrecCompose, ReltCompose.
 split; intros; destruct_all; repeat econstructor.
-exact H.
-exact H0.
-easy.
-exact H.
-exact H1.
-easy.
+exact H. exact H0. easy.
+exact H. exact H1. easy.
 Qed.
 
 Lemma reltCompAssoc {T E F} {VE : Spec T E} {VF : Spec T F} {R1 R2 R3 : Relt VE VF} :
   (R1 ->> R2) ->> R3 = R1 ->> R2 ->> R3.
-extensionality s.
-extensionality ρ.
-extensionality t.
-extensionality σ.
+extensionality s. extensionality ρ.
+extensionality t. extensionality σ.
 apply propositional_extensionality.
 unfold ReltCompose.
 firstorder; destruct_all.
 repeat econstructor.
-exact H.
-exact H1.
-easy.
+exact H. exact H1. easy.
 repeat econstructor.
-exact H.
-exact H0.
-easy.
+exact H. exact H0. easy.
 Qed.
 
 
@@ -188,13 +174,9 @@ apply propositional_extensionality.
 unfold PrecCompose, ReltCompose.
 split; intros; destruct_all.
 repeat econstructor.
-exact H.
-exact H1.
-easy.
+exact H. exact H1. easy.
 repeat econstructor.
-exact H.
-exact H0.
-easy.
+exact H. exact H0. easy.
 Qed.
 
 Lemma reltComposeMono1 {T E F} {VE: Spec T E} {VF: Spec T F} :
@@ -232,12 +214,9 @@ Lemma rtcTrans {T E F VE VF} {R : @Relt T E F VE VF} :
 unfold sub, subRelt, ReltCompose.
 intros.
 do 3 destruct H.
-induction H.
-easy.
+induction H. easy.
 econstructor.
-exact H.
-apply IHRTC.
-easy.
+exact H. apply IHRTC. easy.
 Qed.
 
 Lemma rtcTransTac {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
@@ -246,9 +225,7 @@ Lemma rtcTransTac {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
   RTC R s ρ r τ.
 intros.
 eapply rtcTrans.
-psplit.
-exact H.
-easy.
+psplit. exact H. easy.
 Qed.
 
 Lemma extendRtcLeft {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
@@ -257,8 +234,7 @@ Lemma extendRtcLeft {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
   RTC R s ρ r τ.
 intros.
 eapply RTCStep.
-exact H.
-easy.
+exact H. easy.
 Qed.
 
 Lemma extendRtcRight {T E F VE VF} {R : @Relt T E F VE VF} {s ρ t σ r τ} :
@@ -285,10 +261,7 @@ unfold ReltToPrec in *.
 destruct_all.
 exists x, x0.
 apply H.
-easy.
-easy.
-easy.
-easy.
+all: easy.
 Qed.
 
 Lemma weakenCommit {T E F} {VE : Spec T E} {VF : Spec T F} {i G P Q' e} :
@@ -302,10 +275,8 @@ eapply H0 in H4.
 destruct_all.
 exists x. split.
 exists x0. easy.
-split.
-easy.
-split.
-apply H. easy.
+split. easy.
+split. apply H. easy.
 easy.
 Qed.
 

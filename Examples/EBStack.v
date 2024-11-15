@@ -590,8 +590,9 @@ Proof.
     }
   }
   {
-    dsteps; simp_eqs.
-    drecs. psimpl. simp_eqs.
+    dsteps; simp_eqs;
+    drecs; psimpl; simp_eqs.
+    ddestruct H3.
     constructor.
     {
       setoid_rewrite <- x at 1.
@@ -646,6 +647,7 @@ Proof.
   {
     dsteps; simp_eqs;
     drecs; psimpl; simp_eqs.
+    ddestruct H3.
     {
       constructor.
       {
@@ -994,13 +996,18 @@ Proof.
   }
   {
     dsteps; simp_eqs.
+    ddestruct H4.
     destruct_big_steps.
     constructor.
     { now rewrite H19, H12. }
     { now rewrite H20, H13. }
   }
   {
-    dsteps; simp_eqs;
+    dsteps; simp_eqs.
+    ddestruct H4.
+    destruct_big_steps;
+    constructor;
+    now rewrite ?H20, ?H19, ?H13, ?H12.
     destruct_big_steps;
     constructor;
     now rewrite ?H20, ?H19, ?H13, ?H12.
@@ -1175,10 +1182,12 @@ Proof.
     now setoid_rewrite <- H1.
   }
   { dsteps; destruct m; simp rde_prop; now setoid_rewrite <- H7. }
-  { dsteps; simp_eqs; destruct m; simp rde_prop; now setoid_rewrite <- H7. }
+  { dsteps; simp_eqs; destruct m; simp rde_prop;
+    repeat (ddestruct H4 || now setoid_rewrite <- H7). }
   { dsteps; simp_eqs; destruct m; simp rde_prop; now setoid_rewrite <- H8. }
   { dsteps; simp_eqs; destruct m; simp rde_prop; now setoid_rewrite <- H7. }
-  { dsteps; simp_eqs; destruct m; simp rde_prop; now setoid_rewrite <- H7. }
+  { dsteps; simp_eqs; destruct m; simp rde_prop;
+    repeat (ddestruct H4 || now setoid_rewrite <- H7). }
   { dsteps; simp_eqs; destruct m; simp rde_prop; now setoid_rewrite <- H8. }
   { dsteps; destruct m; simp rde_prop in *; psimpl; simp_eqs; simp_sets. }
   { dsteps; destruct m; simp rde_prop in *; psimpl; simp_eqs; simp_sets. }
@@ -1256,10 +1265,13 @@ Proof.
     psimpl. destruct m; now setoid_rewrite <- H1.
   }
   { dsteps; destruct m; now setoid_rewrite <- H7. }
-  { dsteps; simp_eqs; destruct m; now setoid_rewrite <- H7. }
+  { dsteps; simp_eqs; destruct m; simp rde_prop;
+    repeat (ddestruct H4 || now setoid_rewrite <- H7). }
   { dsteps; simp_eqs; destruct m; now setoid_rewrite <- H8. }
-  { dsteps; simp_eqs; destruct m; now setoid_rewrite <- H7. }
-  { dsteps; simp_eqs; destruct m; now setoid_rewrite <- H7. }
+  { dsteps; simp_eqs; destruct m; simp rde_prop;
+    repeat (ddestruct H4 || now setoid_rewrite <- H7). }
+  { dsteps; simp_eqs; destruct m; simp rde_prop;
+    repeat (ddestruct H4 || now setoid_rewrite <- H7). }
   { dsteps; simp_eqs; destruct m; now setoid_rewrite <- H8. }
   { dsteps; destruct m; psimpl; simp_eqs; simp_sets. }
   { dsteps; destruct m; psimpl; simp_eqs; simp_sets. }
@@ -1402,6 +1414,7 @@ Proof.
   {
     left.
     dsteps; simp_eqs.
+    ddestruct H4.
     constructor.
     { easy. }
     { now rewrite <- H7 at 1. }
@@ -1430,6 +1443,7 @@ Proof.
   {
     left.
     dsteps; simp_eqs.
+    ddestruct H4.
     constructor.
     { easy. }
     { now rewrite <- H7 at 1. }
@@ -1657,6 +1671,7 @@ Proof.
   {
     left.
     dsteps; simp_eqs.
+    ddestruct H4.
     constructor.
     { easy. }
     { now rewrite <- H7 at 1. }
@@ -1685,6 +1700,7 @@ Proof.
   {
     left.
     dsteps; simp_eqs.
+    ddestruct H4.
     constructor.
     { easy. }
     { now rewrite <- H7 at 1. }
