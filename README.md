@@ -1,6 +1,17 @@
 # LHL
 
-Linearizability Hoare Logic -- a sound and complete program logic for compositional linearizability.
+## Overview
+
+LHL is the first sound and complete program logic for _compositional linearizability_, which is a generalization of atomic linearizability, set linearizability, and interval linearizability. This makes it complete for concurrent objects. LHL uses a compositional model for concurrent computation which enables us to use the compositionality features of compositional linearizability to link verified components together into large systems
+with a high-level of abstraction for their subcomponents. As a showcase, we verify the elimination-backoff stack
+implementation modularly by verifying all of its sub-components against their linearized specifications and
+then linking them together using compositional linearizability.
+
+## Examples
+
+- `Examples/Exchanger.v`: One-cell set-linearizable exchanger. Specification may be found in `Examples/ExchangerSpec.v`
+- `Examples/ElimArray.v`: An exchanger array object that allows an arbitrary number of exchangers to execute concurrently
+- `Examples/EBStack.v`: The atomic elimination backoff stack. Specification may be found in `Examples/AtomicStackSpec.v`
 
 ## Setup Steps
 
