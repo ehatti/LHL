@@ -10,3 +10,6 @@ _build/default/Core/Signature.v
 _build/default/Core/Program.v
 _build/default/Core/Specification.v
 _build/default/Core/Interaction.v
+_build/default/Core/Composition.v
+_build/default/Core/Refinement.v
+_build/default/Core/Linearizability.v
