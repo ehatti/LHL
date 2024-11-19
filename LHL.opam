@@ -1,0 +1,26 @@
+opam-version: "2.1.2"
+maintainer: "eashan.hatti@yale.edu"
+
+homepage: "https://github.com/ehatti/LHL"
+dev-repo: "git+https://github.com/ehatti/LHL"
+bug-reports: "https://github.com/ehatti/LHL/issues"
+doc: "https://github.com/ehatti/LHL"
+license: "BSD-3"
+
+synopsis: "Linearizability Hoare Logic"
+description: """
+A sound and complete program logic for compositional linearizability"""
+
+build: ["dune" "build" "-p" name "-j" jobs]
+depends: [
+  "ocaml" {>= "4.07.1"}
+  "dune" {>= "2.5"}
+  "coq" {>= "8.14" & < "8.15"}
+]
+
+tags: [
+]
+
+authors: [
+  "Eashan Hatti"
+]

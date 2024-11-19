@@ -1,56 +1,10 @@
--Q . LHL
+-R _build/default/Util Util
+-R _build/default/Core Core
 
-./Util/Tactics.v
-./Util/Util.v
-./Util/ListUtil.v
-./Util/TransUtil.v
+_build/default/Util/Axioms.v
+_build/default/Util/DecEq.v
+_build/default/Util/Map.v
 
-./Core/Program.v
-./Core/Specs.v
-./Core/Traces.v
-./Core/TracesFacts.v
-./Core/Linearizability.v
-./Core/Logic.v
-./Core/LogicPaco.v
-./Core/LogicFacts.v
-./Core/Tensor.v
-./Core/TensorFacts.v
-./Core/ProgramRules.v
-./Core/UBLayer.v
-
-./Core/ProgramFacts.v
-./Core/EuttRefinesSetup.v
-./Core/RefinesFacts.v
-./Core/LinFacts.v
-./Core/VCompFacts.v
-./Core/SingConds.v
-
-./Core/VisPoss.v
-
-./Core/Eutt.v
-
-./Examples/LockSpec.v
-# ./Examples/CounterSpec.v
-# ./Examples/FAISpec.v
-# ./Examples/YieldSpec.v
-./Examples/OMemSpec.v
-./Examples/LocalVarSpec.v
-# ./Examples/SnapshotSpec.v
-./Examples/ThreadLocal.v
-./Examples/NameSpec.v
-./Examples/CASSpec.v
-./Examples/ExchangerSpec.v
-./Examples/Exchanger.v
-./Examples/ArraySpec.v
-./Examples/RandomSpec.v
-./Examples/ElimArray.v
-./Examples/AtomicStackSpec.v
-./Examples/WaitFreeStackSpec.v
-./Examples/EBStack.v
-
-./Examples/RegSpec.v
-./Examples/SnapshotSpec.v
-
-# ./Examples/SpinLock.v
-
-./Examples/Array.v
+_build/default/Core/Signature.v
+_build/default/Core/Program.v
+_build/default/Core/Transition.v

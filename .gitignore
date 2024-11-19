@@ -53,9 +53,10 @@ Makefile.conf
 
 # vscode
 
-.vscode/*
+.vscode
 .DS_Store
 
 # misc
 
 doc
+_build

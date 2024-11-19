@@ -1,0 +1,1 @@
+Axiom prop_decidable : forall P, {P} + {~P}.
