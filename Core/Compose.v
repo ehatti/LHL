@@ -47,7 +47,7 @@ Definition mhcomp {EL FL ER FR}
       | inl mL => mapProg (fun _ => inl) (Ml _ mL)
       | inr mR => mapProg (fun _ => inr) (Mr _ mR)
     end.
-Infix ":⊗:" := mhcomp (at level 45, right associativity).
+Infix "⊗" := mhcomp (at level 45, right associativity).
 
 (* Definition of vertical composition on specifications *)
 
@@ -77,4 +77,4 @@ Definition shcomp {T E F}
     | inr m => tl = sl /\ VF.(Step) sr (i, Evt m r) tr
     end
 |}.
-Infix "⊗" := shcomp (at level 45, right associativity).
+Infix ":⊗:" := shcomp (at level 45, right associativity).
