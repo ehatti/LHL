@@ -1,7 +1,11 @@
 From Core Require Import
+  Specification
+  Interaction
   Signature
-  Transition
   Program.
+
+From Util Require Import
+  Relation.
 
 (* Definition of vertical composition on modules *)
 
@@ -43,7 +47,34 @@ Definition mhcomp {EL FL ER FR}
       | inl mL => mapProg (fun _ => inl) (Ml _ mL)
       | inr mR => mapProg (fun _ => inr) (Mr _ mR)
     end.
+Infix ":⊗:" := mhcomp (at level 45, right associativity).
 
 (* Definition of vertical composition on specifications *)
 
-Program Definition mscomp
+Definition svcomp {T E F}
+  (V : Spec T E) (M : Mod E F)
+: Spec T F :=  {|
+  State := InterState T E F V.(State);
+  Init := ((fun _ => Idle), V.(Init));
+  Step '(ths, s) e thtt :=
+    exists ths',
+      PtRel (OSeqAgentStep M) ths e ths' /\
+      exists p,
+        Steps (UnderInterStep V) (ths', s) p thtt
+|}.
+Infix ":▷" := svcomp (at level 46, left associativity).
+
+(* Definition of horizontal composition on specifications *)
+
+Definition shcomp {T E F}
+  (VE : Spec T E) (VF : Spec T F)
+: Spec T (E ∪ F) := {|
+  State := prod VE.(State) VF.(State);
+  Init := (VE.(Init), VF.(Init));
+  Step '(sl, sr) '(i, Evt m r) '(tl, tr) :=
+    match m with
+    | inl m => tr = sr /\ VE.(Step) sl (i, Evt m r) tl
+    | inr m => tl = sl /\ VF.(Step) sr (i, Evt m r) tr
+    end
+|}.
+Infix "⊗" := shcomp (at level 45, right associativity).

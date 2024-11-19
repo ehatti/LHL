@@ -1,3 +1,4 @@
 (coq.theory
  (package LHL)
- (name Core))
+ (name Core)
+ (theories Util))

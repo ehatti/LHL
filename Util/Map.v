@@ -47,23 +47,23 @@ Proof.
   apply eq.
 Qed.
 
-Definition diff_pt {A B} (m m' : Map A B) (i : A) :=
+Definition DiffPt {A B} (m m' : Map A B) (i : A) :=
   forall j, i <> j -> m j = m' j.
 
-Lemma diff_pt_triv_right {A B} :
+Lemma DiffPt_triv_right {A B} :
   forall (m : Map A B) i v,
-  diff_pt m (m [i ↦ v]) i.
+  DiffPt m (m [i ↦ v]) i.
 Proof.
-  unfold diff_pt, update.
+  unfold DiffPt, update.
   intros m i v j neq.
   now rewrite deceq_false.
 Qed.
 
-Lemma diff_pt_triv_left {A B} :
+Lemma DiffPt_triv_left {A B} :
   forall (m : Map A B) i v,
-  diff_pt (m [i ↦ v]) m i.
+  DiffPt (m [i ↦ v]) m i.
 Proof.
-  unfold diff_pt, update.
+  unfold DiffPt, update.
   intros m i v j neq.
   now rewrite deceq_false.
 Qed.
