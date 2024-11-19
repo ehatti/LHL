@@ -5,5 +5,5 @@ From Core Require Import
   Program.
 
 Definition Lin {T E} (V' V : Spec T E) :=
-  V' ⊑ V :▷ idMod.
+  V' ⊑ V :▷ copy.
 Infix "↝" := Lin (at level 47, no associativity).

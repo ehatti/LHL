@@ -14,7 +14,7 @@ Definition Mod (E F : Sig) :=
 
 (* Identity module *)
 
-Definition idMod {E} : Mod E E :=
+Definition copy {E} : Mod E E :=
   fun _ m => Vis m Ret.
 
 (* Program and module operations *)
