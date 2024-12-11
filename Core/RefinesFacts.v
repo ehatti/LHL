@@ -1017,7 +1017,7 @@ Inductive assoc_states {E F G} {impl : Impl E F} {impl' : Impl F G} : ThreadStat
 Arguments assoc_states {E F G} impl impl'.
 
 Theorem layerRefines_VComp_assoc {T E F G} : 
-  forall  (spec : Spec T E) (impl : Impl E F) (impl' : Impl F G),
+  forall (spec : Spec T E) (impl : Impl E F) (impl' : Impl F G),
     layerRefines ((overObj (spec :> impl)) :> impl') ((spec :> impl) :|> impl').
 Proof.
   unfold layerRefines, specRefines, Incl, IsTraceOfSpec.
@@ -1432,3 +1432,8 @@ Proof.
     { intros. now rewrite eqb_nid. }
   }
 Qed.
+
+Theorem layerRefines_VComp_assoc_inv {T E F G} : 
+  forall (spec : Spec T E) (impl : Impl E F) (impl' : Impl F G),
+    specRefines (spec ▷ (impl |> impl')) ((spec ▷ impl) ▷ impl').
+Admitted.

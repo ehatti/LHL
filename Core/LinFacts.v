@@ -16,17 +16,17 @@ From LHL.Util Require Import
 (* Observational Refinement *)
 Theorem lin_obs_ref {T E F} : 
   forall (spec' spec : Spec T E) (impl : Impl E F) ,
-  Lin spec' spec -> 
-  layerRefines (spec' :> impl) (spec :> impl).
+  spec' ↝ spec -> 
+  (spec' ▷ impl) ⊑ (spec ▷ impl).
 Proof.
-intros.
-apply (mkLayer_monotonic _ _ impl) in H.
-assert (H' := layerRefines_VComp_assoc spec idImpl impl).
-rewrite obj_VComp_assoc in H'.
-assert (ID_EUTT := idImpl_is_identity_l impl).
-assert (H'' := eutt_layerRefines spec _ _ ID_EUTT).
-eapply layerRefines_trans. eapply layerRefines_trans.
-apply H. apply H'. apply H''.
+  intros.
+  apply (mkLayer_monotonic _ _ impl) in H.
+  assert (H' := layerRefines_VComp_assoc spec idImpl impl).
+  rewrite obj_VComp_assoc in H'.
+  assert (ID_EUTT := idImpl_is_identity_l impl).
+  assert (H'' := eutt_layerRefines spec _ _ ID_EUTT).
+  eapply layerRefines_trans. eapply layerRefines_trans.
+  apply H. apply H'. apply H''.
 Qed.
 
 (* Locality *)
@@ -51,3 +51,30 @@ Proof.
     eapply specRefines_trans. eapply specRefines_trans.
     apply H. apply H1. apply H2. 
 Qed.
+
+Theorem vcomp_lin {T E F G} :
+  forall (VE : Spec T E) (VG : Spec T G),
+  forall (MF : Impl E F) (MG : Impl F G),
+  (exists VF : Spec T F,
+    VE ▷ MF ↝ VF /\
+    VF ▷ MG ↝ VG) ->
+  VE ▷ (MF |> MG) ↝ VG.
+Proof.
+  unfold Lin, KConc. intros.
+  destruct H as [VF [linMF linMG]].
+  eapply specRefines_trans.
+  eapply specRefines_trans.
+  apply layerRefines_VComp_assoc_inv.
+  2: exact linMG. now apply lin_obs_ref.
+Qed.
+
+Theorem hcomp_lin {T EL ER FL FR} :
+  forall (VEL : Spec T EL) (VER : Spec T ER),
+  forall (VFL : Spec T FL) (VFR : Spec T FR),
+  forall (ML : Impl EL FL) (MR : Impl ER FR),
+  VEL ▷ ML ↝ VFL ->
+  VER ▷ MR ↝ VFR ->
+  (VEL ⊗ VER) ▷ (ML :⊗: MR) ↝ (VFL ⊗ VFR).
+Proof.
+  intros.
+Admitted.

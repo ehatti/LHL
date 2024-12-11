@@ -34,13 +34,13 @@ constructor.
 easy.
 Qed.
 
-Fixpoint E (U : ESig) N :=
+Fixpoint nsig (U : ESig) N :=
   match N with
   | 0 => UnitSig
-  | S N => U |+| E U N
+  | S N => U |+| nsig U N
   end.
 
-Fixpoint ntensor {T U} (V : Spec T U) N : Spec T (E U N) :=
+Fixpoint ntensor {T U} (V : Spec T U) N : Spec T (nsig U N) :=
   match N with
   | 0 => unitSpec
   | S N => tensorSpec V (ntensor V N)
@@ -54,7 +54,7 @@ Definition VF {T U} (V : Spec T U) N : Spec T (F U N) :=
 From Equations Require Import Equations.
 Require Import Lia.
 
-Equations getIndex {U N R} (i : Index N) (m : U R) : E U N R :=
+Equations getIndex {U N R} (i : Index N) (m : U R) : nsig U N R :=
 getIndex (N:= S N) (@exist _ _ 0 p) m := inl m;
 getIndex (N:= S N) (@exist _ _ (S i) p) m := inr (getIndex (@exist _ _ i _) m);
 getIndex (N:= 0) (@exist _ _ i p) m := _.
@@ -77,17 +77,17 @@ Next Obligation. lia. Qed.
 
 End indexntensor.
 
-Definition index {U N R} (i : Index N) (m : U R) : Prog (E U N) R :=
+Definition index {U N R} (i : Index N) (m : U R) : Prog (nsig U N) R :=
   Bind (getIndex i m)
   Return.
 
-Definition arrayImpl {U N} : Impl (E U N) (ArraySig U N) :=
+Definition arrayImpl {U N} : Impl (nsig U N) (ArraySig U N) :=
   fun _ m => match m with
   | At i m => index i m
   end.
 
 Variant StRel {T U} {V : Spec T U} {N} :
-  ThreadState (E U N) (F U N) -> PCall (F U N) -> PRet (F U N) -> Prop :=
+  ThreadState (nsig U N) (F U N) -> PCall (F U N) -> PRet (F U N) -> Prop :=
 | StIdle :
   StRel Idle CallIdle RetIdle
 | StOCall i R (m : U R) :

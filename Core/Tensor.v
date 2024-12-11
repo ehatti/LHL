@@ -104,3 +104,6 @@ Definition tensorLayer {T}
     USpec := tensorSpec layL.(USpec) layR.(USpec);
     LImpl := tensorImpl layL.(LImpl) layR.(LImpl)
   |}.
+
+Infix "⊗" := tensorSpec (at level 40).
+Infix ":⊗:" := tensorImpl (at level 40).

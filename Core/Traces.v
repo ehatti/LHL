@@ -387,10 +387,14 @@ induction p; cbn; intros.
 }
 Qed.
 
+Notation "V ▷ M" := (overObj (V :> M)) (at level 40).
+
 (* Refinement *)
 
 Definition specRefines {T E} (spec spec' : Spec T E) : Prop := 
   Incl (fun t => IsTraceOfSpec t spec) (fun t => IsTraceOfSpec t spec'). 
+
+Infix "⊑" := specRefines (at level 40).
 
 Definition layerRefines {T E E' F} (lay : Layer T E F) (lay': Layer T E' F)  := 
   specRefines (overObj lay) (overObj lay').

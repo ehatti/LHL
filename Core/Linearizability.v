@@ -18,6 +18,8 @@ Definition KConc {T E} (spec : Spec T E) : Spec T E := overObj (spec :> idImpl).
 Definition Lin {T E} (spec' spec : Spec T E) :=
   specRefines spec' (KConc spec).
 
+Infix "↝" := Lin (at level 40).
+
 Variant HBRw_ {T E} : Trace (ThreadEvent T E) -> Trace (ThreadEvent T E) -> Prop :=
 | SwapCalls l r i j A (m : E A) B (n : E B) :
     i <> j ->

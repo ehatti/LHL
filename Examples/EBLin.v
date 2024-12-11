@@ -20,37 +20,64 @@ From LHL.Examples Require Import
   ArraySpec
   Array.
 
-Infix "⊗" := tensorSpec (at level 40).
-
-Theorem ExchLin {T A} :
-  Lin (T:=T)
-    (overObj ((nameSpec ⊗ casSpec) :> exchImpl (A:=A)))
-    exchSpec.
-eapply soundness.
-apply oneCellExchCorrect.
-Qed.
-
-Theorem ElimArrLin {T A} :
-  Lin (T:=T)
-    (overObj ((randSpec ⊗ arraySpec T exchSpec) :> elimArray T A)) exchSpec.
-eapply soundness.
-apply elimArrayCorrect.
-Qed.
-
-Definition arrEBImpl T A :
-  Impl
-    ((RandSig |+| ArraySig (CASSig (option A)) T) |+| WaitFreeStackSig A)
-    (AtomicStackSig A)
+Fixpoint ntensorImpl {E F} (M : Impl E F) N
+  : Impl (nsig E N) (nsig F N)
 :=
-  tensorImpl
-    (arrayImpl
-    |> elimArray T (option A))
-    idImpl 
-  |> EBStack A.
+  match N with
+  | 0 => idImpl
+  | S N => M :⊗: (ntensorImpl M N)
+  end.
 
-Theorem EBLin {T A} :
-  Lin (T:=T)
-    (overObj
-      (((ntensor (nameSpec ⊗ casSpec) T) ⊗ wfStackSpec) :>
-      (tensorImpl (elimArray T A) idImpl |> EBStack A)))
-    atomicStackSpec.
+Definition LinkedEBSig T A :=
+  (RandSig |+| nsig (NameSig T |+| CASSig (Offer T (option A))) T) |+| WaitFreeStackSig A.
+
+Definition LinkedEBUnderlay T A : Spec T (LinkedEBSig T A) :=
+  (randSpec ⊗ ntensor (nameSpec ⊗ casSpec) T) ⊗ wfStackSpec.
+
+Definition LinkedEBImpl T A : Impl (LinkedEBSig T A) (AtomicStackSig A) :=
+  (idImpl :⊗: (ntensorImpl exchImpl T |> arrayImpl) |> elimArray T (option A)) :⊗: idImpl |> EBStack A.
+
+Lemma ntensorLin {T E F N} :
+  forall (VE : Spec T E) (M : Impl E F) (VF : Spec T F),
+  VE ▷ M ↝ VF ->
+  ntensor VE N ▷ ntensorImpl M N ↝ ntensor VF N.
+Proof.
+  intros.
+  induction N. easy.
+  now apply hcomp_lin.
+Qed.
+
+Theorem EBStack_lin {T A} :
+  LinkedEBUnderlay T A ▷ LinkedEBImpl T A ↝ atomicStackSpec.
+Proof.
+  unfold LinkedEBUnderlay, LinkedEBImpl.
+  apply vcomp_lin.
+  eexists. split.
+  2:{
+    eapply soundness.
+    apply EBStackCorrect.
+  }
+  apply hcomp_lin.
+  {
+    apply vcomp_lin.
+    eexists. split.
+    2:{
+      eapply soundness.
+      apply elimArrayCorrect.
+    }
+    apply hcomp_lin.
+    { easy. }
+    {
+      apply vcomp_lin.
+      eexists. split.
+      2:{
+        eapply soundness.
+        apply arrayCorrect.
+      }
+      apply ntensorLin.
+      eapply soundness.
+      apply oneCellExchCorrect.
+    }
+  }
+  { easy. }
+Qed.
