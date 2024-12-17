@@ -1468,7 +1468,14 @@ Lemma overobj_trace_triv {T E F} :
   forall p : Trace (ThreadLEvent T E F),
   (exists t (M : Impl E F), Steps (ThreadsStep M) allIdle p t) ->
   IsOverObjTrace p.
-Admitted.
+Proof.
+  intros. destruct_all.
+  destruct p. now left.
+  ddestruct H. ddestruct H.
+  destruct t, l. cbn in *.
+  ddestruct H. cbn in *.
+  right. repeat econstructor.
+Qed.
 
 Ltac gendep H := generalize dependent H.
 

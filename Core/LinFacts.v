@@ -5,6 +5,7 @@ From LHL.Core Require Import
   Traces
   Linearizability
   VCompFacts
+  TensorFacts
   RefinesFacts
   Tensor
   TensorFacts.
@@ -32,7 +33,8 @@ Qed.
 (* Locality *)
 Theorem locality {T E F} :
   forall (specE specE' : Spec T E) (specF specF' : Spec T F) ,
-  Lin specE' specE /\ Lin specF' specF <-> Lin (tensorSpec specE' specF') (tensorSpec specE specF).
+  specE' ↝ specE /\ specF' ↝ specF <->
+  specE' ⊗ specF' ↝ (specE ⊗ specF).
 Proof.
   intros.
   unfold Lin, KConc.
@@ -68,6 +70,17 @@ Proof.
   2: exact linMG. now apply lin_obs_ref.
 Qed.
 
+Definition mapThs {E E' F F'}
+  (f : forall A, E A -> E' A)
+  (g : forall A, F A -> F' A)
+  (s : ThreadState E F)
+: ThreadState E' F' :=
+  match s with
+  | Idle => Idle
+  | Cont om p => Cont (g _ om) (mapProg f p)
+  | UCall om um k => UCall (g _ om) (f _ um) (fun x => mapProg f (k x))
+  end.
+
 Theorem hcomp_lin {T EL ER FL FR} :
   forall (VEL : Spec T EL) (VER : Spec T ER),
   forall (VFL : Spec T FL) (VFR : Spec T FR),
@@ -77,4 +90,13 @@ Theorem hcomp_lin {T EL ER FL FR} :
   (VEL ⊗ VER) ▷ (ML :⊗: MR) ↝ (VFL ⊗ VFR).
 Proof.
   intros.
-Admitted.
+  eapply specRefines_trans
+    with (spec2:=?[spec2]).
+  2:{
+    change (_ ⊑ KConc (VFL ⊗ VFR))
+    with (?spec2 ↝ (VFL ⊗ VFR)).
+    apply locality.
+    split. exact H. exact H0.
+  }
+  apply tensor_layer_funct_r.
+Qed.
