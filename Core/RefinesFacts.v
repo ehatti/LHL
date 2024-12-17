@@ -1433,7 +1433,447 @@ Proof.
   }
 Qed.
 
+Lemma subst {A} {P : A -> Prop} :
+  forall x y : A,
+  y = x -> P x -> P y.
+Proof.
+  intros.
+  now rewrite H.
+Qed.
+
+Lemma ex_eq {A} {P Q : A -> Prop} :
+  P = Q -> (exists x, P x) = (exists x, Q x).
+Proof.
+  intros.
+  now setoid_rewrite H.
+Qed.
+
+Lemma conj_eq {P Q R W : Prop} :
+  P = R -> Q = W -> (P /\ Q) = (R /\ W).
+Proof.
+  intros.
+  now rewrite H, H0.
+Qed.
+
+Lemma equal_f {A B} :
+  forall f g : A -> B,
+  forall x : A,
+  f = g -> f x = g x.
+Proof.
+  intros.
+  now rewrite H.
+Qed.
+
+Lemma overobj_trace_triv {T E F} :
+  forall p : Trace (ThreadLEvent T E F),
+  (exists t (M : Impl E F), Steps (ThreadsStep M) allIdle p t) ->
+  IsOverObjTrace p.
+Admitted.
+
+Ltac gendep H := generalize dependent H.
+
+Definition upd {A B} (m : A -> B) (i : A) (v : B) : A -> B :=
+  fun j => if i =? j then v else m j.
+
+Lemma upd_nodiff {A B} {m : A -> B} {i : A} {v : B} :
+  m i = v ->
+  upd m i v = m.
+Proof.
+  intros. subst.
+  unfold upd.
+  extensionality j.
+  dec_eq_nats i j.
+  now rewrite eqb_id.
+  now rewrite eqb_nid.
+Qed.
+
+(* Inductive assoc_states_inv {E F G} {impl : Impl E F} {impl' : Impl F G} : ThreadState E F -> ThreadState F G -> ThreadState E G -> Prop :=
+| IASGCall :
+    assoc_states_inv Idle Idle Idle
+| IASFCall A (gm : G A) B (fm : F B) p :
+    assoc_states_inv Idle (Cont gm (Bind fm p)) (Cont gm (NoOp (bindSubstProg impl p (impl _ fm))))
+| IASFCall2 A (gm : G A) B (fm : F B) p q :
+    assoc_states_inv Idle (Cont gm (Bind fm p)) (Cont gm (bindSubstProg impl p q))
+| IASFRet A (gm : G A) v :
+    assoc_states_inv Idle (Cont gm (Return v)) (Cont gm (Return v))
+| IASFNoop A (gm : G A) p :
+    assoc_states_inv Idle (Cont gm (NoOp p)) (Cont gm (NoOp (substProg impl p))).
+Arguments assoc_states_inv {E F G} impl impl'. *)
+
 Theorem layerRefines_VComp_assoc_inv {T E F G} : 
   forall (spec : Spec T E) (impl : Impl E F) (impl' : Impl F G),
     specRefines (spec ▷ (impl |> impl')) ((spec ▷ impl) ▷ impl').
-Admitted.
+Proof.
+  unfold layerRefines, specRefines, Incl, IsTraceOfSpec.
+  intros. destruct_all.
+  repeat rewrite decompOverObj in *.
+  eapply subst.
+  {
+    extensionality st.
+    eapply ex_eq.
+    extensionality x1.
+    eapply conj_eq. easy.
+    eapply conj_eq. 2: easy.
+    do 3 apply equal_f.
+    apply (decompOverObj (lay:= spec :> impl)).
+  }
+  cbn in *. destruct_all. subst.
+  cut (
+    exists lst rst x1 q,
+      projOver x0 = projOver x1 /\
+      projUnderThr x1 = projOver q /\
+      projUnderThr q = projUnderThr x0 /\
+      Steps (ThreadsStep impl) allIdle q lst /\
+      Steps (ThreadsStep impl') allIdle x1 rst
+  ).
+  {
+    intros. destruct_all.
+    exists (x2, (x1, snd x)), x3.
+    split. easy.
+    split.
+    {
+      exists x4.
+      split. easy.
+      split. now rewrite H4.
+      split. easy.
+      apply overobj_trace_triv.
+      now exists x1, impl.
+    }
+    split. easy.
+    apply overobj_trace_triv.
+    now exists x2, impl'.
+  }
+  clear - H1.
+  assert (
+    forall i : Name T,
+      assoc_states impl impl' (allIdle i) (allIdle i) (allIdle i)
+  ).
+  { intros. constructor. }
+  gendep (@allIdle T E F).
+  gendep (@allIdle T F G).
+  gendep (@allIdle T E G).
+  intros.
+  gendep t. gendep t0. gendep t1.
+  induction x0; intros; cbn.
+  {
+    exists t1, t0, [], [].
+    repeat constructor.
+  }
+  {
+    ddestruct H1. unfold ThreadsStep in H.
+    ddestruct H. unfold ThreadStep in H.
+    destruct a; cbn in *.
+    assert (H2' := H2).
+    specialize (H2 n).
+    destruct l; cbn in *; ddestruct H.
+    {
+      rewrite H in H2. ddestruct H2.
+      eapply IHx0 with
+        (t0:=t0)
+        (t1:=fun j =>
+          if n =? j then
+            UCall fm um ek
+          else
+            t1 j)
+        in H1.
+      {
+        destruct_all.
+        exists x4, x5.
+        exists x6.
+        exists ((n, UEvent (Some (CallEv um))) :: x7).
+        cbn. repeat split; auto. now rewrite H3.
+        econstructor. 2: exact H4.
+        constructor; cbn.
+        {
+          econstructor.
+          symmetry. exact x3.
+          now rewrite eqb_id.
+        }
+        { intros. now rewrite eqb_nid. }
+      }
+      {
+        intros.
+        dec_eq_nats n i.
+        {
+          rewrite eqb_id, <- x2, <- x.
+          constructor.
+        }
+        { now rewrite eqb_nid, <- H0. }
+      }
+    }
+    {
+      rewrite H in H2.
+      ddestruct H2.
+      apply IHx0 with
+        (t0:=t0)
+        (t1:=fun j =>
+          if n =? j then
+            Cont fm (ek v)
+          else
+            t1 j)
+        in H1.
+      {
+        destruct_all.
+        exists x4, x5.
+        exists x6.
+        exists ((n, UEvent (Some (RetEv um v))) :: x7).
+        cbn. repeat split; try easy. now rewrite H3.
+        econstructor. 2: exact H4.
+        constructor; cbn.
+        {
+          econstructor.
+          symmetry. exact x3.
+          now rewrite eqb_id.
+        }
+        { intros. now rewrite eqb_nid. }
+      }
+      {
+        intros.
+        dec_eq_nats n i.
+        {
+          rewrite <- x2, eqb_id, <- x.
+          rewrite frobProgId with (p:= bindSubstProg _ _ _).
+          destruct (ek v); cbn; constructor.
+        }
+        { now rewrite eqb_nid, <- H0. }
+      }
+    }
+    {
+      rewrite H in H2.
+      ddestruct H2.
+      {
+        eapply IHx0 with
+          (t0:=fun j =>
+            if n =? j then
+              UCall om fm k
+            else
+              t0 j)
+          (t1:=fun j =>
+            if n =? j then
+              Cont fm (impl _ fm)
+            else
+              t1 j)
+          in H1.
+        {
+          destruct_all.
+          exists x4, x5.
+          exists ((n, UEvent (Some (CallEv fm))) :: x6).
+          exists ((n, OEvent (CallEv fm)) :: x7).
+          cbn. repeat split; auto. now rewrite H2.
+          {
+            econstructor. 2: exact H4.
+            constructor; cbn.
+            {
+              rewrite eqb_id, <- x3.
+              now constructor.
+            }
+            { intros. now rewrite eqb_nid. }
+          }
+          {
+            econstructor. 2: exact H5.
+            constructor; cbn.
+            {
+              rewrite eqb_id, <- x.
+              now econstructor.
+            }
+            { intros. now rewrite eqb_nid. }
+          }
+        }
+        {
+          intros.
+          dec_eq_nats n i.
+          {
+            rewrite eqb_id, <- x2.
+            rewrite frobProgId with (p:= bindSubstProg _ _ _).
+            destruct (impl _ fm); cbn; constructor.
+          }
+          { now rewrite eqb_nid, <- H0. }
+        }
+      }
+      {
+        eapply IHx0 with
+          (t0:=fun j =>
+            if n =? j then
+              Cont om p0
+            else
+              t0 j)
+          (t1:=t1)
+          in H1.
+        {
+          destruct_all.
+          exists x4, x5.
+          exists ((n, UEvent None) :: x6), x7.
+          cbn. repeat split; auto.
+          econstructor. 2: exact H5.
+          constructor; cbn.
+          {
+            rewrite eqb_id, <- x.
+            now econstructor.
+          }
+          { intros. now rewrite eqb_nid. }
+        }
+        {
+          intros.
+          dec_eq_nats n i.
+          {
+            rewrite eqb_id, <- x2, <- x3.
+            rewrite frobProgId with (p:= substProg _ _).
+            destruct p0; cbn; constructor.
+          }
+          { now rewrite eqb_nid, <- H0. }
+        }
+      }
+      {
+        apply IHx0 with
+          (t0:=t0)
+          (t1:=fun j =>
+            if n =? j then
+              Cont um p0
+            else
+              t1 j)
+          in H1.
+        {
+          destruct_all.
+          exists x4, x5.
+          exists x6, ((n, UEvent None) :: x7).
+          cbn. repeat split; try easy.
+          econstructor. 2: exact H4.
+          constructor; cbn.
+          {
+            rewrite eqb_id, <- x3.
+            now econstructor.
+          }
+          { intros. now rewrite eqb_nid. }
+        }
+        {
+          intros.
+          dec_eq_nats n i.
+          {
+            rewrite <- x2, eqb_id, <- x.
+            rewrite frobProgId with (p:= bindSubstProg _ _ _).
+            destruct p0; cbn; constructor.
+          }
+          { now rewrite eqb_nid, <- H0. }
+        }
+      }
+      {
+        eapply IHx0 with
+          (t0:=fun j =>
+            if n =? j then
+              Cont om (fk v)
+            else
+              t0 j)
+          (t1:=fun j =>
+            if n =? j then
+              Idle
+            else
+              t1 j)
+          in H1.
+        {
+          destruct_all.
+          exists x4, x5.
+          exists ((n, UEvent (Some (RetEv fm v))) :: x6).
+          exists ((n, OEvent (RetEv fm v)) :: x7).
+          cbn. repeat split; auto. now rewrite H2.
+          {
+            econstructor. 2: exact H4.
+            constructor; cbn.
+            {
+              rewrite eqb_id, <- x3.
+              now constructor.
+            }
+            { intros. now rewrite eqb_nid. }
+          }
+          {
+            econstructor. 2: exact H5.
+            constructor; cbn.
+            {
+              rewrite eqb_id, <- x.
+              now econstructor.
+            }
+            { intros. now rewrite eqb_nid. }
+          }
+        }
+        {
+          intros.
+          dec_eq_nats n i.
+          {
+            rewrite eqb_id, <- x2.
+            rewrite frobProgId with (p:= substProg _ _).
+            destruct (fk v); cbn; constructor.
+          }
+          { now rewrite eqb_nid, <- H0. }
+        }
+      }
+    }
+    {
+      rewrite <- x2 in H2.
+      ddestruct H2.
+      apply IHx0 with
+        (t0:=fun j =>
+          if n =? j then
+            Cont m (impl' A m)
+          else
+            t0 j)
+        (t1:=t1)
+        in H1.
+      {
+        destruct_all.
+        exists x5, x6.
+        exists ((n, OEvent (CallEv m)) :: x7), x8.
+        cbn. repeat split; auto. now rewrite H.
+        econstructor. 2: exact H4.
+        constructor; cbn.
+        {
+          rewrite <- x, eqb_id.
+          now constructor.
+        }
+        { intros. now rewrite eqb_nid. }
+      }
+      {
+        intros.
+        dec_eq_nats n i.
+        {
+          rewrite eqb_id, <- x4, <- x3. unfold implVComp.
+          rewrite frobProgId with (p:= substProg _ _).
+          destruct (impl' A m); cbn; constructor.
+        }
+        { now rewrite eqb_nid, <- H0. }
+      }
+    }
+    {
+      rewrite <- x2 in H2.
+      ddestruct H2.
+      apply IHx0 with
+        (t0:=fun j =>
+          if n =? j then
+            Idle
+          else
+            t0 j)
+        (t1:=t1)
+        in H1.
+      {
+        destruct_all.
+        exists x5, x6.
+        exists ((n, OEvent (RetEv m v)) :: x7), x8.
+        cbn. repeat split; try easy. now rewrite H.
+        econstructor. 2: exact H4.
+        constructor; cbn.
+        {
+          constructor. easy.
+          now rewrite eqb_id.
+        }
+        { intros. now rewrite eqb_nid. }
+      }
+      {
+        intros.
+        dec_eq_nats n i.
+        {
+          rewrite eqb_id, <- x4, <- x3.
+          constructor.
+        }
+        { intros. now rewrite eqb_nid, <- H0. }
+      }
+    }
+  }
+Qed.
