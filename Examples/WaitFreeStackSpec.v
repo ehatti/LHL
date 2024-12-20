@@ -74,10 +74,251 @@ Variant WaitFreeStackStep {T A} : WaitFreeStackState T A -> ThreadEvent T (WaitF
       (i, RetEv WFPop (PASS None))
       (WaitFreeStackDef nil NoPend).
 
+Ltac sccall i m :=
+let jj := fresh "j" in
+eapply SCCall with
+      (a':=fun jj =>
+        if i =? jj then
+          Some (existT _ _ m)
+        else
+          _ jj);
+[
+  easy |
+  now rewrite eqb_id |
+  apply differ_pointwise_trivial |
+  idtac
+].
+
+Require Import Coq.Program.Wf.
+Require Import Lia.
+
+
+(* Program Fixpoint wfsSeqCons_help {T A}
+  (p : list (ThreadEvent T (WaitFreeStackSig A))) {measure (length p)} :
+  forall s : WaitFreeStackState T A, forall l m i,
+  Steps WaitFreeStackStep (WaitFreeStackDef l None) p s ->
+  SeqConsistent
+    (fun j =>
+      if i =? j then
+        Some (existT _ _ m)
+      else
+        None)
+    p
+:= _. *)
+
+Program Fixpoint wfsSeqCons_help {T A}
+  (p : list (ThreadEvent T (WaitFreeStackSig A))) {measure (length p)} :
+  (
+    forall q : list (ThreadEvent T (WaitFreeStackSig A)),
+    length q < length p ->
+    forall s : WaitFreeStackState T A, forall l,
+    Steps WaitFreeStackStep (WaitFreeStackDef l None) q s ->
+    SeqConsistent (fun _ : Name T => None) q) ->
+  forall s : WaitFreeStackState T A, forall l R m j,
+  Steps WaitFreeStackStep (WaitFreeStackDef l (Some (None, MkWFSPend j m))) p s ->
+  SeqConsistent
+    (fun i : Name T => if j =? i then Some (existT _ R m) else None)
+    p := _.
+Next Obligation.
+Proof.
+  ddestruct H0. constructor.
+  ddestruct H0.
+  {
+    eapply SCCall with
+      (a':=fun k =>
+        if j =? k then
+          Some (existT _ _ m)
+        else if j0 =? k then
+          Some (existT _ _ mn)
+        else
+          None).
+    { now rewrite eqb_nid. }
+    { now rewrite eqb_id, eqb_nid. }
+    {
+      unfold differ_pointwise. intros.
+      now rewrite eqb_nid with (m:=j1) (n:=j0).
+    }
+    ddestruct H1. constructor.
+    ddestruct H1.
+    eapply SCRet with
+      (a':=fun k =>
+        if j =? k then
+          Some (existT _ _ m)
+        else
+          None).
+    { now rewrite eqb_id, eqb_nid. }
+    { now rewrite eqb_nid. }
+    {
+      unfold differ_pointwise. intros.
+      now rewrite eqb_nid with (n:=j0) (m:=j1).
+    }
+    {
+      eapply wfsSeqCons_help.
+      { simpl. lia. }
+      {
+        intros.
+        eapply H.
+        { simpl. lia. }
+        { exact H4. }
+      }
+      { exact H2. }
+    }
+  }
+  {
+    eapply SCRet with
+      (a':=fun _ => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    {
+      eapply H.
+      { simpl. lia. }
+      { exact H1. }
+    }
+  }
+  {
+    eapply SCRet with
+      (a':=fun _ => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    {
+      eapply H.
+      { simpl. lia. }
+      { exact H1. }
+    }
+  }
+  {
+    eapply SCRet with
+      (a':=fun _ => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    {
+      eapply H.
+      { simpl. lia. }
+      { exact H1. }
+    }
+  }
+Qed.
+
+Program Fixpoint wfsSeqCons {T A}
+  (p : list (ThreadEvent T (WaitFreeStackSig A))) {measure (length p)} :
+  forall s : WaitFreeStackState T A, forall l,
+  Steps WaitFreeStackStep (WaitFreeStackDef l None) p s ->
+  SeqConsistent (fun _ : Name T => None) p := _.
+Next Obligation.
+Proof.
+  ddestruct H. constructor. ddestruct H.
+  ddestruct H0.
+  {
+    sccall i m.
+    constructor.
+  }
+  ddestruct H.
+  {
+    sccall i m.
+    eapply SCCall with
+      (a':=fun k =>
+        if j =? k then
+          _
+        else
+          _).
+    { now rewrite eqb_nid. }
+    { now rewrite eqb_id. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    ddestruct H0. constructor.
+    ddestruct H0.
+    eapply SCRet with
+      (a':=fun k =>
+        if i =? k then
+          Some (existT _ _ m)
+        else
+          None).
+    { now rewrite eqb_id. }
+    { now rewrite eqb_nid. }
+    {
+      unfold differ_pointwise. intros.
+      now rewrite eqb_nid with (n:=j) (m:=j0).
+    }
+    eapply wfsSeqCons_help.
+    {
+      intros. eapply wfsSeqCons.
+      simpl. lia.
+      exact H3.
+    }
+    exact H1.
+  }
+  {
+    sccall i (WFPush v).
+    eapply SCRet with
+      (a':=fun _ => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    {
+      eapply wfsSeqCons.
+      simpl. lia.
+      exact H0.
+    }
+  }
+  {
+    sccall i (WFPop (A:=A)).
+    eapply SCRet with
+      (a':=fun _ => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    {
+      eapply wfsSeqCons.
+      simpl. lia.
+      exact H0.
+    }
+  }
+  {
+    sccall i (WFPop (A:=A)).
+    eapply SCRet with
+      (a':=fun _ => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    {
+      eapply wfsSeqCons.
+      simpl. lia.
+      exact H0.
+    }
+  }
+Qed.
+
 Program Definition wfStackSpec {T A} : Spec T (WaitFreeStackSig A) := {|
   State := WaitFreeStackState T A;
   Step := WaitFreeStackStep;
   Init := WaitFreeStackDef nil NoPend
 |}.
 
-Admit Obligations.
+Next Obligation.
+Proof.
+  eapply wfsSeqCons.
+  exact H.
+Qed.
