@@ -43,6 +43,7 @@ Variant AtomicStackStep {T A} : AtomicStackState T A -> ThreadEvent T (AtomicSta
     (i, RetEv Pop None)
     (AtomicStackDef nil None).
 
+
 From Coq Require Import Program.Wf.
 Require Import Lia.
 
