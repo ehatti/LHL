@@ -18,21 +18,192 @@ Variant LockSig : ESig :=
 | Acq : LockSig unit
 | Rel : LockSig unit.
 
-Variant LockState {T} :=
-| LockDef (owner : option T) (m : option (LockSig unit)).
+Record LockState {T} := LockDef {
+  lock_owner : option (option (Name T));
+  lock_pend : option (Name T * LockSig unit)
+}.
+Arguments LockDef {T}.
 
-Definition LockUnowned {T} := @LockDef T None None.
-Definition LockAcqRan {T} i := @LockDef T (Some i) (Some Acq).
-Definition LockRelRan {T} i := @LockDef T (Some i) (Some Rel).
-Definition LockOwned {T} i := @LockDef T (Some i) None.
+Notation LockUnowned := (LockDef (Some None) None).
+Notation LockAcqRan i := (LockDef (Some (Some i)) (Some (i, Acq))).
+Notation LockRelRan i := (LockDef (Some (Some i)) (Some (i, Rel))).
+Notation LockOwned i := (LockDef (Some (Some i)) None).
+Notation LockUB m := (LockDef None m).
 
 Variant LockStep {T} : LockState -> ThreadEvent T LockSig -> LockState -> Prop :=
 | LockCallAcq i : LockStep LockUnowned (i, CallEv Acq) (LockAcqRan i)
 | LockRetAcq i : LockStep (LockAcqRan i) (i, RetEv Acq tt) (LockOwned i)
 | LockCallRel i : LockStep (LockOwned i) (i, CallEv Rel) (LockRelRan i)
-| LockRetRel i : LockStep (LockRelRan i) (i, RetEv Rel tt) LockUnowned.
+| LockRetRel i : LockStep (LockRelRan i) (i, RetEv Rel tt) LockUnowned
+| LockCallUBAcq i j : LockStep (LockOwned i) (j, CallEv Acq) (LockUB (Some (j, Acq)))
+| LockCallRelUB i : LockStep LockUnowned (i, CallEv Rel) (LockUB (Some (i, Rel)))
+| LockCallUB i m : LockStep (LockUB None) (i, CallEv m) (LockUB (Some (i, m)))
+| LockRetUB i m v : LockStep (LockUB (Some (i, m))) (i, RetEv m v) (LockUB None).
 
-Definition LockActiveMap {T} : ActiveF (@LockStep T) := 
+Require Import Lia.
+
+Program Fixpoint lockSC {T}
+  (p : list (ThreadEvent T LockSig)) s t {measure (length p)}
+: (s = LockUnowned \/ s = LockUB None \/ exists i, s = LockOwned i) ->
+  Steps LockStep s p t ->
+  SeqConsistent (fun _ => None) p
+:= _.
+Next Obligation.
+Proof.
+  destruct H; subst.
+  {
+    ddestruct H0. constructor.
+    ddestruct H.
+    eapply SCCall with
+      (a':=fun j =>
+        if i =? j then
+          Some (existT _ _ Acq)
+        else
+          None).
+    { easy. }
+    { now rewrite eqb_id. }
+    { apply differ_pointwise_trivial. }
+    ddestruct H0. constructor.
+    {
+      ddestruct H.
+      eapply SCRet with
+        (a':=fun _ => None).
+      { now rewrite eqb_id. }
+      { easy. }
+      {
+        unfold differ_pointwise.
+        intros. now rewrite eqb_nid.
+      }
+      eapply lockSC.
+      { simpl. lia. }
+      2: exact H0.
+      { right. right. now exists i. }
+    }
+    {
+      eapply SCCall with
+        (a':=fun j =>
+          if i =? j then
+            Some (existT _ _ Rel)
+          else
+            None).
+      { easy. }
+      { now rewrite eqb_id. }
+      { apply differ_pointwise_trivial. }
+      ddestruct H0. constructor.
+      ddestruct H.
+      eapply SCRet with
+        (a':=fun _ => None).
+      { now rewrite eqb_id. }
+      { easy. }
+      {
+        unfold differ_pointwise.
+        intros. now rewrite eqb_nid.
+      }
+      eapply lockSC.
+      { simpl. lia. }
+      2: exact H0.
+      { right. now left. }
+    }
+  }
+  destruct H; destruct_all; subst.
+  {
+    ddestruct H0. constructor.
+    ddestruct H.
+    eapply SCCall with
+      (a':=fun j =>
+        if i =? j then
+          Some (existT _ _ m)
+        else
+          None).
+    { easy. }
+    { now rewrite eqb_id. }
+    { apply differ_pointwise_trivial. }
+    ddestruct H0. constructor.
+    ddestruct H.
+    eapply SCRet with
+      (a':=fun _ => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    eapply lockSC.
+    { simpl. lia. }
+    2: exact H0.
+    { right. now left. }
+  }
+  {
+    rename x into i.
+    ddestruct H0. constructor.
+    ddestruct H.
+    eapply SCCall with
+      (a':=fun j =>
+        if i =? j then
+          Some (existT _ _ Rel)
+        else
+          None).
+    { easy. }
+    { now rewrite eqb_id. }
+    { apply differ_pointwise_trivial. }
+    ddestruct H0. constructor.
+    {
+      ddestruct H.
+      eapply SCRet with
+        (a':=fun _ => None).
+      { now rewrite eqb_id. }
+      { easy. }
+      {
+        unfold differ_pointwise.
+        intros. now rewrite eqb_nid.
+      }
+      eapply lockSC.
+      { simpl. lia. }
+      2: exact H0.
+      { now left. }
+    }
+    {
+      eapply SCCall with
+        (a':=fun k =>
+          if j =? k then
+            Some (existT _ _ Acq)
+          else
+            None).
+      { easy. }
+      { now rewrite eqb_id. }
+      { apply differ_pointwise_trivial. }
+      ddestruct H0. constructor.
+      ddestruct H.
+      eapply SCRet with
+        (a':=fun _ => None).
+      { now rewrite eqb_id. }
+      { easy. }
+      {
+        unfold differ_pointwise.
+        intros. now rewrite eqb_nid.
+      }
+      eapply lockSC.
+      { simpl. lia. }
+      2: exact H0.
+      { right. now left. }
+    }
+  }
+Qed.
+
+Program Definition lockSpec {T} : Spec T LockSig := {|
+  State := LockState;
+  Init := LockUnowned;
+  Step := LockStep
+|}.
+
+Next Obligation.
+Proof.
+  eapply lockSC.
+  { now left. }
+  { exact H. }
+Qed.
+
+(* Definition LockActiveMap {T} : ActiveF (@LockStep T) := 
   fun s => match s with
   | LockDef None _ => fun _ => None
   | LockDef (Some i) (Some Acq) => 
@@ -99,4 +270,4 @@ Definition lockClientSpec {T} : ClientSpec T LockSig LockState :=
     | CallEv Acq => s = LockUnowned
     | CallEv Rel => s = LockOwned i
     | _ => True
-    end.
+    end. *)

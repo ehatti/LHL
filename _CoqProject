@@ -20,9 +20,9 @@
 
 ./Core/ProgramFacts.v
 ./Core/EuttRefinesSetup.v
-./Core/RefinesFacts.v
-./Core/LinFacts.v
-./Core/VCompFacts.v
+# ./Core/RefinesFacts.v
+# ./Core/LinFacts.v
+# ./Core/VCompFacts.v
 ./Core/SingConds.v
 
 ./Core/VisPoss.v
@@ -38,12 +38,16 @@
 ./Examples/ElimArray.v
 ./Examples/AtomicStackSpec.v
 ./Examples/WaitFreeStackSpec.v
+./Examples/MemSpec.v
 ./Examples/EBStack.v
 
 ./Examples/Counter/CounterSig.v
 ./Examples/Counter/RacyCounterSpec.v
 ./Examples/FAISpec.v
 ./Examples/LockSpec.v
+
+./Examples/RegSpec.v
+./Examples/SnapshotSpec.v
 
 # ./Examples/LockSpec.v
 # ./Examples/FAISpec.v

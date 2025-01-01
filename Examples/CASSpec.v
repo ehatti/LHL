@@ -26,6 +26,12 @@ Variant CASState {T A} :=
 | CASDef (v : option A) (m : option (CASPend T A)). (* currently value and pending call *)
 Arguments CASState : clear implicits.
 
+Definition eval_cas {T A} (st : CASState T A) : option A := 
+  match st with
+  | CASDef v _ => v
+  end.
+
+
 Variant CASStep {T A} : CASState T A -> ThreadEvent T (CASSig A) -> CASState T A -> Prop :=
 | CASCallCAS i a e n :
     CASStep

@@ -231,10 +231,19 @@ Lemma specf {A B} {f g : A -> B} :
   f = g ->
   forall x,
   f x = g x.
-intros. now rewrite H.
+Proof.
+  intros. now rewrite H.
 Qed.
-
-Ltac specf H v := apply specf with (x:=v) in H.
+Lemma specf_st {E N T V} {f g : ArrayState E N T V} :
+  f = g ->
+  forall x,
+  arr_st f x = arr_st g x.
+Proof.
+  intros. now rewrite H.
+Qed.
+Ltac specf H v :=
+  apply specf with (x:=v) in H ||
+  apply specf_st with (x:=v) in H.
 
 Ltac simp_sets :=
   repeat match goal with

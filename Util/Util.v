@@ -80,6 +80,15 @@ easy.
 congruence.
 Qed.
 
+Lemma eqb_iff {A} : forall (x y : A), x =? y = true <-> x = y.
+Proof.
+  intros. unfold eqb.
+  destruct (classicT (x = y)).
+  - split; auto.
+  - split; auto.
+    inversion 1.
+Qed.
+
 Lemma eqb_nid {A} : forall n m : A, n <> m -> n =? m = false.
 intros.
 unfold eqb.
