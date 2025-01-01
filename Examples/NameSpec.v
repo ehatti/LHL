@@ -19,6 +19,26 @@ From Coq Require Import
   Logic.FunctionalExtensionality
   Logic.PropExtensionality.
 
+Lemma double_ind {A : Type} :
+  forall P : list A -> Prop,
+  P nil ->
+  (forall x, P (cons x nil)) ->
+  (forall x y xs, P xs -> P (cons x (cons y xs))) ->
+  forall xs, P xs.
+Proof.
+  intros.
+  generalize dependent xs.
+  fix rec 1. intros.
+  destruct xs.
+  { exact H. }
+  destruct xs.
+  { apply H0. }
+  {
+    apply H1.
+    eapply rec.
+  }
+Qed.
+
 Variant NameSig {T} : ESig :=
 | Self : NameSig (Name T).
 Arguments NameSig : clear implicits.
@@ -29,13 +49,69 @@ Variant NameStep {T} : NameState T -> ThreadEvent T (NameSig T) -> NameState T -
 | CallSelf i : NameStep None (i, CallEv Self) (Some i)
 | RetSelf i : NameStep (Some i) (i, RetEv Self i) None.
 
+Lemma nameSpecSC {T} :
+  forall p : list (ThreadEvent T (NameSig T)),
+  forall s : NameState T,
+  Steps NameStep None p s ->
+  SeqConsistent (fun _ : Name T => None) p.
+Proof.
+  intros.
+  revert H.
+  apply double_ind with (xs:=p).
+  {
+    intros.
+    constructor.
+  }
+  {
+    intros.
+    ddestruct H.
+    ddestruct H.
+    eapply SCCall with
+      (a':=fun j =>
+        if i =? j then
+          Some (existT _ _ Self)
+        else
+          None).
+    { easy. }
+    { now rewrite eqb_id. }
+    { apply differ_pointwise_trivial. }
+    constructor.
+  }
+  {
+    intros.
+    ddestruct H0. ddestruct H0.
+    eapply SCCall with
+      (a':=fun j =>
+        if i =? j then
+          Some (existT _ _ Self)
+        else
+          None).
+    { easy. }
+    { now rewrite eqb_id. }
+    { apply differ_pointwise_trivial. }
+    ddestruct H1. ddestruct H0.
+    eapply SCRet with
+      (a':=fun _ => None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    { now apply H. }
+  }
+Qed.
+
 Program Definition nameSpec {T} : Spec T (NameSig T) := {|
   State := NameState T;
   Step := NameStep;
   Init := None
 |}.
 
-Admit Obligations.
+Next Obligation.
+Proof.
+  now apply nameSpecSC with (s:=s).
+Qed.
 
 Lemma trimProg {E A B} :
   forall (C : Prog E B) (v : A),

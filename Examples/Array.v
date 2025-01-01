@@ -75,7 +75,69 @@ indexntensor (N:= 0) (@exist _ _ i p) s := _.
 Next Obligation. lia. Qed.
 Next Obligation. lia. Qed.
 
+Lemma le_triv {n} : 0 < S n.
+Proof. lia. Qed.
+
+Lemma le_wk {n m} : n < m -> n < S m.
+Proof. lia. Qed.
+
+Lemma le_cong {n m} : n < m -> S n < S m.
+Proof. lia. Qed.
+
+Definition activentensor N (s : (ntensor V N).(State)) (i : Name T)
+: option {A & ArraySig U N A}.
+generalize dependent i. generalize dependent s.
+generalize dependent N. fix rec 1. intros.
+destruct N.
+{ exact None. }
+{
+  destruct (TActive s i).
+  2:{ exact None. }
+  {
+    destruct s0, s0.
+    {
+      refine (Some (existT _ x _)).
+      refine (At _ _).
+      refine (exist _ 0 _).
+      { apply le_triv. }
+      { exact u. }
+    }
+    {
+      destruct (rec N (RState s) i).
+      2:{ exact None. }
+      {
+        destruct s0, a, i0.
+        refine (Some (existT _ _ (At (exist _ (S x0) _) m))).
+        { now apply le_cong. }
+      }
+    }
+  }
+}
+Defined.
+
+(* Equations activentensor N (s : (ntensor V N).(State)) (i : Name T)
+  : option {A & ArraySig U N A} :=
+activentensor 0 s i :=
+  None;
+activentensor (S N) s i with TActive s i => {
+  activentensor (S N) s i None :=
+    None;
+  activentensor (S N) s i (Some (existT _ A (inl m))) =>
+    (Some (existT _ A (At (exist _ 0 _) m)));
+  activentensor (S N) s i (Some (existT _ A (inr m))) with activentensor N (RState s) i => {
+    activentensor (S N) s i (Some (existT _ A (inr m))) None =>
+      None;
+    activentensor (S N) s i (Some (existT _ A (inr m))) (Some (existT _ _ (At (exist _ n _) tm))) =>
+      Some (existT _ _ (At (exist _ (S n) _) tm))
+  }
+}.
+
+Next Obligation. lia. Qed.
+Next Obligation. lia. Qed. *)
+
 End indexntensor.
+
+Arguments activentensor {T U V N}.
 
 Definition index {U N R} (i : Index N) (m : U R) : Prog (nsig U N) R :=
   Bind (getIndex i m)
@@ -100,7 +162,7 @@ Variant StRel {T U} {V : Spec T U} {N} :
 Record Inv {T U} {V : Spec T U} {N}
   (s : InterState (F U N) (ntensor V N)) (ρ : Poss (VF V N))
 := {
-  st_cons : forall i, PState ρ i = indexntensor i (snd s);
+  st_cons : PState ρ = MkArr (fun k => indexntensor k (snd s)) (activentensor (snd s));
   th_cons : forall i, StRel (V:=V) (fst s i) (PCalls ρ i) (PRets ρ i)
 }.
 
@@ -157,167 +219,520 @@ Qed.
 
 Require Import Coq.Logic.ProofIrrelevance.
 
+Lemma dpt_ext {A B} {f g : A -> B} :
+  forall i,
+  differ_pointwise f g i ->
+  exists u,
+    f = (fun j => if i =? j then f i else u j) /\
+    g = (fun j => if i =? j then g i else u j).
+Proof.
+  intros.
+  exists f.
+  split.
+  {
+    extensionality j.
+    dec_eq_nats i j.
+    { now rewrite eqb_id. }
+    { now rewrite eqb_nid, <- H. }
+  }
+  {
+    extensionality j.
+    dec_eq_nats i j.
+    { now rewrite eqb_id. }
+    { now rewrite eqb_nid, H. }
+  }
+Qed.
+
+Definition str_active {T U N} (a : ActiveMap T (nsig U (S N)))
+: ActiveMap T (nsig U N).
+unfold ActiveMap in *.
+intros i.
+specialize (a i).
+destruct a.
+2: exact None.
+destruct s. cbn in *.
+destruct n.
+exact None.
+exact (Some (existT _ _ n)).
+Defined.
+
+Definition wk_active {T U N} (a : ActiveMap T (ArraySig U N))
+: ActiveMap T (ArraySig U (S N)).
+unfold ActiveMap in *.
+intros i.
+specialize (a i).
+destruct a.
+2: exact None.
+destruct s.
+refine (Some (existT _ x _)).
+destruct a.
+econstructor.
+2: exact m.
+unfold Index in *.
+destruct i0.
+exists x.
+lia.
+Defined.
+
 Lemma conntensorrt_call {N T U} {V : Spec T U} :
   forall s i A (m : U A) t n,
   Step (ntensor V N) s (i, CallEv (getIndex n m)) t ->
-  ArrayStep V (fun k => indexntensor k s) (i, CallEv (At n m)) (fun k => indexntensor k t).
-intros.
-induction N; cbn in *. easy.
-destruct n, x; simp getIndex in *;
-psimpl.
-{
-  econstructor.
-  { easy. }
-  { now simp indexntensor. }
-  { now simp indexntensor. }
+  ArrayStep V
+    (MkArr (fun k => indexntensor k s) (activentensor s))
+    (i, CallEv (At n m))
+    (MkArr (fun k => indexntensor k t) (activentensor t)).
+Proof.
+  intros.
+  induction N; cbn in *. easy.
+  destruct n, x; simp getIndex in *;
+  psimpl.
   {
-    unfold differ_pointwise.
-    intros. destruct j, x.
+    econstructor; cbn.
     {
-      exfalso. apply H4.
-      f_equal.
-      apply proof_irrelevance.
-    }
-    {
-      simp indexntensor.
-      now rewrite H3 at 1.
-    }
-  }
-  { easy. }
-}
-{
-  clear H0 H1 H2.
-  apply IHN in H. clear IHN.
-  ddestruct H.
-  {
-    econstructor.
-    5: exact H3.
-    { easy. }
-    {
-      simp indexntensor.
-      f_equal. f_equal.
-      apply proof_irrelevance.
-    }
-    {
-      simp indexntensor.
-      f_equal. f_equal.
-      apply proof_irrelevance.
-    }
-    {
-      unfold differ_pointwise in *.
-      intros. destruct j, x0;
-      simp indexntensor in *.
-      { easy. }
+      assert (activentensor (N:= S N) s i = None).
       {
-        apply H2.
-        unfold not. intros.
-        apply H1. ddestruct H4.
+        clear - H0.
+        destruct s. cbn in *.
+        now rewrite H0.
+      }
+      assert (
+        activentensor (N:= S N) t i =
+        Some (existT _ _ (At (exist _ 0 l) m))).
+      {
+        clear - H1.
+        destruct t. cbn in *.
+        rewrite H1. repeat f_equal.
+        apply proof_irrelevance.
+      }
+      assert (
+        differ_pointwise
+          (activentensor (N:= S N) s)
+          (activentensor (N:= S N) t) i
+      ).
+      {
+        unfold differ_pointwise in *.
+        intros. apply H2 in H6.
+        clear - H3 H6.
+        unfold activentensor.
+        repeat rewrite H6 at 1.
+        destruct s. cbn in *.
+        destruct (TActive j).
+        {
+          destruct s, s.
+          { easy. }
+          { now subst. }
+        }
+        { easy. }
+      }
+      assert (
+        activentensor (N:= S N) s =
+        (fun j =>
+          if i =? j then
+            None
+          else
+            activentensor (N:= S N) s j)
+      ).
+      {
+        extensionality j.
+        dec_eq_nats i j.
+        { now rewrite eqb_id. }
+        { now rewrite eqb_nid. }
+      }
+      assert (
+        activentensor (N:= S N) t =
+        (fun j =>
+          if i =? j then
+            Some (existT _ _ (At (exist _ 0 l) m))
+          else
+            activentensor (N:= S N) s j)
+      ).
+      {
+        extensionality j.
+        dec_eq_nats i j.
+        { now rewrite eqb_id. }
+        { now rewrite eqb_nid, H6. }
+      }
+      rewrite H7, H8.
+      constructor.
+    }
+    { now simp indexntensor. }
+    { now simp indexntensor. }
+    {
+      unfold differ_pointwise.
+      intros. destruct j, x.
+      {
+        exfalso. apply H4.
         f_equal.
         apply proof_irrelevance.
       }
+      {
+        simp indexntensor.
+        now rewrite H3 at 1.
+      }
+    }
+    { easy. }
+  }
+  {
+    apply IHN in H.
+    clear IHN. ddestruct H.
+    cbn in *. ddestruct H.
+    assert (activentensor (N:= S N) s i = None).
+    {
+      clear - H0.
+      destruct s. cbn in *.
+      now rewrite H0.
+    }
+    assert (
+      activentensor (N:= S N) t i =
+      Some (existT _ _ (At (exist _ (S x0) l) m))).
+    {
+      unfold activentensor.
+      rewrite H1 at 1.
+      move x at bottom.
+      apply equal_f with (x:=i) in x.
+      rewrite eqb_id in x.
+      rewrite <- x at 1.
+      repeat f_equal.
+      apply proof_irrelevance.
+    }
+    assert (
+      differ_pointwise
+        (activentensor (N:= S N) s)
+        (activentensor (N:= S N) t) i
+    ).
+    {
+      unfold differ_pointwise in *.
+      intros. assert (H7' := H7).
+      apply H4 in H7.
+      unfold activentensor.
+      repeat rewrite H7 at 1.
+      destruct s. cbn in *.
+      destruct (TActive j).
+      {
+        destruct s, s.
+        { easy. }
+        {
+          subst. clear H H6.
+          assert (
+            activentensor (N:=N) (Tensor.RState t) j =
+            activentensor (N:=N) RState j
+          ).
+          { now rewrite <- x1, <- x, eqb_nid. }
+          now rewrite <- H at 1.
+        }
+      }
+      { easy. }
+    }
+    assert (
+      activentensor (N:= S N) s =
+      (fun j =>
+        if i =? j then
+          None
+        else
+          activentensor (N:= S N) s j)
+    ).
+    {
+      extensionality j.
+      dec_eq_nats i j.
+      { now rewrite eqb_id. }
+      { now rewrite eqb_nid. }
+    }
+    assert (
+      activentensor (N:= S N) t =
+      (fun j =>
+        if i =? j then
+          Some (existT _ _ (At (exist _ (S x0) l) m))
+        else
+          activentensor (N:= S N) s j)
+    ).
+    {
+      extensionality j.
+      dec_eq_nats i j.
+      { now rewrite eqb_id. }
+      { now rewrite eqb_nid, H7. }
+    }
+    rewrite H8, H9.
+    econstructor.
+    { econstructor; cbn. }
+    { cbn. now simp indexntensor. }
+    { cbn. now simp indexntensor. }
+    {
+      cbn. unfold differ_pointwise.
+      intros. destruct j, x2;
+      simp indexntensor.
+      { easy. }
+      {
+        rewrite H2. easy.
+        unfold not. intros.
+        apply H10. clear H10.
+        ddestruct H11. f_equal.
+        apply proof_irrelevance.
+      } 
+    }
+    {
+      clear - H3.
+      replace (indexntensor_obligations_obligation_2 N x0 l)
+      with (getIndex_obligations_obligation_2 N x0 l)
+      by apply proof_irrelevance.
+      easy.
     }
   }
-}
 Qed.
 
 Lemma conntensorrt_ret {N T U} {V : Spec T U} :
   forall s i A (m : U A) v t n,
   Step (ntensor V N) s (i, RetEv (getIndex n m) v) t ->
-  ArrayStep V (fun k => indexntensor k s) (i, RetEv (At n m) v) (fun k => indexntensor k t).
-intros.
-intros.
-induction N; cbn in *. easy.
-destruct n, x; simp getIndex in *;
-psimpl.
-{
-  econstructor.
-  { easy. }
-  { now simp indexntensor. }
-  { now simp indexntensor. }
+  ArrayStep V
+    (MkArr (fun k => indexntensor k s) (activentensor s))
+    (i, RetEv (At n m) v)
+    (MkArr (fun k => indexntensor k t) (activentensor t)).
+Proof.
+  intros.
+  induction N; cbn in *. easy.
+  destruct n, x; simp getIndex in *;
+  psimpl.
   {
-    unfold differ_pointwise.
-    intros. destruct j, x.
+    econstructor; cbn.
     {
-      exfalso. apply H4.
-      f_equal.
-      apply proof_irrelevance.
-    }
-    {
-      simp indexntensor.
-      now rewrite H3 at 1.
-    }
-  }
-  { easy. }
-}
-{
-  clear H0 H1 H2.
-  apply IHN in H. clear IHN.
-  ddestruct H.
-  {
-    econstructor.
-    5: exact H3.
-    { easy. }
-    {
-      simp indexntensor.
-      f_equal. f_equal.
-      apply proof_irrelevance.
-    }
-    {
-      simp indexntensor.
-      f_equal. f_equal.
-      apply proof_irrelevance.
-    }
-    {
-      unfold differ_pointwise in *.
-      intros. destruct j, x0;
-      simp indexntensor in *.
-      { easy. }
+      eassert (
+        activentensor (N:= S N) s i =
+        Some (existT _ _ (At (exist _ 0 l) m))
+      ).
       {
-        apply H2.
-        unfold not. intros.
-        apply H1. ddestruct H4.
+        clear - H0.
+        destruct s. cbn in *.
+        rewrite H0. repeat f_equal.
+        apply proof_irrelevance.
+      }
+      assert (
+        activentensor (N:= S N) t i = None
+      ).
+      {
+        clear - H1.
+        destruct t. cbn in *.
+        now rewrite H1.
+      }
+      assert (
+        differ_pointwise
+          (activentensor (N:= S N) s)
+          (activentensor (N:= S N) t) i
+      ).
+      {
+        unfold differ_pointwise in *.
+        intros. apply H2 in H6.
+        clear - H3 H6.
+        unfold activentensor.
+        repeat rewrite H6 at 1.
+        destruct s. cbn in *.
+        destruct (TActive j).
+        {
+          destruct s, s.
+          { easy. }
+          { now subst. }
+        }
+        { easy. }
+      }
+      assert (
+        activentensor (N:= S N) s =
+        (fun j =>
+          if i =? j then
+            Some (existT _ _ (At (exist _ 0 l) m))
+          else
+            activentensor (N:= S N) s j)
+      ).
+      {
+        extensionality j.
+        dec_eq_nats i j.
+        { now rewrite eqb_id. }
+        { now rewrite eqb_nid. }
+      }
+      assert (
+        activentensor (N:= S N) t =
+        (fun j =>
+          if i =? j then
+            None
+          else
+            activentensor (N:= S N) s j)
+      ).
+      {
+        extensionality j.
+        dec_eq_nats i j.
+        { now rewrite eqb_id. }
+        { now rewrite eqb_nid, H6. }
+      }
+      rewrite H7, H8.
+      constructor.
+    }
+    { now simp indexntensor. }
+    { now simp indexntensor. }
+    {
+      unfold differ_pointwise.
+      intros. destruct j, x.
+      {
+        exfalso. apply H4.
         f_equal.
         apply proof_irrelevance.
       }
+      {
+        simp indexntensor.
+        now rewrite H3 at 1.
+      }
+    }
+    { easy. }
+  }
+  {
+    apply IHN in H.
+    clear IHN. ddestruct H.
+    cbn in *. ddestruct H.
+    assert (
+      activentensor (N:= S N) s i =
+      Some (existT _ _ (At (exist _ (S x0) l) m))
+    ).
+    {
+      unfold activentensor.
+      rewrite H0 at 1.
+      move x1 at bottom.
+      apply equal_f with (x:=i) in x1.
+      rewrite eqb_id in x1.
+      rewrite <- x1 at 1.
+      repeat f_equal.
+      apply proof_irrelevance.
+    }
+    assert (
+      activentensor (N:= S N) t i =
+      None).
+    {
+      unfold activentensor.
+      now rewrite H1 at 1.
+    }
+    assert (
+      differ_pointwise
+        (activentensor (N:= S N) s)
+        (activentensor (N:= S N) t) i
+    ).
+    {
+      unfold differ_pointwise in *.
+      intros. assert (H7' := H7).
+      apply H4 in H7.
+      unfold activentensor.
+      repeat rewrite H7 at 1.
+      destruct s. cbn in *.
+      destruct (TActive j).
+      {
+        destruct s, s.
+        { easy. }
+        {
+          subst. clear H H6.
+          assert (
+            activentensor (N:=N) (Tensor.RState t) j =
+            activentensor (N:=N) RState j
+          ).
+          { now rewrite <- x1, <- x, eqb_nid. }
+          now rewrite <- H at 1.
+        }
+      }
+      { easy. }
+    }
+    assert (
+      activentensor (N:= S N) s =
+      (fun j =>
+        if i =? j then
+          Some (existT _ _ (At (exist _ (S x0) l) m))
+        else
+          activentensor (N:= S N) s j)
+    ).
+    {
+      extensionality j.
+      dec_eq_nats i j.
+      { now rewrite eqb_id. }
+      { now rewrite eqb_nid. }
+    }
+    assert (
+      activentensor (N:= S N) t =
+      (fun j =>
+        if i =? j then
+          None
+        else
+          activentensor (N:= S N) s j)
+    ).
+    {
+      extensionality j.
+      dec_eq_nats i j.
+      { now rewrite eqb_id. }
+      { now rewrite eqb_nid, H7. }
+    }
+    rewrite H8, H9.
+    econstructor.
+    { econstructor; cbn. }
+    { cbn. now simp indexntensor. }
+    { cbn. now simp indexntensor. }
+    {
+      cbn. unfold differ_pointwise.
+      intros. destruct j, x2;
+      simp indexntensor.
+      { easy. }
+      {
+        rewrite H2. easy.
+        unfold not. intros.
+        apply H10. clear H10.
+        ddestruct H11. f_equal.
+        apply proof_irrelevance.
+      } 
+    }
+    {
+      clear - H3.
+      replace (indexntensor_obligations_obligation_2 N x0 l)
+      with (getIndex_obligations_obligation_2 N x0 l)
+      by apply proof_irrelevance.
+      easy.
     }
   }
-}
 Qed.
 
 Lemma sing_elem {A} {P : A -> Prop} :
   forall x : A,
   eq x = P ->
   P x.
-intros. now rewrite <- H.
+Proof.
+  intros. now rewrite <- H.
 Qed.
 
-Lemma getIndex_eq {U A N} :
+Lemma getIndex_eq {U : ESig} {A : Type} {N : nat} :
   forall (i1 i2 : Index N),
   forall (m1 m2 : U A),
-  getIndex (N:=N) i1 m1 = getIndex i2 m2 ->
+  getIndex i1 m1 = getIndex i2 m2 ->
   i1 = i2 /\ m1 = m2.
-fix rec1 1.
-intros.
-destruct N.
-{ destruct i1. lia. }
-destruct i1, i2, x, x0;
-simp getIndex in *.
-{
-  ddestruct H.
-  split.
-  {
-    f_equal.
-    apply proof_irrelevance.
-  }
+Proof.
+  intros.
+  funelim (getIndex i1 m1);
+  simp getIndex in *.
   { easy. }
-}
-{ ddestruct H. }
-{ ddestruct H. }
-(* {
-  ddestruct H.
-  apply rec1 in x.
-} *)
-Admitted.
+  {
+    funelim (getIndex i2 m2);
+    simp getIndex in *.
+    {
+      ddestruct H.
+      split.
+      {
+        f_equal.
+        apply proof_irrelevance.
+      }
+      { easy. }
+    }
+    { easy. }
+  }
+  {
+    funelim (getIndex i2 m2);
+    simp getIndex in *.
+    { easy. }
+    {
+      ddestruct H1. apply H0 in x.
+      psimpl. split. 2: easy.
+      clear - H1. ddestruct H1.
+      f_equal. apply proof_irrelevance.
+    }
+  }
+Qed.
 
 Lemma wk P : P -> P /\ P.
 easy.
@@ -532,7 +947,25 @@ constructor.
   eexists. split. easy.
   constructor.
   {
-    admit.
+    cbn. f_equal.
+    {
+      extensionality k.
+      destruct k.
+      clear.
+      generalize dependent x.
+      induction N; cbn; intros.
+      { easy. }
+      {
+        destruct x;
+        simp indexntensor; cbn.
+        { easy. }
+      }
+    }
+    {
+      clear.
+      extensionality i.
+      destruct N; easy.
+    }
   }
   {
     intros. cbn.
@@ -566,9 +999,17 @@ constructor.
   destruct H2.
   constructor.
   {
-    intros.
-    rewrite <- H1 at 1.
-    apply st_cons0.
+    intros. cbn.
+    rewrite st_cons0.
+    f_equal.
+    {
+      extensionality k.
+      now rewrite H1 at 1.
+    }
+    {
+      extensionality k.
+      now rewrite H1 at 1.
+    }
   }
   {
     cbn. intros.
@@ -633,9 +1074,17 @@ constructor.
       destruct H5.
       constructor.
       {
-        intros.
-        rewrite <- H9 at 1.
-        apply st_cons0.
+        intros. cbn.
+        rewrite st_cons0.
+        f_equal.
+        {
+          extensionality k.
+          now rewrite H9.
+        }
+        {
+          extensionality k.
+          now rewrite H9.
+        }
       }
       {
         intros. cbn.
@@ -658,7 +1107,9 @@ constructor.
     exists (eq (
       comInvPoss i x0
         (At i0 m)
-        (fun k => indexntensor k (snd t))
+        (MkArr
+          (fun k => indexntensor k (snd t))
+          (activentensor (snd t)))
     )).
     unfold TInvoke in H4. psimpl.
     apply sing_elem in H10. psimpl.
@@ -685,10 +1136,14 @@ constructor.
       {
         econstructor.
         {
-          assert ((fun k : Index N => indexntensor k (snd s)) = PState x0).
+          assert (
+            (MkArr (fun k => indexntensor k (snd s)) (activentensor (snd s))) =
+            PState x0
+          ).
           {
-            extensionality k.
-            symmetry. apply H.
+            destruct H.
+            rewrite st_cons0.
+            easy.
           }
           cbn. rewrite <- H17.
           exact H2.
@@ -713,7 +1168,13 @@ constructor.
         easy.
       }
     }
-    assert (Inv t (comInvPoss i x0 (At i0 m) (fun k => indexntensor k (snd t)))).
+    assert (
+      Inv t
+        (comInvPoss i x0 (At i0 m)
+        (MkArr
+          (fun k => indexntensor k (snd t))
+          (activentensor (snd t))))
+    ).
     {
       destruct H.
       constructor.
@@ -778,7 +1239,9 @@ constructor.
     exists (eq (
       comRetPoss i x4
         (At i0 m)
-        (fun k => indexntensor k (snd t))
+        (MkArr
+          (fun k => indexntensor k (snd t))
+          (activentensor (snd t)))
         v
     )).
     split.
@@ -800,10 +1263,15 @@ constructor.
       {
         econstructor 2.
         {
-          assert (PState x4 = (fun k => indexntensor k (snd s))).
+          assert (
+            PState x4 =
+            MkArr
+              (fun k => indexntensor k (snd s))
+              (activentensor (snd s))
+          ).
           {
-            extensionality k.
-            apply H4.
+            destruct H4.
+            now rewrite st_cons0.
           }
           rewrite H3.
           exact H2.
@@ -816,7 +1284,14 @@ constructor.
       { easy. }
       { cbn. intros. now rewrite eqb_nid. }
     }
-    assert (Inv t (comRetPoss i x4 (At i0 m) (fun k => indexntensor k (snd t)) v)).
+    assert (
+      Inv t
+        (comRetPoss i x4 (At i0 m)
+          (MkArr
+            (fun k => indexntensor k (snd t))
+            (activentensor (snd t))) 
+          v)
+    ).
     {
       destruct H4.
       constructor.
@@ -963,4 +1438,4 @@ constructor.
     }
   }
 }
-Admitted.
+Qed.
