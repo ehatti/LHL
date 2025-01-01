@@ -29,28 +29,35 @@
 
 ./Core/Eutt.v
 
-./Examples/LockSpec.v
-# ./Examples/CounterSpec.v
-# ./Examples/FAISpec.v
-# ./Examples/YieldSpec.v
-./Examples/OMemSpec.v
-./Examples/LocalVarSpec.v
-# ./Examples/SnapshotSpec.v
-./Examples/ThreadLocal.v
+./Examples/ArraySpec.v
 ./Examples/NameSpec.v
 ./Examples/CASSpec.v
 ./Examples/ExchangerSpec.v
 ./Examples/Exchanger.v
-./Examples/ArraySpec.v
 ./Examples/RandomSpec.v
 ./Examples/ElimArray.v
 ./Examples/AtomicStackSpec.v
 ./Examples/WaitFreeStackSpec.v
 ./Examples/EBStack.v
 
-./Examples/RegSpec.v
-./Examples/SnapshotSpec.v
+./Examples/Counter/CounterSig.v
+./Examples/Counter/RacyCounterSpec.v
+./Examples/FAISpec.v
+./Examples/LockSpec.v
 
-# ./Examples/SpinLock.v
+# ./Examples/LockSpec.v
+# ./Examples/FAISpec.v
+# ./Examples/CounterSpec.v
+# ./Examples/FAISpec.v
+# ./Examples/YieldSpec.v
+# ./Examples/OMemSpec.v
+# ./Examples/LocalVarSpec.v
+# ./Examples/SnapshotSpec.v
+# ./Examples/ThreadLocal.v
 
-./Examples/Array.v
+# ./Examples/RegSpec.v
+# ./Examples/SnapshotSpec.v
+
+# # ./Examples/SpinLock.v
+
+# ./Examples/Array.v

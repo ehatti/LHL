@@ -343,6 +343,20 @@ destruct H1. now ddestruct H1.
 easy.
 Qed.
 
+Lemma disj_cons2_abs :
+  forall {A} (x y : A),
+  x <> y ->
+  insert x (insert y emp) <> (insert x emp).
+unfold insert, emp, not. intros.
+apply equal_f with (x:=y) in H0.
+apply H.
+assert (x = y \/ y = y \/ False).
+{ right. now left. }
+rewrite H0 in H1.
+destruct H1. now ddestruct H1.
+easy.
+Qed.
+
 Definition contains : forall {A}, A -> set A -> Prop :=
   fun A x s => s x.
 Infix "∈" := contains (at level 40).
