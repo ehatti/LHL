@@ -6,22 +6,16 @@ From LHL.Core Require Import
 From LHL.Util Require Import
   Tactics
   TransUtil
-  Util.
+  Util
+  Heap.
 
 Require Import Coq.Logic.FunctionalExtensionality.
-
-Definition Addr := nat.
 
 Variant MemSig {V} : ESig :=
 | MAlloc : MemSig Addr
 | MWrite (addr : Addr) (val : V) : MemSig unit
 | MRead (addr : Addr) : MemSig V.
 Arguments MemSig : clear implicits.
-
-Definition Heap {V : Type} : Type := Addr -> option V.
-Definition heap_update {V : Type} (addr : Addr) (val : V) (h : Heap) : Heap :=
-  fun addr' => if Nat.eqb addr addr' then Some val else h addr'.
-Definition empty_heap {V : Type} : Heap := fun _ => @None V.
 
 Module WriteRacyMem.
   Variant MemState {T V} :=
