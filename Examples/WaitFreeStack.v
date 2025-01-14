@@ -154,6 +154,57 @@ Module AtomicWFStackProof.
   End EvalStack.
 
   Section OffChain.
+    Inductive on_chain_written_aux {T} (s:option Heap) (loc:Heap) : option Addr (*head*) -> option Addr (*tail*) -> Prop :=
+    | OCWNil l1:
+        on_chain_written_aux s loc l1 l1
+    | OCWCons h l l1 l2 l3 (v:A):
+        s = Some h ->
+        l1 = Some l ->
+        h l = Some (v, l2) ->
+        loc l = Some (@LWritten T) ->
+        on_chain_written_aux s loc l2 l3 ->
+        on_chain_written_aux s loc l1 l3
+    .
+
+    Definition on_chain_written (s:ISt) :=
+      on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (eval_cas (casSt s)) None.
+
+    Lemma OCWAlloc {T} : forall h l loc hd v (i:Name T),
+      h l = None ->
+      on_chain_written_aux (Some h) loc hd None ->
+      on_chain_written_aux
+        (Some (heap_update l v h))
+        (heap_update l (LAlloc i) loc)
+        hd None.
+    Proof.
+      intros.
+      remember None as tl.
+      generalize dependent tl.
+      induction H0; intros; subst.
+      - constructor.
+      - specialize (IHon_chain_written_aux _ eq_refl H4).
+        inversion H; subst h0.
+        assert (l <> l0) by congruence.
+        eapply OCWCons; eauto;
+        rewrite HeapUpdateOther; eauto.
+    Qed.        
+
+    Lemma OWCWrite {T} : forall h loc hd (i:Name T) data new,
+      loc new = Some (LAlloc i) ->
+      on_chain_written_aux (Some h) loc hd None ->
+      on_chain_written_aux (Some (heap_update new data h)) (heap_update new LWritten loc) hd None.
+    Proof.
+      intros.
+      remember None as tl.
+      generalize dependent tl.
+      induction 2; intros; subst.
+      - constructor.
+      - inversion H0; subst.
+        assert (l <> new) by congruence.
+        eapply OCWCons; eauto;
+        rewrite HeapUpdateOther; eauto.
+    Qed.
+
     Inductive off_chain_aux (s:option Heap) (l:Addr) : option Addr (*head*) -> option Addr (*tail*) -> Prop :=
     | OffChainNil l1:
       off_chain_aux s l l1 l1
@@ -166,7 +217,8 @@ Module AtomicWFStackProof.
         off_chain_aux s l l1 l3
     .
 
-    Definition off_chain (s:ISt) (l:Addr) := off_chain_aux (eval_heap (memSt s)) l (eval_cas (casSt s)) None.
+    Definition off_chain (s:ISt) (l:Addr) :=
+        off_chain_aux (eval_heap (memSt s)) l (eval_cas (casSt s)) None.
 
     Lemma OffChainFrame: forall h hd tl vs new v,
       list_seg (Some h) hd tl vs ->
@@ -186,7 +238,21 @@ Module AtomicWFStackProof.
       eapply OffChainCons with (v:=v0); eauto.
       rewrite HeapUpdateOther; auto.
     Qed.
-      
+    
+    Lemma OwnedOffChain {T}: forall h loc (i:Name T) new hd,
+      loc new = Some (LAlloc i) ->
+      on_chain_written_aux (Some h) loc hd None ->
+      off_chain_aux (Some h) new hd None.
+    Proof.
+      intros.
+      remember None as tl.
+      revert H Heqtl.
+      induction H0; intros; subst.
+      - constructor.
+      - eapply OffChainCons; eauto.
+        congruence.
+    Qed.
+
     Lemma ListSegUpdateOffChain: forall h l1 vs new data,
       list_seg (Some h) l1 None vs ->
       off_chain_aux (Some h) new l1 None ->
@@ -212,8 +278,11 @@ Module AtomicWFStackProof.
 
   Definition location_owned (i:Name T) (s:ISt) (l:Addr) : Prop :=
     location_allocated s l /\
-    exists loc, eval_loc (memSt s) = Some loc /\ loc l = Some i.
+    eval_loc (memSt s) l = Some (LAlloc i).
   
+  (* Definition location_clean (s:ISt) (l:Addr) : Prop :=
+    location_allocated s l /\
+    exists loc, eval_loc (memSt s) = Some loc /\ loc l = Some LWritten. *)
   
   Notation IStep s i e t :=
     (InterStep (WFStack _) s (i, UEvent (Some e)) t).
@@ -249,8 +318,9 @@ Module AtomicWFStackProof.
       IStep s1 i (CallEv (memEv (MWrite new data))) s2 ->
       WFSTran i s1 ρ s2 ρ
     | StkWriteRet i s1 ρ s2 new data
-      (H_alloc: location_allocated s1 new)
-      (H_off_chain: off_chain s1 new):
+      (* (H_alloc: location_allocated s1 new)
+      (H_off_chain: off_chain s1 new) *)
+      (H_owned: location_owned i s1 new):
       IStep s1 i (RetEv (memEv (MWrite new data)) tt) s2 ->
       WFSTran i s1 ρ s2 ρ
     (* read *)
@@ -268,6 +338,7 @@ Module AtomicWFStackProof.
     | StkCASRetPushPass i s1 s2 ρ1 ρ2 old new v h
       (* new points to (v, old) *)
       (H_heap: eval_heap (memSt s1) = Some h)
+      (H_loc: eval_loc (memSt s1) new = Some LWritten)
       (H_new: h new = Some (v, old)):
       IStep s1 i (RetEv (casEv (CAS old (Some new))) true) s2 ->
       VisPossSteps ρ1 [(i, CallEv (WFPush v)); (i, RetEv (WFPush v) (PASS tt))] ρ2 ->
@@ -305,7 +376,9 @@ Module AtomicWFStackProof.
     (* only write to location allocated by self *)
     write_excl:
       forall j h loc l v, MsWritePend j h loc l v = memSt s ->
-        loc l = Some j
+        loc l = Some (LAlloc j);
+    ocw:
+      on_chain_written s
     (* loc_heap_match:
       exists heap loc,
         eval_heap (memSt s) = Some heap /\
@@ -338,6 +411,8 @@ Module AtomicWFStackProof.
 
   Ltac subst_ist s :=
     unfold eval_stack_und, casSt, memSt in *;
+    unfold on_chain_written in *;
+    unfold location_owned, location_allocated in *;
     try match goal with
     | HRewrite : _ = LState (snd s) |- _ =>
       (repeat match goal with
@@ -394,14 +469,15 @@ Module AtomicWFStackProof.
       | |- context[RState (snd s)] =>
         setoid_rewrite HRewrite
       end)
-    end.
+    end; simpl in *.
 
     Ltac forward_istep_cas_aux s1 s2 :=
-      match goal with
-      | same_stack0 : eval_stack_und _ _ |- _ =>
+      (* match goal with
+      | same_stack0 : eval_stack_und _ _ |- _ => *)
         subst_ist s1; subst_ist s2;
-        simpl in *
-      end.
+        simpl in *; eauto;
+        try congruence.
+      (* end. *)
 
     Ltac forward_istep_cas :=
       match goal with
@@ -437,11 +513,13 @@ Module AtomicWFStackProof.
           end. *)
 
     Ltac forward_istep_mem_aux s1 s2 :=
-      match goal with
-      | same_stack0 : eval_stack_und _ _ |- _ =>
-        subst_ist s1; subst_ist s2;
-        simpl in *; try (inversion same_stack0; congruence)
-      end.
+      subst_ist s1; subst_ist s2;
+      simpl in *; eauto;
+      try match goal with
+      | H : list_seg None _ _ _ |- _ =>
+         try (inversion H; congruence)
+      end;
+      try congruence.
   
     Ltac forward_istep_mem :=
       match goal with
@@ -655,6 +733,10 @@ Module AtomicWFStackProof.
         unfold memSt; simpl.
         inversion 1.
       }
+      {
+        unfold on_chain_written, memSt; simpl.
+        constructor.
+      }
     Qed.
 
     Lemma sing_elem {A} {P : A -> Prop} :
@@ -711,25 +793,19 @@ Module AtomicWFStackProof.
         (* write call *)
         {
           (* use write_excl, prevent concurrent writes *)
-          destruct H_owned as [_ [? [? ?]]].
+          destruct H_owned as [_ ?].
           forward_istep_mem.
-          inversion H0; subst x; clear H0.
           specialize (write_excl0 _ _ _ _ _ eq_refl).
           congruence.
         }
         (* write ret *)
         {
+          unfold on_chain_written in ocw0.
+          destruct H_owned as [[? [? ?]] ?].
           forward_istep_mem.
-          {
-            destruct H_alloc as [? [? ?]].
-            setoid_rewrite <- H4 in H.
-            inversion H; subst x. congruence.
-          }
-          {
-            unfold off_chain in H_off_chain.
-            subst_ist s1. simpl in *.
-            apply ListSegUpdateOffChain; auto.
-          }
+          
+          eapply ListSegUpdateOffChain; eauto.
+          eapply OwnedOffChain; eauto.
         }
         (* read ret *)
         {
@@ -795,8 +871,24 @@ Module AtomicWFStackProof.
       }
       {
         inversion_clear H.
-        inversion H0; subst; clear H0.
-        admit.
+        inversion H0; subst; clear H0;
+        unfold wfs_idle in *; eauto;
+        try (unfold_possteps;
+        forward_pstep p1 y;
+        setoid_rewrite <- H1 in always_atomic0;
+        forward_pstep y p2;
+        simp_eqs; simpl in *; now eauto).
+        {
+          unfold InvokeAny, TInvoke, TIdle in H.
+          psimpl. apply sing_elem in H2. psimpl.
+          setoid_rewrite H5. eauto.
+        }
+        (* return any *)
+        {
+          unfold ReturnAny, TReturn, mapRetPoss in H.
+          psimpl. apply sing_elem in H2. psimpl.
+          setoid_rewrite H10. eauto.
+        }
       }
       {
         inversion_clear H.
@@ -819,12 +911,71 @@ Module AtomicWFStackProof.
         {
           forward_istep_mem.
           inversion_clear 1.
-          destruct H_owned as [_ [? [? ?]]].
+          destruct H_owned as [_ ?].
           setoid_rewrite <- H5 in H.
           inversion_clear H. auto.
         }
       }
-    Admitted.
+      {
+        inversion_clear H.
+        unfold on_chain_written in *.
+        inversion H0; subst; clear H0;
+        (* irrelevant cas events *)
+        try (forward_istep_cas; now auto);
+        try (forward_istep_mem; now auto).
+        {
+          unfold InvokeAny, TInvoke, TIdle in H.
+          psimpl. unfold memSt, casSt in *.
+          setoid_rewrite <- H1. auto.
+        }
+        {
+          unfold ReturnAny, TReturn, mapRetPoss in H.
+          psimpl. unfold memSt, casSt in *.
+          setoid_rewrite <- H1. auto.
+        }
+        {
+          forward_istep_mem.
+          eapply OCWAlloc; auto.
+        }
+        {
+          destruct H_owned.
+          forward_istep_mem.
+          specialize (write_excl0 _ _ _ _ _ eq_refl).
+          congruence.
+        }
+        {
+          destruct H_owned as [[? [? ?]]].
+          forward_istep_mem.
+          eapply OWCWrite; eauto.
+        }
+        {
+          destruct H_alloc as [? [? ?]].
+          forward_istep_mem. 
+        }
+        {
+          forward_istep_cas; auto.
+          rewrite H_heap in *.
+          econstructor; eauto.
+        }
+        {
+          forward_istep_cas; auto.
+          ddestruct H7.
+        }
+        {
+          forward_istep_cas; auto.
+          rewrite H_heap in *.
+          inversion ocw0; subst.
+          inversion H; subst.
+          inversion H6; subst.
+          rewrite H_new in *.
+          inversion H7; subst; auto.
+        }
+        {
+          forward_istep_cas; auto.
+          ddestruct H7.
+        }
+      }
+    Qed.
 
     Lemma ReadyStable:
       forall (i : Name T) (A0 : Type) (_ : F A A0),
@@ -921,106 +1072,444 @@ Module AtomicWFStackProof.
       }
     Qed.
 
-    Lemma push_old_listseg_stable (i : Name T) v old:
+    Ltac forward_inv_ret:=
+      unfold InvokeAny, TInvoke, TIdle,
+          ReturnAny, TReturn, Returned, mapRetPoss in *;
+      psimpl;
+      match goal with
+      | H:eq _ = _ |- _ => 
+        apply sing_elem in H
+      end; psimpl;
+      unfold memSt, casSt in *.
+
+    Ltac solve_inv_ret:=
+      forward_inv_ret;
+      match goal with
+      | H:snd _ = snd _ |- _ => 
+        setoid_rewrite <- H
+      end; eauto.
+
+    Ltac solve_dp :=
+      repeat match goal with
+      | H:differ_pointwise _ ?y _ |- ?y _ = _ =>
+        rewrite H; auto
+      end.
+
+    Lemma ready_done_stable (i : Name T) {R} (m : F A R) (r:R):
+      SStable (Rely i) (ReadyDone i m r).
+    Proof.
+      begin_stable.
+      eapply SRTC_stable.
+      2: exact H. 2: exact H0.
+      clear. intros.
+      destruct H.
+      constructor;
+      destruct H0 as [j [? ?]].
+      {
+        destruct done_ready0.
+        constructor. eapply InvStable; eauto.
+      }
+      {
+        destruct ready_done0.
+        inversion H0; subst; clear H0;
+        try (constructor; now forward_istep_cas);
+        try (constructor; now forward_istep_mem);
+        try (constructor; solve_inv_ret);
+        try (unfold_possteps; now (constructor; solve_dp)).
+        {
+          forward_inv_ret.
+          constructor.
+          - rewrite H8; auto.
+          - rewrite H9; auto.
+        }
+        {
+          forward_inv_ret.
+          constructor.
+          - rewrite H8; auto.
+          - rewrite H9; auto.
+        }
+      }
+    Qed.
+
+    Lemma get_post_stable (i : Name T) old {R} (m : F A R) vs0:
       SStable (Rely i) (fun s x =>
-        ReadyWaiting i (WFPush v) s x /\
-        exists vs, list_seg (eval_heap (memSt s)) old None vs
+        ReadyWaiting i m s x /\
+        on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+        exists vs, list_seg (eval_heap (memSt s)) old None (vs0 ++ vs)
       ).
     Proof.
       begin_stable.
-      remember (fun s (ρ:Poss VF) => ReadyWaiting i (WFPush v) s ρ /\
-      (exists vs : list A, list_seg (eval_heap (memSt s)) old None vs)) as P.
-      replace (ReadyWaiting i (WFPush v) s ρ /\
-      (exists vs : list A, list_seg (eval_heap (memSt s)) old None vs))
+      remember (fun s (ρ:Poss VF) => ReadyWaiting i m s ρ /\
+      on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+      (exists vs : list A, list_seg (eval_heap (memSt s)) old None (vs0 ++ vs))) as P.
+      replace (ReadyWaiting i m s ρ /\
+      on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+      (exists vs : list A, list_seg (eval_heap (memSt s)) old None (vs0 ++ vs)))
       with (P s ρ); [|subst; auto].
       eapply SRTC_stable;
       subst; eauto.
       clear. intros; simpl in *.
       destruct H0 as [j [? ?]].
       destruct H.
-      split.
+      split; [|split].
       {
         eapply ready_waiting_stable.
         psplit; eauto.
         econstructor; eauto.
         constructor.
       }
-      
-      inversion H1; subst; clear H1;
-      try (match goal with
-      | H : IStep _ ?s1 _ ?s2 |- _ =>
-        inversion H; subst; clear H;
-        try match goal with
-        | H1 : StateStep _ _ _ |- _ =>
-          inversion H1; psimpl
-        end;
-        subst_ist s1; subst_ist s2
-      end; eauto).
       {
-        unfold InvokeAny, TInvoke, TIdle in *. psimpl.
-        apply sing_elem in H5. psimpl.
-        unfold memSt in *.
-        setoid_rewrite <- H4. eauto.
+        destruct H2 as [? ?].
+        inversion H1; subst; clear H1;
+        try forward_istep_cas;
+        try forward_istep_mem.
+        {
+          unfold InvokeAny, TInvoke, TIdle in *. psimpl.
+          apply sing_elem in H6. psimpl.
+          unfold memSt in *.
+          setoid_rewrite <- H5. eauto.
+        }
+        {
+          unfold ReturnAny, TReturn, Returned, mapRetPoss in *. psimpl.
+          apply sing_elem in H6. psimpl.
+          unfold memSt in *.
+          setoid_rewrite <- H5. eauto.
+        }
+        {
+          eapply OCWAlloc; eauto.
+        }
+        {
+          destruct H as [[[?]]].
+          subst_ist s.
+          specialize (write_excl0 _ _ _ _ _ eq_refl).
+          destruct H_owned.
+          simpl in *.
+          congruence.
+        }
+        {
+          destruct H_owned as [[? [? ?]] ?].
+          subst_ist s.
+          congruence.
+        }
+        {
+          destruct H_owned as [[? [? ?]] ?].
+          subst_ist s.
+          eapply OWCWrite; eauto.
+        }
+        {
+          destruct H_alloc as [? [? ?]].
+          subst_ist s; congruence.
+        }
       }
       {
-        unfold ReturnAny, TReturn, Returned, mapRetPoss in *. psimpl.
-        apply sing_elem in H5. psimpl.
-        unfold memSt in *.
-        setoid_rewrite <- H4. eauto.
+        destruct H2 as [Hocw H2].
+        inversion H1; subst; clear H1;
+        try (match goal with
+        | H : IStep _ ?s1 _ ?s2 |- _ =>
+          inversion H; subst; clear H;
+          try match goal with
+          | H1 : StateStep _ _ _ |- _ =>
+            inversion H1; psimpl
+          end;
+          subst_ist s1; subst_ist s2
+        end; simpl in *; eauto).
+        {
+          unfold InvokeAny, TInvoke, TIdle in *. psimpl.
+          apply sing_elem in H5. psimpl.
+          unfold memSt in *.
+          setoid_rewrite <- H4. eauto.
+        }
+        {
+          unfold ReturnAny, TReturn, Returned, mapRetPoss in *. psimpl.
+          apply sing_elem in H5. psimpl.
+          unfold memSt in *.
+          setoid_rewrite <- H4. eauto.
+        }
+        {
+          inversion H3; subst; clear H3;
+          subst_ist s; subst_ist t; eauto.
+        }
+        {
+          inversion H3; subst; clear H3;
+          subst_ist s; subst_ist t;
+          simpl in *; eauto.
+          eapply ListSegFrame in H2; eauto.
+        }
+        {
+          destruct H_owned as [[? [? ?]] ?].
+          inversion H3; subst; clear H3;
+          subst_ist s; subst_ist t;
+          simpl in *; eauto.
+          destruct H as [[[?]] _].
+          eapply write_excl0 in H12.
+          inversion H9; subst.
+          congruence.
+        }
+        {
+          destruct H as [[[?]] _].
+          destruct H_owned as [[? [? ?]] ?].
+          inversion H3; subst; clear H3;
+          subst_ist s; subst_ist t;
+          simpl in *; eauto.
+          - specialize (write_excl0 _ _ _ _ _ eq_refl).
+            congruence.
+          - eexists.
+            eapply ListSegUpdateOffChain; eauto.
+            eapply OwnedOffChain; eauto.
+        }
+        {
+          inversion H3; subst; clear H3;
+          subst_ist s; subst_ist t;
+          simpl in *; eauto.
+        }
+        {
+          inversion H3; subst; clear H3;
+          subst_ist s; subst_ist t;
+          simpl in *; eauto.
+          destruct H_alloc as [? [? ?]].
+          congruence.
+        }
       }
-      {
-        inversion H3; subst; clear H3;
-        subst_ist s; subst_ist t; eauto.
-      }
-      {
-        inversion H3; subst; clear H3;
-        subst_ist s; subst_ist t;
-        simpl in *; eauto.
-        eapply ListSegFrame in H2; eauto.
-      }
-      {
-        destruct H_owned as [[? ?] [? [? ?]]].
-        inversion H3; subst; clear H3;
-        subst_ist s; subst_ist t;
-        simpl in *; eauto.
-        destruct H as [[[?]] _].
-        eapply write_excl0 in H12.
-        inversion H10; subst.
-        congruence.
-      }
-      {
-        destruct H_alloc as [? [? ?]].
-        inversion H3; subst; clear H3;
-        subst_ist s; subst_ist t;
-        simpl in *; eauto; try congruence.
-        inversion H9; subst x0.
+    Qed.
 
-        destruct H as [[[?]] _].
-        eapply write_excl0 in H1.
-        eapply ListSegUpdateOffChain in H2; eauto.
-        
-        congruence.
+    Lemma psuh_alloc_post_stable (i : Name T) v old new:
+      SStable (Rely i) (fun s x =>
+          ReadyWaiting i (WFPush v) s x /\
+          location_owned i s new /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+          (* off_chain_aux (eval_heap (memSt s)) new (eval_cas (casSt s)) None /\
+          off_chain_aux (eval_heap (memSt s)) new old None /\ *)
+          exists vs, list_seg (eval_heap (memSt s)) old None vs).
+    Proof.
+      begin_stable.
+      remember (fun s x => ReadyWaiting i (WFPush v) s x /\
+          location_owned i s new /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+          (* off_chain_aux (eval_heap (memSt s)) new (eval_cas (casSt s)) None /\
+          off_chain_aux (eval_heap (memSt s)) new old None /\ *)
+          exists vs, list_seg (eval_heap (memSt s)) old None vs) as P.
+      replace (ReadyWaiting i (WFPush v) s ρ /\
+      location_owned i s new /\
+      on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+      (exists vs : list A, list_seg (eval_heap (memSt s)) old None vs))
+      with (P s ρ); [|subst; auto].
+      eapply SRTC_stable; subst; eauto.
+      eauto.
+      clear. intros; simpl in *.
+      destruct H0 as [j [? ?]].
+      destruct H.
+      rewrite and_comm.
+      rewrite and_assoc.
+      split.
+      {
+        destruct H2 as [[[? [? ?]] ?] [? ?]].
+        destruct H as [[[?]]].
+        inversion H1; subst; clear H1;
+        try (now forward_istep_cas);
+        try (now forward_istep_mem);
+        unfold location_owned, location_allocated in *;
+        try solve_inv_ret.
+        {
+          forward_istep_mem.
+          inversion H2; subst x0.
+          split.
+          - eexists; split; eauto.
+            unfold heap_update.
+            destruct (PeanoNat.Nat.eqb l new); auto.
+            congruence.
+          - assert (new <> l) by congruence.
+            rewrite HeapUpdateOther; auto.
+        }
+        {
+          forward_istep_mem.
+          specialize (write_excl0 _ _ _ _ _ eq_refl).
+          congruence.
+        }
+        {
+          forward_istep_mem.
+          inversion H10; subst x; clear H10.
+          inversion H2; subst x0; clear H2.
+          assert (new <> new0) by congruence.
+          rewrite HeapUpdateOther; auto.
+          split; auto.
+          eexists; split; eauto.
+          rewrite HeapUpdateOther; auto.
+        }
+        {
+          forward_istep_mem.
+        }
       }
-      3:{
-        inversion H2.
-        2:{}
-        (* inversion_clear ready_inv0. *)
-        (* inversion H2; subst; clear H2; *)
-        (* irrelevant cas events *)
-        try (forward_istep_cas; now eauto);
-        try (forward_istep_mem; now eauto).
-
-        
-
-        inversion H3
-        .
-
-        destruct H2 as [_ [H2 ?]]; psimpl;
-        inversion H2; subst; clear H2;
-        forward_istep_mem_aux s1 s2.
-        forward_istep_mem.
+      {
+        rewrite and_comm.
+        destruct H2 as [? [? ?]].
+        eapply get_post_stable with (vs0:=[]).
+        psplit; eauto.
+        econstructor; eauto.
+        constructor.
       }
-    Admitted.
+    Qed.
+
+    Lemma push_write_post_stable (i : Name T) v old new:
+      SStable (Rely i) (fun s x =>
+          ReadyWaiting i (WFPush v) s x /\
+          (exists h, (eval_heap (memSt s)) = Some h /\ h new = Some (v, old)) /\
+          (eval_loc (memSt s) new = Some LWritten) /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+          exists vs, list_seg (eval_heap (memSt s)) old None vs).
+    Proof.
+      begin_stable.
+      remember (fun s x =>
+        ReadyWaiting i (WFPush v) s x /\
+        (exists h, (eval_heap (memSt s)) = Some h /\ h new = Some (v, old)) /\
+        (eval_loc (memSt s) new = Some LWritten) /\
+        on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+        exists vs, list_seg (eval_heap (memSt s)) old None vs) as P.
+      replace (ReadyWaiting i (WFPush v) s ρ /\
+      (exists h : Heap, eval_heap (memSt s) = Some h /\ h new = Some (v, old)) /\
+      eval_loc (memSt s) new = Some LWritten /\
+      on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+      (exists vs : list A, list_seg (eval_heap (memSt s)) old None vs))
+      with (P s ρ); [|subst; auto].
+      eapply SRTC_stable;
+      subst; eauto.
+      2:{ split; auto. repeat split; eauto. }
+      clear. intros; simpl in *.
+      destruct H0 as [j [? ?]].
+      assert (
+        ((exists h : Heap, eval_heap (memSt t) = Some h /\ h new = Some (v, old)) /\
+        eval_loc (memSt t) new = Some LWritten) /\
+        ReadyWaiting i (WFPush v) t y /\
+        on_chain_written_aux (eval_heap (memSt t)) (eval_loc (memSt t)) old None /\
+        (exists vs : list A, list_seg (eval_heap (memSt t)) old None vs)
+        ->
+        (ReadyWaiting i (WFPush v) t y /\
+        (exists h : Heap, eval_heap (memSt t) = Some h /\ h new = Some (v, old)) /\
+        eval_loc (memSt t) new = Some LWritten /\
+        on_chain_written_aux (eval_heap (memSt t)) (eval_loc (memSt t)) old None /\
+        (exists vs : list A, list_seg (eval_heap (memSt t)) old None vs))
+      ) as Htmp by tauto.
+      apply Htmp; clear Htmp.
+      split.
+      {
+        destruct H as [[[[?]]] [[? [? ?]] [? [? [? ?]]]]].
+        inversion H1; subst; clear H1;
+        try (now forward_istep_cas);
+        try (now forward_istep_mem);
+        unfold location_owned, location_allocated in *;
+        try solve_inv_ret.
+        {
+          forward_istep_mem.
+          inversion H; subst x0.
+          assert (l <> new) by congruence.
+          rewrite HeapUpdateOther; auto.
+          split; auto.
+          eexists; split; eauto.
+          rewrite HeapUpdateOther; auto.
+        }
+        {
+          forward_istep_mem.
+          specialize (write_excl0 _ _ _ _ _ eq_refl).
+          congruence.
+        }
+        {
+          forward_istep_mem.
+          inversion H; subst x0.
+          inversion H10; subst x.
+          assert (new <> new0) by congruence.
+          split; [eexists; split; eauto|];
+          rewrite HeapUpdateOther; auto.
+        }
+        {
+          forward_istep_mem.
+        }
+      }
+      {
+        destruct H as (? & ? & ? & ?).
+        eapply get_post_stable with (vs0:=[]).
+        psplit; eauto.
+        econstructor; eauto.
+        constructor.
+      }
+    Qed.
+
+    Lemma pop_read_post_stable (i : Name T) v next old:
+      SStable (Rely i) (fun s x =>
+          ReadyWaiting i WFPop s x /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (Some old) None /\
+          (exists h, (eval_heap (memSt s)) = Some h /\ h old = Some (v, next)) /\
+          exists vs, list_seg (eval_heap (memSt s)) (Some old) None (v :: vs)).
+    Proof.
+      begin_stable.
+      remember (fun s ρ =>
+        ReadyWaiting i WFPop s ρ /\
+        on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (Some old) None /\
+        (exists h : Heap, eval_heap (memSt s) = Some h /\ h old = Some (v, next)) /\
+        (exists vs : list A, list_seg (eval_heap (memSt s)) (Some old) None (v :: vs))) as P.
+      replace (ReadyWaiting i WFPop s ρ /\
+      on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (Some old) None /\
+      (exists h : Heap, eval_heap (memSt s) = Some h /\ h old = Some (v, next)) /\
+      (exists vs : list A, list_seg (eval_heap (memSt s)) (Some old) None (v :: vs)))
+      with (P s ρ); [|subst; auto].
+      eapply SRTC_stable;
+      subst; eauto.
+      2:{ split; auto. repeat split; eauto. }
+      clear. intros; simpl in *.
+      destruct H0 as [j [? ?]].
+      rewrite and_comm.
+      rewrite and_assoc.
+      rewrite and_comm.
+      rewrite and_assoc.
+      rewrite and_assoc.
+      split.
+      {
+        destruct H as [? [? [? ?]]].
+        inversion H1; subst; clear H1;
+        try (forward_istep_mem);
+        try (forward_istep_cas);
+        try (solve_inv_ret).
+        {
+          eexists; split; eauto.
+          inversion H3; subst x0.
+          assert (l <> old) by congruence.
+          rewrite HeapUpdateOther; auto.
+        }
+        {
+          destruct H as [[[?]]].
+          destruct H_owned as [_ ?].
+          subst_ist s.
+          specialize (write_excl0 _ _ _ _ _ eq_refl).
+          congruence.
+        }
+        {
+          destruct H_owned as [[? [? ?]] _].
+          subst_ist s.
+          congruence.
+        }
+        {
+          destruct H_owned as [_ ?].
+          inversion H2; subst.
+          inversion H11; inversion H13; subst h0 l.
+          subst_ist s.
+          assert (new <> old) by congruence.
+          eexists; split; eauto.
+          rewrite HeapUpdateOther; auto.
+          inversion H3; auto.
+        }
+        {
+          destruct H_alloc as [? [?]].
+          subst_ist s. congruence.
+        }
+      }
+      {
+        rewrite and_comm.
+        rewrite and_assoc.
+        destruct H as [? [? [? ?]]].
+        eapply get_post_stable with (vs0:=[v]); simpl.
+        psplit; eauto.
+        econstructor; eauto.
+        constructor.
+      }
+    Qed.
 
     Lemma stepCall {E E' A B} {m : E' A} {k : A -> Prog E B} `{SigCoercion E' E} : (x <- call m; k x) = Bind (coerceOp _ m) k.
     Proof.
@@ -1039,6 +1528,12 @@ Module AtomicWFStackProof.
       x = y.
     intros. now rewrite H.
     Qed.
+
+    Ltac eq_inj:=
+      match goal with
+      | H:eq _ = eq _ |- _ =>
+        apply eq_inj in H
+      end.
 
   Lemma PushCorrect: forall (i:Name T) (v:A),
     @VerifyProg T (E A) (F A) VE VF (StkRet unit) i
@@ -1093,6 +1588,7 @@ Module AtomicWFStackProof.
           constructor; cbn;
           unfold wfs_idle, eval_stack_und, memSt, casSt in *;
           auto; try now setoid_rewrite <- H.
+          unfold on_chain_written in *; subst_ist s; now rewrite H in *.
         }
         {
           constructor; cbn;
@@ -1120,9 +1616,10 @@ Module AtomicWFStackProof.
     rewrite stepCall.
     eapply SafeBind with
       (QI:=fun _ _ => LiftSPrec (ReadyWaiting i (WFPush v)))
-      (QR:=fun r _ _ => LiftSPrec (fun s x =>
+      (QR:=fun old _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
-          exists vs, list_seg (eval_heap (memSt s)) r None vs
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+          exists vs, list_seg (eval_heap (memSt s)) old None vs
         )).
     (* stable QI *)
     {
@@ -1137,11 +1634,8 @@ Module AtomicWFStackProof.
       begin_stable.
       specialize (H0 x1 eq_refl) as [? [? ?]].
       eexists; split; eauto.
-      split.
-      - apply ready_waiting_stable.
-        psplit; eauto.
-      - eapply push_old_listseg_stable.
-        psplit; eauto.
+      eapply get_post_stable with (vs0:=[]).
+      psplit; eauto.
     }
     (* commit *)
     {
@@ -1159,11 +1653,15 @@ Module AtomicWFStackProof.
         constructor; [repeat constructor|auto].
         - inversion H2; subst.
           now forward_istep_cas_aux s t.
-        - admit.
+        - inversion H2; subst.
+          now forward_istep_cas_aux s t.
         - now setoid_rewrite <- H6.
+        - inversion H2; subst.
+          forward_istep_cas_aux s t.
+          now subst_ist s.
       }
       {
-        exists x. split. easy. apply eq_inj in H; subst.
+        exists x. split. easy. eq_inj; subst.
         eapply StkGetCall with (i:=i).
         constructor; [|easy].
         constructor; cbn. easy.
@@ -1183,13 +1681,22 @@ Module AtomicWFStackProof.
       {
         exists x3. split; auto.
         destruct H4, wait_ready0, ready_inv0.
-        split.
+        split;[|split].
         {
           constructor; [repeat constructor|auto].
           - inversion H2; subst.
             now forward_istep_cas_aux s t.
-          - admit.
+          - unfold wfs_idle in *. eauto.
           - now setoid_rewrite <- H7.
+          - unfold on_chain_written in *.
+            inversion H2; subst.
+            now forward_istep_cas_aux s t.
+        }
+        {
+          unfold on_chain_written in *.
+          inversion H2; subst.
+          forward_istep_cas_aux s t.
+          now ddestruct H10.
         }
         {
           unfold eval_stack_und in same_stack0.
@@ -1201,7 +1708,7 @@ Module AtomicWFStackProof.
         }
       }
       {
-        exists x3. split. easy. apply eq_inj in H8; subst.
+        exists x3. split. easy. eq_inj; subst.
         eapply StkGetRetId with (i:=i).
         constructor.
         - constructor; simpl; eauto.
@@ -1215,19 +1722,33 @@ Module AtomicWFStackProof.
     eapply SafeBind with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
           exists vs, list_seg (eval_heap (memSt s)) old None vs
         ))
       (QR:=fun new _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
           location_owned i s new /\
-          off_chain_aux (eval_heap (memSt s)) new (eval_cas (casSt s)) None /\
-          off_chain_aux (eval_heap (memSt s)) new old None /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
+          (* off_chain_aux (eval_heap (memSt s)) new (eval_cas (casSt s)) None /\
+          off_chain_aux (eval_heap (memSt s)) new old None /\ *)
           exists vs, list_seg (eval_heap (memSt s)) old None vs
         )).
     (* QI stable *)
-    { admit. }
+    {
+      begin_stable.
+      specialize (H0 x1 eq_refl) as [? [? ?]].
+      eexists; split; eauto.
+      eapply get_post_stable with (vs0:=[]).
+      psplit; eauto.
+    }
     (* QR stable *)
-    { admit. }
+    {
+      begin_stable.
+      specialize (H0 x1 eq_refl) as [? [? ?]].
+      eexists; split; eauto.
+      apply psuh_alloc_post_stable.
+      psplit; eauto.
+    }
     (* commit *)
     {
       clear rec. begin_commit.
@@ -1243,14 +1764,16 @@ Module AtomicWFStackProof.
         {
           constructor; [repeat constructor|auto];
           inversion H2; subst; forward_istep_mem_aux s t.
+          unfold on_chain_written in *.
+          subst_ist s; subst_ist t;
+          simpl in *; auto.
         }
         {
           inversion H2; subst; forward_istep_mem_aux s t.
-          eexists; eauto.
         }
       }
       {
-        exists x5. split. easy. apply eq_inj in H10; subst.
+        exists x5. split. easy. eq_inj; subst.
         eapply StkAllocCall with (i:=i).
         constructor; [|easy].
         constructor; cbn. easy.
@@ -1270,43 +1793,36 @@ Module AtomicWFStackProof.
       {
         exists x4. split; auto.
         destruct H4, wait_ready0, ready_inv0.
-        split; [|split; [split|split;[|split]]].
+        split.
         {
           constructor; [repeat constructor|auto];
+          unfold on_chain_written in *;
           inversion H2; subst; forward_istep_mem_aux s t.
-          eapply ListSegFrame; eauto.
+          - eapply ListSegFrame; eauto.
+          - eapply OCWAlloc; eauto.
         }
+        split.
         {
           inversion H2; subst; forward_istep_mem_aux s t.
-          exists (heap_update l v0 h).
-          setoid_rewrite <- H15.
+          ddestruct H16.
+          constructor; subst_ist t; simpl;
+          [|apply HeapUpdateSelf].
+          exists (heap_update new v0 h).
           split; auto.
-          ddestruct H14.
           rewrite HeapUpdateSelf; congruence.
         }
+        split.
         {
-          unfold location_owned.
           inversion H2; subst; forward_istep_mem_aux s t.
-          eexists; split; [reflexivity|].
-          ddestruct H14. apply HeapUpdateSelf.
+          eapply OCWAlloc; eauto.
         }
         {
           inversion H2; subst; forward_istep_mem_aux s t.
-          ddestruct H14.
-          eapply OffChainFrame; eauto.
-        }
-        {
-          inversion H2; subst; forward_istep_mem_aux s t.
-          ddestruct H14.
-          eapply OffChainFrame; eauto.
-        }
-        {
-          inversion H2; subst; forward_istep_mem_aux s t.
-          eapply ListSegFrame in H5; eauto.
+          eapply ListSegFrame in H6; eauto.
         }
       }
       {
-        exists x4. split. easy. apply eq_inj in H12; subst.
+        exists x4. split. easy. eq_inj; subst.
         eapply StkAllocRet with (i:=i).
         constructor.
         - constructor; simpl; eauto.
@@ -1321,21 +1837,36 @@ Module AtomicWFStackProof.
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
           location_owned i s new /\
-          off_chain_aux (eval_heap (memSt s)) new (eval_cas (casSt s)) None /\
-          off_chain_aux (eval_heap (memSt s)) new old None /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
           exists vs, list_seg (eval_heap (memSt s)) old None vs
         ))
       (QR:=fun _ _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
           (exists h, (eval_heap (memSt s)) = Some h /\ h new = Some (v, old)) /\
+          (eval_loc (memSt s) new = Some LWritten) /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
           exists vs, list_seg (eval_heap (memSt s)) old None vs
           (* /\
           list_seg (eval_heap (memSt s)) (Some new) None (v :: vs) *)
         )).
     (* QI stable *)
-    { admit. }
+    {
+      begin_stable.
+      specialize (H0 x1 eq_refl) as [? [? ?]].
+      eexists; split; eauto.
+      apply psuh_alloc_post_stable.
+      psplit; eauto.
+    }
     (* QR stable *)
-    { admit. }
+    {
+      begin_stable.
+      specialize (H0 x1 eq_refl) as [? [? ?]].
+      eexists; split; eauto.
+      apply push_write_post_stable.
+      psplit; eauto.
+      split; eauto.
+      repeat split; eauto.
+    }
     (* commit *)
     {
       clear rec. begin_commit.
@@ -1349,23 +1880,21 @@ Module AtomicWFStackProof.
         destruct H5, wait_ready0, ready_inv0.
         inversion H2; subst; forward_istep_mem_aux s t.
         {
-          split; [|split;[|split]]; auto.
+          split.
           {
             constructor; [repeat constructor|auto];
             subst_ist s; subst_ist t; auto.
             inversion_clear 1.
-            destruct H6 as [_ [? [? ?]]].
+            destruct H6 as [_ ?].
             subst_ist s.
             now inversion_clear H5.
           }
+          split.
           {
-            unfold location_owned in *.
-            destruct H6 as [? [? [? ?]]].
+            destruct H6 as [[? [? ?]] ?].
             subst_ist s; subst_ist t.
-            inversion H6; subst x2.
+            inversion H5; subst x2.
             split; eauto.
-            unfold location_allocated in *.
-            now subst_ist s; subst_ist t.
           }
           {
             eexists; eauto.
@@ -1373,16 +1902,15 @@ Module AtomicWFStackProof.
         }
         {
           exfalso.
-          unfold location_owned in *.
-          destruct H6 as [_ [? [? ?]]].
-          subst_ist s; subst_ist t.
-          inversion H6; subst x2.
+          destruct H6 as [_ ?].
+          subst_ist s; subst_ist t; simpl in *.
+          (* inversion H6; subst x2. *)
           specialize write_excl0 with (1:=eq_refl).
           congruence.
         }
       }
       {
-        exists x6. split. easy. apply eq_inj in H17; subst.
+        exists x6. split. easy. eq_inj; subst.
         eapply StkWriteCall with (i:=i) (data:=(v,old)); [exact H6|].
         constructor; [|easy].
         constructor; cbn. easy.
@@ -1414,24 +1942,34 @@ Module AtomicWFStackProof.
           constructor; [repeat constructor|auto];
           subst_ist s; subst_ist t; psimpl; auto.
           - eapply ListSegUpdateOffChain; eauto.
+            eapply OwnedOffChain; eauto.
           - inversion 1.
+          - eapply OWCWrite; eauto.
         }
         {
           eexists; split; eauto.
           apply HeapUpdateSelf.
         }
+        split.
+        {
+          apply HeapUpdateSelf.
+        }
+        split.
+        {
+          eapply OWCWrite; eauto.
+        }
         {
           eapply ListSegUpdateOffChain in H7; eauto.
+          eapply OwnedOffChain; eauto.
         }
       }
       {
-        exists x4. split. easy. apply eq_inj in H19; subst.
+        exists x4. split. easy. eq_inj; subst.
         eapply StkWriteRet with (i:=i) (data:=(v, old)); eauto.
-        - destruct H5 as [? _]. auto.
-        - constructor.
-          + constructor; simpl; eauto.
-            now apply differ_pointwise_comm.
-          + constructor; auto.
+        constructor.
+        + constructor; simpl; eauto.
+          now apply differ_pointwise_comm.
+        + constructor; auto.
       }
     }
 
@@ -1441,6 +1979,8 @@ Module AtomicWFStackProof.
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
           (exists h, (eval_heap (memSt s)) = Some h /\ h new = Some (v, old)) /\
+          (eval_loc (memSt s) new = Some LWritten) /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
           exists vs, list_seg (eval_heap (memSt s)) old None vs
         ))
       (QR:=fun r _ _ => 
@@ -1448,9 +1988,25 @@ Module AtomicWFStackProof.
           then LiftSPrec (ReadyDone i (WFPush v) (PASS tt))
           else LiftSPrec (ReadyDone i (WFPush v) FAIL)).
     (* QI stable *)
-    { admit. }
+    {
+      begin_stable.
+      specialize (H0 x1 eq_refl) as [? [? ?]].
+      eexists; split; eauto.
+      apply push_write_post_stable.
+      psplit; eauto.
+      split; eauto.
+      repeat split; eauto.
+    }
     (* QR stable *)
-    { admit. }
+    { 
+      begin_stable.
+      destruct v0;
+      destruct H as [? [Heq ?]];
+      specialize (H0 x1 Heq) as [? [? ?]];
+      eexists; split; eauto;
+      eapply ready_done_stable;
+      psplit; eauto.
+    }
     (* commit *)
     {
       clear rec. begin_commit.
@@ -1473,7 +2029,7 @@ Module AtomicWFStackProof.
         }
       }
       {
-        exists x6. split. easy. apply eq_inj in H23; subst.
+        exists x6. split. easy. eq_inj; subst.
         eapply StkCASCall with (i:=i) (old:=old) (new:=Some new).
         constructor; [|easy].
         constructor; cbn. easy.
@@ -1492,7 +2048,7 @@ Module AtomicWFStackProof.
       destruct ready_wait0.
       psimpl. psimpl.
       inversion H2; subst; forward_istep_cas_aux s t;
-      ddestruct H34; psimpl.
+      ddestruct H38; psimpl.
       (* cas succ *)
       {
         exists (eq (
@@ -1547,6 +2103,9 @@ Module AtomicWFStackProof.
             econstructor; eauto.
           - unfold wfs_idle in *; psimpl; eauto.
           - subst_ist s; subst_ist t; auto.
+          - subst_ist s; subst_ist t.
+            simpl in *.
+            econstructor; eauto.
         }
         (* guarantee *)
         {
@@ -1554,7 +2113,7 @@ Module AtomicWFStackProof.
           (comInvPoss i (MkPoss T (F A) VF (WFSsIdle vs) PCalls PRets) 
              (WFPush v) (WFSsPend i vs (WFPush v))) (WFPush v) (WFSsIdle (v :: vs)) 
           (PASS tt)).
-          split. easy. apply eq_inj in H20; subst.
+          split. easy. eq_inj; subst.
           (* inversion H6; subst; clear H6. *)
           eapply StkCASRetPushPass with (i:=i) (v:=v) (new:=new) (old:=old); eauto.
           constructor.
@@ -1639,7 +2198,7 @@ Module AtomicWFStackProof.
           (comInvPoss i (MkPoss T (F A) VF (WFSsIdle vs) PCalls PRets) 
              (WFPush v) (WFSsPend i vs (WFPush v))) (WFPush v) 
           (WFSsIdle vs) FAIL).
-          split. easy. apply eq_inj in H20; subst.
+          split. easy. eq_inj; subst.
           (* inversion H6; subst; clear H6. *)
           eapply StkCASRetPushFail with (i:=i) (v:=v) (new:=Some new) (old:=old); eauto.
           constructor.
@@ -1682,7 +2241,7 @@ Module AtomicWFStackProof.
       intros. unfold LiftSPrec in H.
       psimpl. exists x4. now destruct H3.
     }
-  Admitted.
+  Qed.
 
   Lemma PopCorrect: forall (i : Name T),
     @VerifyProg T (E A) (F A) VE VF (StkRet (option A)) i
@@ -1737,6 +2296,7 @@ Module AtomicWFStackProof.
           constructor; cbn;
           unfold wfs_idle, eval_stack_und, memSt, casSt in *;
           auto; try now setoid_rewrite <- H.
+          unfold on_chain_written in *; subst_ist s; now rewrite H in *.
         }
         {
           constructor; cbn;
@@ -1768,15 +2328,33 @@ Module AtomicWFStackProof.
           match old with
           | Some _ =>
             ReadyWaiting i WFPop s x /\
+            on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
             exists vs, list_seg (eval_heap (memSt s)) old None vs
           | None =>
             ReadyDone i WFPop (PASS None) s x
           end
         )).
     (* stable QI *)
-    { admit. }
+    {
+      begin_stable.
+      specialize (H0 x1 eq_refl) as [? [? ?]].
+      eexists; split; eauto.
+      apply ready_waiting_stable.
+      psplit; eauto.
+    }
     (* stable QR *)
-    { admit. }
+    {
+      begin_stable.
+      destruct v.
+      - specialize (H0 x1 eq_refl) as [? [? ?]].
+        eexists; split; eauto.
+        eapply get_post_stable with (vs0:=[]).
+        psplit; eauto.
+      - specialize (H0 x1 eq_refl) as [? [? ?]].
+        eexists; split; eauto.
+        eapply ready_done_stable.
+        psplit; eauto.
+    }
     (* commit *)
     {
       clear rec. begin_commit.
@@ -1790,14 +2368,16 @@ Module AtomicWFStackProof.
       {
         exists x. split; auto.
         destruct H7, wait_ready0, ready_inv0.
-        constructor; [repeat constructor|auto].
+        constructor; [repeat constructor|auto]; auto.
         - inversion H2; subst.
           now forward_istep_cas_aux s t.
-        - admit.
         - now setoid_rewrite <- H6.
+        - inversion H2; subst.
+          forward_istep_cas_aux s t.
+          now subst_ist s.
       }
       {
-        exists x. split. easy. apply eq_inj in H; subst.
+        exists x. split. easy. eq_inj; subst.
         eapply StkGetCall with (i:=i).
         constructor; [|easy].
         constructor; cbn. easy.
@@ -1834,7 +2414,7 @@ Module AtomicWFStackProof.
             eexists; eauto.
         }
         {
-          exists x3. split. easy. apply eq_inj in H3; subst.
+          exists x3. split. easy. eq_inj; subst.
           eapply StkGetRetId with (i:=i) (old:=Some a).
           constructor.
           - constructor; simpl; eauto.
@@ -1902,13 +2482,14 @@ Module AtomicWFStackProof.
           - subst_ist s; subst_ist t; psimpl; auto.
           - unfold wfs_idle in *; psimpl; eauto.
           - subst_ist s; subst_ist t; auto.
+          - subst_ist s; subst_ist t; auto.
         }
         (* guarantee *)
         {
           exists (comRetPoss i
           (comInvPoss i (MkPoss T (F A) VF (WFSsIdle []) PCalls PRets) WFPop
              (WFSsPend i [] WFPop)) WFPop (WFSsIdle []) (PASS None)).
-          split. easy. apply eq_inj in H5; subst.
+          split. easy. eq_inj; subst.
           (* inversion H6; subst; clear H6. *)
           eapply StkGetRetEmp with (i:=i).
           constructor.
@@ -1951,18 +2532,33 @@ Module AtomicWFStackProof.
     eapply SafeBind with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i WFPop s x /\
-          exists vs, list_seg (eval_heap (memSt s)) (Some old) None vs))
+            on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (Some old) None /\
+            exists vs, list_seg (eval_heap (memSt s)) (Some old) None vs))
       (QR:=fun r _ _ => LiftSPrec (fun s x =>
           match r with (v, next) =>
           ReadyWaiting i WFPop s x /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (Some old) None /\
           (exists h, (eval_heap (memSt s)) = Some h /\ h old = Some (v, next)) /\
           exists vs, list_seg (eval_heap (memSt s)) (Some old) None (v :: vs)
           end
         )).
     (* QI stable *)
-    { admit. }
+    {
+      begin_stable.
+      specialize (H0 x1 eq_refl) as [? [? ?]].
+      eexists; split; eauto.
+      eapply get_post_stable with (vs0:=[]).
+      psplit; eauto.
+    }
     (* QR stable *)
-    { admit. }
+    {
+      begin_stable.
+      destruct v.
+      specialize (H0 x1 eq_refl) as [? [? ?]].
+      eexists; split; eauto.
+      eapply pop_read_post_stable.
+      psplit; eauto.
+    }
     (* commit *)
     {
       clear rec. begin_commit.
@@ -1983,7 +2579,7 @@ Module AtomicWFStackProof.
         try now subst_ist s; subst_ist t.
       }
       {
-        exists x5. split. easy. apply eq_inj in H5; subst.
+        exists x5. split. easy. eq_inj; subst.
         eapply StkReadCall with (i:=i) (addr:=old).
         constructor; [|easy].
         constructor; cbn. easy.
@@ -2015,17 +2611,18 @@ Module AtomicWFStackProof.
           constructor; [do 2 constructor|auto];
           try now subst_ist s; subst_ist t.
         }
+        split; auto.
         {
-          ddestruct H15.
-          inversion H5; subst.
-          inversion H14; subst h0.
-          inversion H12; subst l.
-          rewrite H13 in H15; inversion H15; subst.
+          ddestruct H17.
+          inversion H6; subst.
+          inversion H14; subst l.
+          inversion H16; subst h0.
+          rewrite H15 in H17; inversion H17; subst.
           eauto.
         }
       }
       {
-        exists x4. split. easy. apply eq_inj in H4; subst.
+        exists x4. split. easy. eq_inj; subst.
         eapply StkReadRet with (i:=i) (addr:=old) (v:=(v, next)).
         - inversion H5; subst.
           inversion H4; subst.
@@ -2044,6 +2641,7 @@ Module AtomicWFStackProof.
     eapply SafeBind with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i WFPop s x /\
+          on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (Some old) None /\
           (exists h, (eval_heap (memSt s)) = Some h /\ h old = Some (v, next)) /\
           exists vs, list_seg (eval_heap (memSt s)) (Some old) None (v :: vs)
         ))
@@ -2053,9 +2651,23 @@ Module AtomicWFStackProof.
           else ReadyDone i WFPop FAIL s x
         )).
     (* QI stable *)
-    { admit. }
+    {
+      begin_stable.
+      specialize (H0 x1 eq_refl) as [? [? ?]].
+      eexists; split; eauto.
+      eapply pop_read_post_stable.
+      psplit; eauto.
+      do 2 (split; eauto).
+    }
     (* QR stable *)
-    { admit. }
+    { 
+      begin_stable.
+      destruct v0;
+      specialize (H0 x1 eq_refl) as [? [? ?]];
+      eexists; split; eauto;
+      eapply ready_done_stable;
+      psplit; eauto.
+    }
     (* commit *)
     {
       clear rec. begin_commit.
@@ -2070,12 +2682,12 @@ Module AtomicWFStackProof.
       {
         inversion H2; subst; subst_ist s; subst_ist t.
         exists x6. split; auto.
-        split; eauto.
-        constructor; [do 2 constructor|auto];
+        do 2 (split; eauto).
+        do 2 constructor;
         try now subst_ist s; subst_ist t.
       }
       {
-        exists x6. split. easy. apply eq_inj in H5; subst.
+        exists x6. split. easy. eq_inj; subst.
         eapply StkCASCall with (i:=i) (old:=Some old) (new:=next).
         constructor; [|easy].
         constructor; cbn. easy.
@@ -2093,7 +2705,7 @@ Module AtomicWFStackProof.
       destruct ready_wait0.
       psimpl. psimpl.
       inversion H2; subst; forward_istep_cas_aux s t;
-      ddestruct H24; psimpl.
+      ddestruct H28; psimpl.
       (* cas succ *)
       {
         rename x5 into vs.
@@ -2148,12 +2760,17 @@ Module AtomicWFStackProof.
           try now rewrite eqb_id.
           - inversion same_stack0; subst.
             subst_ist s; subst_ist t; psimpl; auto.
-            inversion H21; subst l.
-            rewrite H5 in H22; inversion H22; subst x6.
-            rewrite H7 in H26; inversion H26; subst l2.
+            inversion H25; subst l.
+            rewrite H6 in H26; inversion H26; subst x6.
+            rewrite H8 in H30; inversion H30; subst l2.
             auto.
           - unfold wfs_idle in *; psimpl; eauto.
           - subst_ist s; subst_ist t; auto.
+          - subst_ist s; subst_ist t; auto.
+            inversion ocw0; subst.
+            rewrite H6 in H7; inversion H7; subst x6.
+            inversion H20; subst.
+            rewrite H25 in H8; inversion H8; subst; auto.
         }
         (* guarantee *)
         {
@@ -2168,7 +2785,7 @@ Module AtomicWFStackProof.
               (WFSsIdle vs)
               (PASS (Some v))
           ).
-          split. easy. apply eq_inj in H17; subst.
+          split. easy. eq_inj; subst.
           (* inversion H6; subst; clear H6. *)
           eapply StkCASRetPopPass with (i:=i) (v:=v) (new:=next) (old:=old); eauto.
           constructor.
@@ -2259,7 +2876,7 @@ Module AtomicWFStackProof.
             WFPop
             (WFSsIdle vs0)
             FAIL).
-          split. easy. apply eq_inj in H17; subst.
+          split. easy. eq_inj; subst.
           (* inversion H6; subst; clear H6. *)
           eapply StkCASRetPopFail with (i:=i) (new:=next) (old:=Some old); eauto.
           constructor.
@@ -2294,7 +2911,7 @@ Module AtomicWFStackProof.
     unfold sub, subRelt;
     intros; unfold LiftSPrec in H;
     psimpl; exists x4; now destruct H3.
-  Admitted.
+  Qed.
 
   Theorem WFStackCorrect:
     VerifyImpl VE VF
@@ -2348,6 +2965,11 @@ Module AtomicWFStackProof.
         unfold eval_stack_und, memSt, casSt in *.
         setoid_rewrite <- H4 in H2. 
         eapply write_excl0; eauto.
+      }
+      {
+        unfold on_chain_written in *.
+        subst_ist s.
+        
       }
     }
     {
@@ -2403,7 +3025,7 @@ Module AtomicWFStackProof.
       }
       {
         unfold LiftSRelt.
-        intros. apply eq_inj in H; subst.
+        intros. eq_inj; subst.
         exists (retPoss i x0).
         split.
         {

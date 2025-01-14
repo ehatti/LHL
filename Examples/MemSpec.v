@@ -17,12 +17,15 @@ Variant MemSig {V} : ESig :=
 | MRead (addr : Addr) : MemSig V.
 Arguments MemSig : clear implicits.
 
+Variant LocStat {T} :=
+| LEmp | LAlloc (i : Name T) | LWritten.
+
 Module WriteRacyMem.
   Variant MemState {T V} :=
-  | MsIdle (heap : @Heap V) (loc : @Heap (Name T))
-  | MsAllocPend (t : Name T) (heap : @Heap V) (loc : @Heap (Name T))
-  | MsReadPend (t : Name T) (heap : @Heap V) (loc : @Heap (Name T)) (addr : Addr)
-  | MsWritePend (t : Name T) (heap : @Heap V) (loc : @Heap (Name T)) (addr : Addr) (val : V)
+  | MsIdle (heap : @Heap V) (loc : @Heap (@LocStat T))
+  | MsAllocPend (t : Name T) (heap : @Heap V) (loc : @Heap (@LocStat T))
+  | MsReadPend (t : Name T) (heap : @Heap V) (loc : @Heap (@LocStat T)) (addr : Addr)
+  | MsWritePend (t : Name T) (heap : @Heap V) (loc : @Heap (@LocStat T)) (addr : Addr) (val : V)
   | MsUBIdle
   | MsUBPend (t : Name T) {R : Type} (m : MemSig V R)
   | MsUBWritePend (t : Name T) {R : Type} (m : MemSig V R)
@@ -35,10 +38,10 @@ Module WriteRacyMem.
     | _ => None
     end.
   
-  Definition eval_loc  {T V} (st : MemState T V) : option (@Heap (Name T)) :=
+  Definition eval_loc {T V} (st : MemState T V) : (@Heap (@LocStat T)) :=
     match st with
-    | MsIdle _ loc | MsAllocPend _ _ loc | MsReadPend _ _ loc _ | MsWritePend _ _ loc _ _ => Some loc
-    | _ => None
+    | MsIdle _ loc | MsAllocPend _ _ loc | MsReadPend _ _ loc _ | MsWritePend _ _ loc _ _ => loc
+    | _ => empty_heap
     end.
   
 
@@ -52,7 +55,7 @@ Module WriteRacyMem.
       MemStep (MsAllocPend i h loc)
               (i, RetEv MAlloc l) 
               (* instantiate the location with some arbitrary value *)
-              (MsIdle (heap_update l v h) (heap_update l i loc))
+              (MsIdle (heap_update l v h) (heap_update l (LAlloc i) loc))
     (* read steps *)
     | MemReadCall i h l loc:
       MemStep (MsIdle h loc) (i, CallEv (MRead l)) (MsReadPend i h loc l)
@@ -84,7 +87,7 @@ Module WriteRacyMem.
       MemStep (MsWritePend i h loc l v)
               (i, RetEv (MWrite l v) tt)
               (* update the location to ready value after return *)
-              (MsIdle (heap_update l v h) loc)
+              (MsIdle (heap_update l v h) (heap_update l LWritten loc))
     (* UB steps *)
     | MemStepUBCall i R (m : MemSig _ R):
       MemStep MsUBIdle (i, CallEv m) (MsUBPend i m)
