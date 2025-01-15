@@ -6,11 +6,10 @@ From LHL.Core Require Import
 From LHL.Util Require Import
   Tactics
   TransUtil
-  Util.
+  Util
+  Heap.
 
 Require Import Coq.Logic.FunctionalExtensionality.
-
-Definition Addr := nat.
 
 Variant MemSig {V} : ESig :=
 | MAlloc : MemSig Addr
@@ -18,17 +17,15 @@ Variant MemSig {V} : ESig :=
 | MRead (addr : Addr) : MemSig V.
 Arguments MemSig : clear implicits.
 
-Definition Heap {V : Type} : Type := Addr -> option V.
-Definition heap_update {V : Type} (addr : Addr) (val : V) (h : Heap) : Heap :=
-  fun addr' => if Nat.eqb addr addr' then Some val else h addr'.
-Definition empty_heap {V : Type} : Heap := fun _ => @None V.
+Variant LocStat {T} :=
+| LEmp | LAlloc (i : Name T) | LWritten.
 
 Module WriteRacyMem.
   Variant MemState {T V} :=
-  | MsIdle (heap : @Heap V)
-  | MsAllocPend (t : Name T) (heap : @Heap V)
-  | MsReadPend (t : Name T) (heap : @Heap V) (addr : Addr)
-  | MsWritePend (t : Name T) (heap : @Heap V) (addr : Addr) (val : V)
+  | MsIdle (heap : @Heap V) (loc : @Heap (@LocStat T))
+  | MsAllocPend (t : Name T) (heap : @Heap V) (loc : @Heap (@LocStat T))
+  | MsReadPend (t : Name T) (heap : @Heap V) (loc : @Heap (@LocStat T)) (addr : Addr)
+  | MsWritePend (t : Name T) (heap : @Heap V) (loc : @Heap (@LocStat T)) (addr : Addr) (val : V)
   | MsUBIdle
   | MsUBPend (t : Name T) {R : Type} (m : MemSig V R)
   | MsUBWritePend (t : Name T) {R : Type} (m : MemSig V R)
@@ -37,53 +34,60 @@ Module WriteRacyMem.
 
   Definition eval_heap {T V} (st : MemState T V) : option (@Heap V) :=
     match st with
-    | MsIdle h | MsAllocPend _ h | MsReadPend _ h _ | MsWritePend _ h _ _ => Some h
+    | MsIdle h _ | MsAllocPend _ h _ | MsReadPend _ h _ _ | MsWritePend _ h _ _ _ => Some h
     | _ => None
     end.
+  
+  Definition eval_loc {T V} (st : MemState T V) : (@Heap (@LocStat T)) :=
+    match st with
+    | MsIdle _ loc | MsAllocPend _ _ loc | MsReadPend _ _ loc _ | MsWritePend _ _ loc _ _ => loc
+    | _ => empty_heap
+    end.
+  
 
   Variant MemStep {T V} : MemState T V -> (ThreadEvent T (MemSig V)) -> MemState T V -> Prop :=
     (* alloc steps *)
-    | MemMAllocCall i h:
-      MemStep (MsIdle h) (i, CallEv MAlloc) (MsAllocPend i h)
-    | MemMAllocRet i h (v:V) (l:Addr):
+    | MemMAllocCall i h loc:
+      MemStep (MsIdle h loc) (i, CallEv MAlloc) (MsAllocPend i h loc)
+    | MemMAllocRet i h loc (v:V) (l:Addr):
       (* allocate a new location *)
       h l = None ->
-      MemStep (MsAllocPend i h)
+      MemStep (MsAllocPend i h loc)
               (i, RetEv MAlloc l) 
               (* instantiate the location with some arbitrary value *)
-              (MsIdle (heap_update l v h))
+              (MsIdle (heap_update l v h) (heap_update l (LAlloc i) loc))
     (* read steps *)
-    | MemReadCall i h l:
-      MemStep (MsIdle h) (i, CallEv (MRead l)) (MsReadPend i h l)
-    | MemReadRet i h l v:
+    | MemReadCall i h l loc:
+      MemStep (MsIdle h loc) (i, CallEv (MRead l)) (MsReadPend i h loc l)
+    | MemReadRet i h l v loc:
       (* can only read locations that are ready *)
       (* read pending values is undefined because the spec needs to ensure this will never happen *)
       h l = Some v ->
-      MemStep (MsReadPend i h l) (i, RetEv (MRead l) v) (MsIdle h)
-    | MemReadUndefined i h l v:
+      MemStep (MsReadPend i h loc l) (i, RetEv (MRead l) v) (MsIdle h loc)
+    | MemReadUndefined i h l v loc:
       (* read undefined locations cause UB *)
       h l = None ->
       (* read value is random *)
-      MemStep (MsReadPend i h l) (i, RetEv (MRead l) v) MsUBIdle
+      MemStep (MsReadPend i h loc l) (i, RetEv (MRead l) v) MsUBIdle
     (* write steps *)
-    | MemWriteCall i h l v:
-      MemStep (MsIdle h)
+    | MemWriteCall i h l v loc:
+      MemStep (MsIdle h loc)
               (i, CallEv (MWrite l v))
-              (MsWritePend i h l v)
-    | MemWriteCallRace i h l v j v':
+              (MsWritePend i h loc l v)
+    | MemWriteCallRace i h l v j v' loc:
       i <> j ->
-      MemStep (MsWritePend j h l v')
+      MemStep (MsWritePend j h loc l v')
               (i, CallEv (MWrite l v))
               (MsUBWritePend j (MWrite l v') i (MWrite l v))
-    | MemWriteRetUndef i h l v:
+    | MemWriteRetUndef i h l v loc:
       h l = None ->
-      MemStep (MsWritePend i h l v) (i, RetEv (MWrite l v) tt) MsUBIdle
-    | MemWriteRet i h l v v':
+      MemStep (MsWritePend i h loc l v) (i, RetEv (MWrite l v) tt) MsUBIdle
+    | MemWriteRet i h l v v' loc:
       h l = Some v' ->
-      MemStep (MsWritePend i h l v)
+      MemStep (MsWritePend i h loc l v)
               (i, RetEv (MWrite l v) tt)
               (* update the location to ready value after return *)
-              (MsIdle (heap_update l v h))
+              (MsIdle (heap_update l v h) (heap_update l LWritten loc))
     (* UB steps *)
     | MemStepUBCall i R (m : MemSig _ R):
       MemStep MsUBIdle (i, CallEv m) (MsUBPend i m)
@@ -96,12 +100,12 @@ Module WriteRacyMem.
 
   Definition mst2tst {T V} (st : MemState T V) (i : Name T) : option {R : Type & MemSig V R} :=
     match st with
-    | MsIdle _ | MsUBIdle => None
-    | MsAllocPend j _ =>
+    | MsIdle _ _ | MsUBIdle => None
+    | MsAllocPend j _ _ =>
         if i =? j then Some (existT _ _ MAlloc) else None
-    | MsReadPend j _ l =>
+    | MsReadPend j _ _ l =>
         if i =? j then Some (existT _ _ (MRead l)) else None
-    | MsWritePend j _ l v =>
+    | MsWritePend j _ _ l v =>
         if i =? j then Some (existT _ _ (MWrite l v)) else None
     | MsUBPend j m => 
         if i =? j then Some (existT _ _ m) else None
@@ -114,11 +118,11 @@ Module WriteRacyMem.
   Program Definition memSpec {T A} : Spec T (MemSig A) := {|
     State := MemState T A;
     Step := MemStep T A;
-    Init := MsIdle empty_heap
+    Init := MsIdle empty_heap empty_heap
   |}.
   Next Obligation.
     remember (fun _ : Name T => None) as tst.
-    remember (MsIdle empty_heap) as mst.
+    remember (MsIdle empty_heap empty_heap) as mst.
     assert (tst = mst2tst mst);
     [apply functional_extensionality; intros; subst; auto|].
     rewrite H0.

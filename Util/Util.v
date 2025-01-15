@@ -31,6 +31,13 @@ Section UPDT_ISTATE.
   Definition differ_pointwise (ist ist' : A -> State) i :=
     (forall j , j <> i -> ist' j = ist j).
 
+  Lemma differ_pointwise_comm: forall i s t,
+    differ_pointwise s t i -> differ_pointwise t s i.
+  Proof.
+    unfold differ_pointwise. intros.
+    apply H in H0; auto.
+  Qed.
+
   Context 
   {eqA : A -> A -> bool}
   {eqA_dec : forall a a', eqA a a' = true <-> a = a'}.
@@ -96,6 +103,7 @@ destruct (classicT (n = m)).
 contradiction.
 easy.
 Qed.
+
 
 Lemma differ_pointwise_trivial {A B} (f : A -> B) i x :
   differ_pointwise f (fun j => if i =? j then x else f j) i.
