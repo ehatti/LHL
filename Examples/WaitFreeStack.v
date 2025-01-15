@@ -64,10 +64,13 @@ Definition WFStack A : Impl (E A) (F A) :=
   | WFPop => wfpop
   end.
 
-Module AtomicWFStackProof.
-  Import AtomicWFStack.
+Module Type WFS_PARAMS.
   Parameter T:nat.
   Parameter A:Type.
+End WFS_PARAMS.
+
+Module AtomicWFStackProof (Import Params : WFS_PARAMS).
+  Import AtomicWFStack.
 
   Definition VE : Spec T (E A) := tensorSpec casSpec memSpec.
   Definition VF : Spec T (F A) := WFStackSpec.
