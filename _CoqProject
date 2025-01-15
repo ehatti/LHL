@@ -29,22 +29,24 @@
 
 ./Core/Eutt.v
 
-./Examples/ArraySpec.v
-./Examples/NameSpec.v
-./Examples/CASSpec.v
-./Examples/ExchangerSpec.v
-./Examples/Exchanger.v
-./Examples/RandomSpec.v
-./Examples/ElimArray.v
-./Examples/AtomicStackSpec.v
-./Examples/WaitFreeStackSpec.v
-./Examples/MemSpec.v
-./Examples/EBStack.v
+# ./Examples/ArraySpec.v
+# ./Examples/NameSpec.v
+# ./Examples/CASSpec.v
+# ./Examples/ExchangerSpec.v
+# ./Examples/Exchanger.v
+# ./Examples/RandomSpec.v
+# ./Examples/ElimArray.v
+# ./Examples/AtomicStackSpec.v
+# ./Examples/WaitFreeStackSpec.v
+# ./Examples/MemSpec.v
+# ./Examples/EBStack.v
 
 ./Examples/Counter/CounterSig.v
 ./Examples/Counter/RacyCounterSpec.v
 ./Examples/FAISpec.v
+./Examples/SeqCell.v
 ./Examples/LockSpec.v
+./Examples/AtomicSpec.v
 
 ./Examples/RegSpec.v
 ./Examples/SnapshotSpec.v
