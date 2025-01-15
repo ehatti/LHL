@@ -2969,7 +2969,7 @@ Module AtomicWFStackProof.
       {
         unfold on_chain_written in *.
         subst_ist s.
-        
+        rewrite H4 in *; auto.
       }
     }
     {
