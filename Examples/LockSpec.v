@@ -35,8 +35,9 @@ Variant LockStep {T} : LockState -> ThreadEvent T LockSig -> LockState -> Prop :
 | LockRetAcq i : LockStep (LockAcqRan i) (i, RetEv Acq tt) (LockOwned i)
 | LockCallRel i : LockStep (LockOwned i) (i, CallEv Rel) (LockRelRan i)
 | LockRetRel i : LockStep (LockRelRan i) (i, RetEv Rel tt) LockUnowned
-| LockCallUBAcq i j : LockStep (LockOwned i) (j, CallEv Acq) (LockUB (Some (j, Acq)))
-| LockCallRelUB i : LockStep LockUnowned (i, CallEv Rel) (LockUB (Some (i, Rel)))
+| LockCallUBAcq i : LockStep (LockOwned i) (i, CallEv Acq) (LockUB (Some (i, Acq)))
+| LockCallRelDUB i : LockStep LockUnowned (i, CallEv Rel) (LockUB (Some (i, Rel)))
+| LockCallRelOUB i j : i <> j -> LockStep (LockOwned j) (i, CallEv Rel) (LockUB (Some (i, Rel)))
 | LockCallUB i m : LockStep (LockUB None) (i, CallEv m) (LockUB (Some (i, m)))
 | LockRetUB i m v : LockStep (LockUB (Some (i, m))) (i, RetEv m v) (LockUB None).
 
@@ -165,7 +166,7 @@ Proof.
     {
       eapply SCCall with
         (a':=fun k =>
-          if j =? k then
+          if i =? k then
             Some (existT _ _ Acq)
           else
             None).
@@ -185,6 +186,31 @@ Proof.
       eapply lockSC.
       { simpl. lia. }
       2: exact H0.
+      { right. now left. }
+    }
+    {
+      eapply SCCall with
+        (a':=fun j =>
+          if i0 =? j then
+            Some (existT _ _ Rel)
+          else
+            None).
+      { easy. }
+      { now rewrite eqb_id. }
+      { apply differ_pointwise_trivial. }
+      ddestruct H0. constructor.
+      ddestruct H0.
+      eapply SCRet with
+        (a':=fun _ => None).
+      { now rewrite eqb_id. }
+      { easy. }
+      {
+        unfold differ_pointwise.
+        intros. now rewrite eqb_nid.
+      }
+      eapply lockSC.
+      { simpl. lia. }
+      2: exact H1.
       { right. now left. }
     }
   }

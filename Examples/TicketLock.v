@@ -1,19 +1,27 @@
+From Paco Require Import paco.
+
 From LHL.Core Require Import
   Program
+  ProgramFacts
   ProgramRules
   Specs
   Logic
   LogicFacts
+  LogicPaco
   Tensor
   Traces
-  Linearizability.
+  Linearizability
+  VisPoss
+  SingConds.
 
 From LHL.Examples Require Import
   LockSpec
   FAISpec
-  YieldSpec
-  CounterSpec
-  VarSpec.
+  SeqCell
+  NameSpec
+  ArraySpec
+  Counter.CounterSig
+  Counter.RacyCounterSpec.
 
 From LHL.Util Require Import
   Tactics
@@ -25,308 +33,274 @@ From Coq Require Import
   Program.Equality
   Logic.FunctionalExtensionality
   Logic.PropExtensionality
-  Logic.Classical_Prop.
+  Logic.Classical_Prop
+  Lists.List.
 
-Definition Underlay := FAISig |+| CounterSig |+| VarSig nat.
+Require Import Unicode.Utf8.
 
-Definition acq : Prog Underlay unit :=
-  my_tick <- call FAI;
-  call (SetVar my_tick);;
-  while (cur_tick <- call Get; ret (negb (cur_tick =? my_tick)))
-    skip;;
-  call ClrVar.
+Import ListNotations.
 
-Definition rel : Prog Underlay unit :=
+CoFixpoint until {E R} (m : E R) (k : R -> bool) : Prog E unit :=
+  Bind m (λ x,
+    if k x then
+      ret tt
+    else
+      until m k).
+
+Section lemUntil.
+
+Context
+  {T}
+  {i : Name T}
+  {E F : ESig}
+  {VE : Spec T E}
+  {VF : Spec T F}
+  {R G : Relt VE VF}.
+
+Notation SomeRet I := (λ s ρ t σ, ∃ x, I x s ρ t σ).
+
+Lemma lemUntil {I : bool -> Relt VE VF} {A}
+  {m : E A} {k : A -> bool} :
+  VerifyProg i R G (I true) (call (E:=E) m) (λ x, I (k x)) ->
+  VerifyProg i R G (SomeRet I) (until m k) (λ _, I false).
+Admitted.
+
+End lemUntil.
+
+Definition E (T : nat) := FAISig |+| CounterSig.
+Definition F := LockSig.
+
+CoFixpoint acq_body {T} (my_tkt : nat) : Prog (E T) unit :=
+  Bind (inr Get) (λ cur_tkt,
+  if cur_tkt =? my_tkt then
+    ret tt
+  else
+    acq_body my_tkt).
+
+Definition acq {T} : Prog (E T) unit :=
+  my_tkt <- call FAI;
+  acq_body my_tkt.
+
+Definition rel {T} : Prog (E T) unit :=
   call Inc.
 
-Definition ticketLockImpl : Impl Underlay LockSig :=
+Definition ticketLockImpl {T} : Impl (E T) F :=
   fun _ m => match m with
   | Acq => acq
   | Rel => rel
   end.
 
-Definition E := Underlay.
-Definition F := LockSig.
-Definition VE := tensorSpec faiSpec (tensorSpec counterSpec (varSpec nat)).
-Definition VF := lockSpec.
+Definition VE T : Spec T (E T) :=
+  faiSpec ⊗ rcntSpec.
+Definition VF T : Spec T F :=
+  lockSpec.
 
-Definition Relt := Relt VE VF.
-Definition Prec := Prec VE VF.
-Definition Post := Post VE VF.
+Definition Relt T := SRelt (VE T) (VF T).
+Definition Prec T := SPrec (VE T) (VF T).
 
-Definition countState (s : @InterState E F VE) : State counterSpec :=
-  LState (RState (snd s)).
-Definition varState (s : @InterState E F VE) : State (varSpec nat) :=
-  RState (RState (snd s)).
+Notation faiSt s := (LState (snd s)).
+Notation cntSt s := (RState (snd s)).
 
-Definition newtkt (s : @InterState E F VE) : nat :=
-  fst (LState (snd s)).
-Definition ctrval (s : @InterState E F VE) : nat :=
-  match countState s with
-  | CounterDef n _ => n
-  | CounterUB => 0
-  end.
-Definition mytkt i (s : @InterState E F VE) : option nat :=
-  match RState (RState (snd s)) i with
-  | VarUnset => None
-  | VarSet n _ => Some n
-  end.
+Notation faiVal s := (fst (faiSt s)).
+Notation cntVal s := (
+  match (cntSt s).(rcnt_num) with
+  | Some n => n
+  | None => 0
+  end
+).
 
-Definition Inv (i : ThreadName) : Prec :=
-  fun s ρs => exists ρ, ρs = eq ρ /\
-    countState s <> CounterUB /\
-    (forall tkt,
-      Some tkt = mytkt i s ->
-      ctrval s <= tkt) /\
-    ctrval s <= newtkt s /\
-    (mytkt i s = Some (ctrval s) ->
-      (exists m, PState ρ = LockDef (Some i) m) \/ PState ρ = LockUnowned) /\
-    (newtkt s = ctrval s ->
-      PState ρ = LockUnowned) /\
-    (forall m,
-      PState ρ = LockDef (Some i) m ->
-      mytkt i s = Some (ctrval s)).
+Definition Ready {T} my_tkt i (s : InterState F (VE T)) :=
+  fst s i = UCall Acq (inr Get)
+    (λ cur_tkt,
+      if cur_tkt =? my_tkt then
+        ret tt
+      else
+        acq_body my_tkt).
 
-Definition Precs (i : ThreadName) {A} (m : LockSig A) : Prec :=
-  fun s ρs => exists ρ, ρs = eq ρ /\
-    match m with
-    | Acq =>
-        (PState ρ <> LockOwned i /\ PState ρ <> LockUB) ->
-          Inv i s ρs /\
-          varState s i = VarUnset
-    | Rel =>
-        PState ρ = LockOwned i ->
-          Inv i s ρs /\
-          (exists n, countState s = CounterIdle n) /\
-          varState s i = VarUnset
-    end.
+Variant PC := pc.
 
-Definition Posts (i : ThreadName) {A} (m : LockSig A) : Post A :=
-  fun _ s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\
-    match m with
-    | Acq =>
-        (PState σ = LockOwned i /\
-          PState ρ <> LockOwned i /\ PState ρ <> LockUB /\
-          Inv i t σs /\
-          (exists n, countState t = CounterIdle n) /\
-          varState t i = VarUnset) \/
-        (PState σ = LockUB /\
-          (PState ρ = LockOwned i \/ PState ρ = LockUB))
-    | Rel =>
-        (PState σ <> LockOwned i /\
-          PState ρ = LockOwned i /\
-          Inv i t σs /\
-          varState t i = VarUnset) \/
-        (PState σ = LockUB /\
-          PState ρ <> LockOwned i)
-    end.
+Record Inv {T} {i : Name T}
+  {s : InterState F (VE T)} {ρ : Poss (VF T)}
+: Prop
+:= MkInv {
+  lock_idle :
+    ρ.(PState).(lock_pend) = None;
+  owns_resp :
+    (∃ j, i <> j /\
+      ρ.(PState).(lock_owner) = Some (Some j)) ->
+    ∀ my_tkt cur_tkt,
+      Ready my_tkt i s ->
+      Some cur_tkt = (cntSt s).(rcnt_num) ->
+      my_tkt ≠ cur_tkt;
+  rcnt_defn :
+    ρ.(PState).(lock_owner) ≠ None ->
+    (cntSt s).(rcnt_num) ≠ None;
+  owns_resp2 :
+    (∃ j, i <> j /\
+      ρ.(PState).(lock_owner) = Some (Some j)) ->
+    ∀ cur_tkt my_tkt,
+      Some cur_tkt = (cntSt s).(rcnt_num) ->
+      fst s i = Cont Acq (acq_body my_tkt) ->
+      my_tkt ≠ cur_tkt;
+  owns_wait :
+    (* ∀ nret : fst s i ≠ Cont Acq (Return tt), *)
+    (* ∀ nret : True, *)
+    (* ∀ nrel :
+      ¬((∃ p, fst s i = Cont Rel p) \/
+        (∃ A (m : E T A) k, fst s i = UCall Rel m k)), *)
+    ∀ own,
+    ∀ nret : own ≠ Some i,
+    ∀ nrel :
+      ¬(False \/
+        (∃ A (m : E T A) k, fst s i = UCall Rel m k)),
+      ρ.(PState).(lock_owner) = Some own ->
+      ∀ cur_tkt,
+        Some cur_tkt = (cntSt s).(rcnt_num) ->
+        cur_tkt = faiVal s ->
+        own = None;
+  tkts_less :
+    (* ∀ nrel :
+      ¬((∃ p, fst s i = Cont Rel p) \/
+        (∃ A (m : E T A) k, fst s i = UCall Rel m k)), *)
+    ∀ nrel :
+      ¬(False \/
+        (∃ A (m : E T A) k, fst s i = UCall Rel m k)),
+    ρ.(PState).(lock_owner) ≠ None ->
+    (* ∀ nnone : ρ.(PState).(lock_owner) ≠ Some None, *)
+    ∀ cur_tkt,
+      Some cur_tkt = (cntSt s).(rcnt_num) ->
+      cur_tkt ≤ faiVal s;
+  tkts_uniq :
+    ρ.(PState).(lock_owner) ≠ None ->
+    (* ∀ nnone : ρ.(PState).(lock_owner) ≠ Some None, *)
+    ∀ cur_tkt j,
+      i ≠ j ->
+      (* Some cur_tkt = (cntSt s).(rcnt_num) -> *)
+      (Ready cur_tkt i s \/ fst s i = Cont Acq (acq_body cur_tkt)) ->
+      (Ready cur_tkt j s \/ fst s j = Cont Acq (acq_body cur_tkt)) ->
+      False;
+  tkts_boun :
+    ρ.(PState).(lock_owner) ≠ None ->
+    ∀ j my_tkt,
+      (* i ≠ j -> *)
+      True ->
+      (Ready my_tkt j s \/ fst s j = Cont Acq (acq_body my_tkt)) ->
+      my_tkt < faiVal s;
+  rcnt_wait :
+    ¬(ρ.(PState).(lock_owner) = Some (Some i) /\
+      ∃ j, i ≠ j /\
+        (cntSt s).(rcnt_pend) = Some (MetPend j Inc));
+  wait_less :
+    ∀ i,
+      ρ.(PState).(lock_owner) = Some (Some i) ->
+      ∀ cur_tkt,
+        Some cur_tkt = rcnt_num (cntSt s) ->
+        cur_tkt < faiVal s
+}.
+Arguments Inv {T} i s ρ.
 
-Definition ManyInvokeReturn i : Relt :=
-  RTC (fun s ρs t σs =>
-    exists j, j <> i /\
-      (InvokeAny ticketLockImpl j s ρs t σs \/
-       ReturnAny ticketLockImpl j s ρs t σs)).
+Definition Precs {T A} (i : Name T) (m : LockSig A) : Prec T :=
+  Inv i.
 
-Definition Rely (i : ThreadName) : Relt :=
-  fun s ρs t σs => forall ρ, ρs = eq ρ -> exists σ, σs = eq σ /\ (
-    ManyInvokeReturn i s ρs t σs \/
-    (countState s <> CounterUB ->
-      countState t <> CounterUB) /\
-    ((forall tkt, Some tkt = mytkt i s -> ctrval s <= tkt) ->
-      forall tkt',
-      Some tkt' = mytkt i t ->
-      ctrval t <= tkt') /\
-    (ctrval s <= newtkt s ->
-      ctrval t <= newtkt t) /\
-    ((mytkt i s = Some (ctrval s) ->
-      (exists m, PState ρ = LockDef (Some i) m) \/ PState ρ = LockUnowned) ->
-      mytkt i t = Some (ctrval t) ->
-        (exists m, PState σ = LockDef (Some i) m) \/ PState σ = LockUnowned) /\
-    ((newtkt s = ctrval s -> PState ρ = LockUnowned) ->
-      newtkt t = ctrval t ->
-      PState σ = LockUnowned) /\
-    (forall m,
-      (PState ρ = LockDef (Some i) m ->
-        mytkt i s = Some (ctrval s)) ->
-      PState σ = LockDef (Some i) m ->
-        mytkt i t = Some (ctrval t)) /\
-    (forall m,
-      PState ρ = LockDef (Some i) m <-> PState σ = LockDef (Some i) m) /\
-    (forall m,
-      PState ρ = LockDef (Some i) m ->
-      PState ρ = PState σ /\
-      countState s = countState t) /\
-    (forall m,
-      PState ρ <> LockDef (Some i) m <-> PState σ <> LockDef (Some i) m) /\
-    fst s i = fst t i /\
-    (PState σ <> LockUB -> PState ρ <> LockUB) /\
-    (forall m,
-      PState σ = LockUB ->
-      PState ρ <> LockDef (Some i) m ->
-      PState ρ = LockUB) /\
-    (PState ρ = LockUB ->
-      PState σ = LockUB) /\
-    (varState s i = varState t i)
-  ).
+Definition Posts {T A} (i : Name T) (m : LockSig A) (v : A) : Relt T :=
+  fun _ _ s ρ =>
+    Inv i s ρ /\
+    PCalls ρ i = CallDone m /\
+    PRets ρ i = RetPoss m v.
 
-Definition Guar (i : ThreadName) : Relt :=
-  fun s ρs t σs =>
-    forall j, i <> j -> Rely j s ρs t σs.
+Notation UStep s i e t := (
+  InterStep ticketLockImpl s (i, UEvent (Some e)) t
+).
 
-Definition comInvPoss {F} {VF : Spec F} i (ρ : Poss VF) {A} (m : F A) (s : State VF) : Poss VF := {|
-  PState := s;
-  PCalls j := if i =? j then CallDone m else PCalls ρ j;
-  PRets j := PRets ρ j
-|}.
+Record Rely {T} {i : Name T}
+  {s : InterState F (VE T)} {ρ : Poss (VF T)}
+  {t : InterState F (VE T)} {σ  : Poss (VF T)}
+:= {
+  pres_inv :
+    Inv i s ρ -> Inv i t σ;
+  pres_call :
+    PCalls ρ i = PCalls σ i;
+  pres_ret :
+    PRets ρ i = PRets σ i;
+  pres_ths :
+    fst s i = fst t i;
+  pres_undef :
+    ρ.(PState).(lock_owner) = None ->
+    σ.(PState).(lock_owner) = None;
+  (*pres_owns :
+    σ.(PState).(lock_owner) ≠ None ->
+    ρ.(PState).(lock_owner) = Some (Some i) ->
+    σ.(PState).(lock_owner) = Some (Some i) *)
+}.
+Arguments Rely {T} i s ρ t σ.
 
-Definition comRetPoss {F} {VF : Spec F} i (ρ : Poss VF) {A} (m : F A) (s : State VF) v : Poss VF := {|
-  PState := s;
-  PCalls := PCalls ρ;
-  PRets j := if i =? j then RetPoss m v else PRets ρ j
-|}.
+Definition Guar {T} (i : Name T) : Relt T :=
+  λ s ρ t σ,
+    ∀ j, i ≠ j ->
+      Rely j s ρ t σ.
 
+(* Record Guar {T} {i : Name T}
+  {s : InterState F (VE T)} {ρ : Poss (VF T)}
+  {t : InterState F (VE T)} {σ  : Poss (VF T)}
+:= {
+  gpres_inv :
+    ∀ j, i ≠ j -> Inv j s ρ -> Inv j t σ;
+  gpres_call :
+    ∀ j, i ≠ j -> PCalls ρ j = PCalls σ j;
+  gpres_ret :
+    ∀ j, i ≠ j -> PRets ρ j = PRets σ j;
+  gpres_ths :
+    ∀ j, i ≠ j -> fst s j = fst t j;
+  gresp_othr :
+    ∀ j,
+      i ≠ j ->
+      σ.(PState).(lock_owner) ≠ Some (Some j)
+}.
+Arguments Guar {T} i s ρ t σ.
 
-(* Tactics *)
-
-Ltac decide_prop P :=
-  let H := fresh in
-  assert (H : P \/ ~P) by apply excluded_middle;
-  destruct H.
-
-Ltac set_ext x := extensionality x; apply propositional_extensionality.
-
-(* Extra lemmas *)
-
-Lemma not_and {P Q} :
-  (~(P /\ Q)) = ~P \/ ~Q.
-apply propositional_extensionality. split; intros.
-decide_prop P. decide_prop Q.
-exfalso. apply H. easy.
-right. easy.
-left. easy.
-unfold not. intros. psimpl.
-destruct H; contradiction.
+Lemma tollens P Q :
+  (P -> Q) ->
+  ¬Q -> ¬P.
+Proof.
+  unfold not. intros.
+  now apply H0, H.
 Qed.
 
-Lemma DNE {P} :
-  (~~P) = P.
-apply propositional_extensionality.
-tauto.
+Lemma PPNN P : P -> ¬¬P.
+Proof.
+  unfold not. intros.
+  now apply H0.
 Qed.
 
-Lemma tollens {P Q : Prop} :
-  ~Q -> (P -> Q) -> ~P.
-tauto.
-Qed.
+Lemma Guar_in_Rely {T} :
+  ∀ i j : Name T,
+    i ≠ j ->
+    Guar i S=> Rely j.
+Proof.
+  unfold ssub, subSRelt.
+  intros. destruct H0.
+  constructor.
+  { intros. now apply gpres_inv0. }
+  { intros. now apply gpres_call0. }
+  { intros. now apply gpres_ret0. }
+  { intros. now apply gpres_ths0. }
+  {
+    
+  }
+  {
+    intros.
+    specialize (gresp_othr0 j).
+    apply tollens with
+      (P:= i ≠ j)
+      (Q:= lock_owner (PState σ) ≠ Some (Some j))
+      in gresp_othr0.
+    exfalso. now apply gresp_othr0.
+    now apply PPNN.
+  } *)
 
-Lemma eq_inj {A} :
-  forall x y : A, eq x = eq y -> x = y.
-intros.
-assert (forall z, eq x z = eq z y).
-{
-  intros. apply propositional_extensionality.
-  split; intros.
-  rewrite H in H0. easy.
-  rewrite H. easy.
-}
-specialize (H0 x).
-rewrite <- H0. easy.
-Qed.
-
-Lemma eq_inj_wk {A} :
-  forall (x : A) (P : A -> Prop),
-  eq x = P ->
-  forall y, P y -> y = x.
-intros. rewrite <- H in H0. easy.
-Qed.
-
-Lemma newtkt_eq :
-  forall s t : @InterState E F VE,
-  snd s = snd t ->
-  newtkt s = newtkt t.
-unfold newtkt. congruence.
-Qed.
-
-Lemma ctrval_eq :
-  forall s t : @InterState E F VE,
-  snd s = snd t ->
-  ctrval s = ctrval t.
-unfold ctrval, countState. intros.
-rewrite H. easy.
-Qed.
-
-Lemma mytkt_eq i :
-  forall s t : @InterState E F VE,
-  snd s = snd t ->
-  mytkt i s = mytkt i t.
-unfold mytkt. intros.
-rewrite H. easy.
-Qed.
-
-Lemma countState_eq :
-  forall s t : @InterState E F VE,
-  snd s = snd t ->
-  countState s = countState t.
-unfold countState. intros.
-rewrite H. easy.
-Qed.
-
-Lemma cntSt_to_ctrval :
-  forall s t : @InterState E F VE,
-  countState s = countState t ->
-  ctrval s = ctrval t.
-unfold ctrval. intros.
-rewrite H. easy.
-Qed.
-
-Lemma varState_eq :
-  forall s t : @InterState E F VE,
-  snd s = snd t ->
-  varState s = varState t.
-unfold varState. intros.
-rewrite H. easy.
-Qed.
-
-Lemma Invoke_pres_state {E F VE VF} {M : Impl E F} :
-  forall A m i s ρ t σ,
-  TInvoke (VE:=VE) (VF:=VF) M i A m s (eq ρ) t (eq σ) ->
-  PState ρ = PState σ /\
-  snd s = snd t /\
-  differ_pointwise ρ.(PCalls) σ.(PCalls) i /\
-  differ_pointwise ρ.(PRets) σ.(PRets) i.
-unfold TInvoke, TIdle. intros. psimpl.
-assert (σ = invPoss i ρ m).
-rewrite H2. cbn. rewrite eqb_id.
-exists ρ. repeat split; try (easy || apply differ_pointwise_trivial).
-subst. cbn.
-repeat split; (easy || apply differ_pointwise_trivial).
-Qed.
-
-Lemma Invoke_pres_Inv :
-  forall A m i s ρ t σ,
-  TInvoke (VE:=VE) (VF:=VF) ticketLockImpl i A m s (eq ρ) t (eq σ) ->
-  Inv i s (eq ρ) -> Inv i t (eq σ).
-intros. assert (H' := H). unfold TInvoke, TIdle in H. psimpl.
-destruct H1. cbn in *.
-assert (σ = invPoss i ρ m).
-rewrite H3. cbn. rewrite eqb_id.
-exists ρ. repeat split; try (easy || apply differ_pointwise_trivial).
-subst. unfold Inv in *. psimpl.
-apply eq_inj in H0. subst.
-exists (invPoss i x m). split. easy.
-apply Invoke_pres_state in H'. destruct_all.
-cbn in *.
-symmetry in H12.
-repeat rewrite (countState_eq _ _ H12).
-repeat rewrite (newtkt_eq _ _ H12).
-repeat rewrite (mytkt_eq _ _ _ H12).
-repeat rewrite (ctrval_eq _ _ H12).
-easy.
-Qed.
-
-Lemma Invoke_pres_single {E F VE VF} {M : Impl E F} :
-  forall A m i s ρ t σs,
-  TInvoke (VE:=VE) (VF:=VF) M i A m s (eq ρ) t σs ->
+Lemma Invoke_pres_single {A R} :
+  forall (m : F R) i s ρ t σs,
+  TInvoke (VE:= VE A) (VF:= VF A) ticketLockImpl i R m s (eq ρ) t σs ->
   exists σ, σs = eq σ.
 intros.
 unfold TInvoke in H. psimpl.
@@ -350,1043 +324,3574 @@ set_ext σ. split; intros; destruct_all; subst.
 }
 Qed.
 
-Lemma noStateChange :
-  forall i s ρs t σs,
-  ManyInvokeReturn i s ρs t σs ->
-  fst s i = fst t i /\
-  snd s = snd t /\
-  forall σ, σs σ ->
-    exists ρ, ρs ρ /\
-      PState ρ = PState σ.
-intros.
-induction H.
-{
-  split. easy.
-  split. easy.
-  intros. exists σ. easy.
-}
-{
-  clear H0.
-  destruct_all.
-  destruct H3.
-  {
-    unfold InvokeAny, TInvoke, mapInvPoss in H3. psimpl.
-    destruct H4. cbn in *.
-    split. transitivity (fst t i). apply H6. easy. easy.
-    split. transitivity (snd t); easy.
-    intros. apply H2 in H7. clear H2. psimpl.
-    exists x3. split. easy. congruence.
-  }
-  {
-    unfold ReturnAny, TReturn, mapRetPoss in H3. psimpl.
-    destruct H4. cbn in *.
-    split. transitivity (fst t i). apply H6. easy. easy.
-    split. transitivity (snd t); easy.
-    intros. apply H2 in H9. psimpl.
-    exists x5. split. easy. congruence.
-  }
-}
+Lemma eq_sing {A} :
+  forall (x : A) (P : A -> Prop),
+  eq x = P ->
+  P x.
+Proof.
+  intros. now subst.
 Qed.
 
-Lemma Inv_stable :
-  forall i, Stable (Rely i) (Inv i).
-unfold Stable, stablePrec, sub, subPrec, Rely, Inv. intros.
-psimpl.
-specialize (H0 x1 eq_refl). destruct_all. subst.
-exists x0. split. easy.
-destruct H0.
-{
-  apply noStateChange in H. destruct_all.
-  specialize (H7 x0 eq_refl). destruct_all. subst.
-  rewrite <- H8. symmetry in H0.
-  repeat rewrite (countState_eq _ _ H0).
-  repeat rewrite (newtkt_eq _ _ H0).
-  repeat rewrite (mytkt_eq _ _ _ H0).
-  repeat rewrite (ctrval_eq _ _ H0).
-  easy.
-}
-{
-  destruct_all.
-  repeat split; auto.
-  intros. apply H10 with (m:=m).
-  intros. apply H6 with (m:=m).
-  easy. easy.
-}
-Qed.
-
-Lemma Rely_pres_single :
-  forall i s ρ t σs,
-  Rely i s (eq ρ) t σs ->
-  exists σ, σs = eq σ.
-unfold Rely. intros.
-specialize (H ρ eq_refl). psimpl.
-exists x. easy.
-Qed.
-
-Lemma Rely_pres_not_owned :
-  forall i s ρ t σ,
-  Rely i s (eq ρ) t (eq σ) ->
-  forall m,
-    PState σ <> LockDef (Some i) m <->
-    PState ρ <> LockDef (Some i) m.
-unfold Rely. intros. specialize (H ρ eq_refl). psimpl.
-apply eq_inj in H. subst.
-destruct H0.
-{
-  apply noStateChange in H. psimpl.
-  specialize (H1 x eq_refl). psimpl.
-  rewrite H2. easy.
-}
-{
-  psimpl. easy.
-}
-Qed.
-
-Lemma Rely_pres_UB_backward :
-  forall i s ρ t σ,
-  Rely i s (eq ρ) t (eq σ) ->
-  forall m,
-  PState σ = LockUB ->
-  PState ρ <> LockDef (Some i) m ->
-  PState ρ = LockUB.
-unfold Rely. intros.
-specialize (H ρ eq_refl). psimpl.
-apply eq_inj in H. subst.
-destruct H2.
-apply noStateChange in H. psimpl.
-specialize (H3 x eq_refl). psimpl.
-congruence.
-psimpl.
-apply H12 with (m:=m); easy.
-Qed.
-
-Lemma Rely_pres_UB_forward :
-  forall i s ρ t σ,
-  Rely i s (eq ρ) t (eq σ) ->
-  PState ρ = LockUB ->
-  PState σ = LockUB.
-unfold Rely. intros.
-specialize (H ρ eq_refl). psimpl.
-apply eq_inj in H. subst.
-destruct H1.
-apply noStateChange in H. psimpl.
-specialize (H2 x eq_refl). psimpl.
-congruence.
-psimpl.
-auto.
-Qed.
-
-Lemma Rely_pres_not_UB :
-  forall i s ρ t σ,
-  Rely i s (eq ρ) t (eq σ) ->
-  PState σ <> LockUB ->
-  PState ρ <> LockUB.
-unfold Rely. intros. specialize (H ρ eq_refl). psimpl.
-destruct H1.
-{
-  apply noStateChange in H1. psimpl. specialize (H3 σ eq_refl). psimpl.
-  congruence.
-}
-{
-  psimpl. apply eq_inj in H. subst.
-  apply H11. easy.
-}
-Qed.
-
-Lemma Rely_pres_owned :
-  forall i s ρ t σ,
-  Rely i s (eq ρ) t (eq σ) ->
-  forall m,
-    PState σ = LockDef (Some i) m <->
-    PState ρ = LockDef (Some i) m.
-unfold Rely. intros. specialize (H ρ eq_refl). psimpl.
-apply eq_inj in H. subst.
-destruct H0.
-{
-  apply noStateChange in H. psimpl.
-  specialize (H1 x eq_refl). psimpl.
-  rewrite H2. easy.
-}
-{
-  psimpl. easy.
-}
-Qed.
-
-Lemma Rely_pres_var :
-  forall i s ρ t σ,
-  Rely i s (eq ρ) t (eq σ) ->
-  varState s i = varState t i.
-unfold Rely. intros.
-specialize (H ρ eq_refl). psimpl.
-apply eq_inj in H. psimpl.
-destruct H0.
-apply noStateChange in H. destruct_all.
-erewrite varState_eq; easy.
-easy.
-Qed.
-
-Lemma Rely_pres_counter :
-  forall i s ρ t σ,
-  Rely i s (eq ρ) t (eq σ) ->
-  PState ρ = LockOwned i ->
-  countState s = countState t.
-unfold Rely. intros.
-specialize (H ρ eq_refl). psimpl.
-apply eq_inj in H. subst.
-destruct H1.
-apply noStateChange in H.
-erewrite countState_eq; easy.
-destruct_all.
-apply H7 in H0. easy.
-Qed.
-
-Lemma mapPossInv_pres_single :
-  forall i ρ σs A (m : F A),
-  mapPoss (VF:=VF) (eq ρ) σs (mapInvPoss i m) ->
-  exists σ, σs = eq σ.
-unfold mapInvPoss. intros.
-destruct H. specialize (H ρ eq_refl). destruct_all.
-exists x. extensionality x1. apply propositional_extensionality.
-split; intros.
-{
-  apply H0 in H8. clear H0. destruct_all. subst.
-  destruct x, x0, x1. cbn in *.
-  f_equal.
-  { congruence. }
-  {
-    extensionality k.
-    dec_eq_nats i k.
-    congruence.
-    etransitivity.
-    apply H5. easy.
-    symmetry. apply H12. easy.
-  }
-  {
-    extensionality k.
-    dec_eq_nats i k.
-    congruence.
-    etransitivity.
-    apply H6. easy.
-    symmetry. apply H13. easy.
-  }
-}
-{
-  subst. easy.
-}
-Qed.
-
-Lemma mapPossRet_pres_single :
-  forall i ρ σs A (m : F A) v,
-  mapPoss (VF:=VF) (eq ρ) σs (mapRetPoss i m v) ->
-  σs = eq (retPoss i ρ).
-unfold mapRetPoss. intros. destruct H.
-specialize (H ρ eq_refl). destruct_all.
-extensionality x0. apply propositional_extensionality.
-split; intros.
-{
-  apply H0 in H8. clear H0. psimpl.
-  unfold retPoss. destruct x1, x0. psimpl.
-  f_equal.
-  extensionality j. dec_eq_nats i j.
-  rewrite eqb_id. easy.
-  rewrite eqb_nid. symmetry. apply H12; easy. easy.
-  extensionality j. dec_eq_nats i j.
-  rewrite eqb_id. easy.
-  rewrite eqb_nid. symmetry. apply H13; easy. easy.
-}
-{
-  subst. assert (H' := H).
-  apply H0 in H'. clear H0. psimpl.
-  assert (x = retPoss i x0).
-  destruct x, x0. unfold retPoss. psimpl.
-  f_equal.
-  extensionality j. dec_eq_nats i j.
-  rewrite eqb_id. easy.
-  rewrite eqb_nid. apply H5. easy. easy.
-  extensionality j. dec_eq_nats i j.
-  rewrite eqb_id. easy.
-  rewrite eqb_nid. apply H6. easy. easy.
-  subst. easy.
-}
-Qed.
-
-(* Program logic obligations *)
-
-Lemma Rely_refl :
-  forall i s ρ, Rely i s ρ s ρ.
-unfold Rely. intros. subst.
-exists ρ0. split. easy.
-left. constructor.
-Qed.
-
-Lemma Rely_trans :
-  forall i, Rely i ->> Rely i ==> Rely i.
-unfold sub, subRelt. intros. pdestruct H.
-unfold Rely in H. unfold Rely. intros. subst.
-specialize (H ρ0 eq_refl). destruct_all. subst.
-specialize (H0 x1 eq_refl). destruct_all. subst.
-exists x0. split. easy.
-destruct H0, H1.
-{
-  left. eapply rtcTrans. repeat eexists.
-  exact H0. easy.
-}
-{
-  right.
-  apply noStateChange in H. destruct_all.
-  move H14 at bottom. symmetry in H14.
-  specialize (H15 x0 eq_refl). destruct_all. subst.
-  symmetry in H16. move H16 at bottom.
-  repeat rewrite (countState_eq _ _ H14) in *.
-  repeat rewrite (ctrval_eq _ _ H14) in *.
-  repeat rewrite (mytkt_eq _ _ _ H14) in *.
-  repeat rewrite (newtkt_eq _ _ H14) in *.
-  repeat rewrite (varState_eq _ _ H14) in *.
-  repeat rewrite H16 in *.
-  rewrite H9.
-  easy.
-}
-{
-  right.
-  apply noStateChange in H0. destruct_all.
-  specialize (H2 x1 eq_refl). destruct_all. subst.
-  (* symmetry in H1. move H1 at bottom. *)
-  repeat rewrite (countState_eq _ _ H1) in *.
-  repeat rewrite (ctrval_eq _ _ H1) in *.
-  repeat rewrite (mytkt_eq _ _ _ H1) in *.
-  repeat rewrite (newtkt_eq _ _ H1) in *.
-  repeat rewrite (varState_eq _ _ H1) in *.
-  repeat rewrite H16 in *.
-  rewrite H0.
-  easy.
-}
-{
-  right. destruct_all.
-  split. auto.
-  split. auto.
-  split. auto.
-  split. auto.
-  split. auto.
-  split.
-  {
-    intros. apply H18 with (m:=m).
-    intros. apply H5 with (m:=m).
-    easy. easy. easy.
-  }
-  split. intros. rewrite H6. easy.
-  split.
-  {
-    intros. assert (H27' := H27). apply H7 in H27. psimpl.
-    rewrite H27' in H27. symmetry in H27. assert (H27'' := H27).
-    apply H19 in H27. psimpl.
-    rewrite H27', <- H27.
-    split. easy.
-    rewrite H28.
-    apply H20 in H27''. easy.
-  }
-  split. intros. rewrite H8. easy.
-  split. rewrite H9. easy.
-  split. auto.
-  split.
-  {
-    intros. apply H11 with (m:=m). apply H24 with (m:=m).
-    easy. apply H8. easy.
-    easy.
-  }
-  split. auto.
-  rewrite H13. easy.
-}
-Qed.
-
-Lemma Guar_in_Rely :
-  forall i j : ThreadName, i <> j -> Guar i ==> Rely j.
-unfold Guar, sub, subRelt. intros. destruct_all.
-apply H0. easy.
-Qed.
-
-Lemma Inv_in_Rely :
-  forall i j : ThreadName, i <> j -> InvokeAny ticketLockImpl i ==> Rely j.
-unfold InvokeAny, TInvoke, Rely, sub, subRelt, TIdle. intros.
-destruct_all. subst. destruct H2. cbn in *.
-specialize (H5 ρ0 eq_refl). destruct_all.
-exists (invPoss i ρ0 x0). split.
-{
-  extensionality σ. apply propositional_extensionality.
-  split; intros; psimpl.
-  destruct x1, σ. unfold invPoss. cbn in *.
-  f_equal. easy.
-  extensionality j0. dec_eq_nats i j0.
-  rewrite eqb_id. easy.
-  rewrite eqb_nid, H10; easy.
-  extensionality j0. dec_eq_nats i j0.
-  rewrite eqb_id. easy.
-  rewrite eqb_nid, H11; easy.
-  exists ρ0. cbn. rewrite eqb_id.
-  repeat split; (easy || apply differ_pointwise_trivial).
-}
-{
-  cbn.
-  repeat rewrite (mytkt_eq _ _ _ H3).
-  repeat rewrite (countState_eq _ _ H3).
-  repeat rewrite (newtkt_eq _ _ H3).
-  repeat rewrite (ctrval_eq _ _ H3).
-  repeat rewrite (varState_eq _ _ H3).
-  right. rewrite H2. 2: easy.
-  easy.
-}
-Qed.
-
-Lemma Ret_in_Rely :
-  forall i j : ThreadName, i <> j -> ReturnAny ticketLockImpl i ==> Rely j.
-unfold ReturnAny, TReturn, Rely, sub, subRelt, TIdle. intros.
-destruct_all. subst. cbn in *.
-exists (retPoss i ρ0). split.
-{
-  extensionality σ. apply propositional_extensionality.
-  unfold mapRetPoss.
-  split; intros; psimpl.
-  {
-    destruct x3, σ. unfold retPoss. cbn in *.
-    f_equal. easy.
-    extensionality j0. dec_eq_nats i j0.
-    rewrite eqb_id. easy.
-    rewrite eqb_nid, H10; easy.
-    extensionality j0. dec_eq_nats i j0.
-    rewrite eqb_id. easy.
-    rewrite eqb_nid, H11; easy.
-  }
-  {
-    exists x2. cbn. rewrite eqb_id.
-    repeat split; (easy || apply differ_pointwise_trivial).
-  }
-}
-{
-  cbn. subst.
-  repeat rewrite (mytkt_eq _ _ _ H3).
-  repeat rewrite (countState_eq _ _ H3).
-  repeat rewrite (newtkt_eq _ _ H3).
-  repeat rewrite (ctrval_eq _ _ H3).
-  repeat rewrite (varState_eq _ _ H3).
-  right. repeat split; try easy.
-  destruct H2. cbn in H1. rewrite H1; easy.
-}
-Qed.
-
-Lemma init_in_Precs :
-  forall i A (m : LockSig A), Precs i m (allIdle, Init VE) (eq initPoss).
-unfold Precs. intros.
-exists initPoss. split. easy.
-destruct m.
-simpl. intros.
-split.
-exists initPoss. split. easy.
-easy.
-easy.
-intros. split.
-exists initPoss. split. easy.
-easy.
-split.
-exists 0. easy.
-easy.
-Qed.
-
-Lemma Precs_stable :
-  forall i A (m : LockSig A), Stable (Rely i) (Precs i m).
-unfold Stable, stablePrec, sub, subPrec, Precs. intros. psimpl.
-assert (exists τ, ρ = eq τ).
-eapply Rely_pres_single. exact H0. psimpl.
-exists x0. split. easy.
-destruct m.
-{
-  intros. psimpl. split.
-  apply Inv_stable. psplit. 2: exact H0.
-  apply H1.
-  eapply (Rely_pres_not_owned _ _ _ _ _ H0) in H.
-  eapply (Rely_pres_not_UB _ _ _ _ _ H0) in H2.
-  easy.
-  eassert _.
-  {
-    apply H1.
-    split.
-    eapply Rely_pres_not_owned with (m:=None) in H0.
-    apply H0. easy.
-    eapply Rely_pres_not_UB in H0.
-    easy. easy.
-  }
-  psimpl.
-  apply Rely_pres_var in H0.
-  congruence.
-}
-{
+Lemma eq_inj {A} :
+  forall x y : A,
+  eq x = eq y ->
+  x = y.
+Proof.
   intros.
-  split.
-  apply Inv_stable. psplit. 2: exact H0.
-  apply H1.
-  eapply (Rely_pres_owned _ _ _ _ _ H0) in H. easy.
-  eapply (Rely_pres_owned _ _ _ _ _ H0) in H.
-  split.
-  apply Rely_pres_counter in H0. rewrite <- H0.
-  apply H1. easy. easy.
-  apply Rely_pres_var in H0.
-  apply H1 in H. destruct_all.
-  congruence.
-}
+  now rewrite H.
 Qed.
 
-Lemma Posts_stable :
-  forall i A (m : LockSig A) v, Stable (Rely i) (Posts i m v).
-unfold Stable, stablePost, stableRelt, sub, subRelt, Posts. destruct m.
-intros. psimpl.
-{
-  specialize (H ρ0 eq_refl). psimpl.
-  assert (exists τ, σ = eq τ).
-  eapply Rely_pres_single. exact H1. psimpl.
-  exists x0. split. easy.
-  destruct H0; psimpl.
-  {
-    left. repeat split.
-    eapply Rely_pres_owned. exact H1. easy.
-    easy.
-    easy.
-    apply Inv_stable. psplit.
-    exact H3. easy.
-    exists x2.
-    apply Rely_pres_counter in H1.
-    congruence.
-    easy.
-    apply Rely_pres_var in H1.
-    congruence.
-  }
-  {
-    right. split.
-    eapply Rely_pres_UB_forward. exact H1.
-    easy.
-    easy.
-  }
-}
-intros. psimpl.
-{
-  specialize (H ρ0 eq_refl). psimpl.
-  assert (exists τ, σ = eq τ).
-  eapply Rely_pres_single. exact H1. psimpl.
-  exists x0. split. easy.
-  destruct H0; psimpl.
-  {
-    left. repeat split.
-    eapply Rely_pres_not_owned. exact H1. easy.
-    easy.
-    apply Inv_stable. psplit.
-    exact H2. easy.
-    apply Rely_pres_var in H1.
-    congruence.
-  }
-  {
-    right. split.
-    eapply Rely_pres_UB_forward. exact H1. easy.
-    easy.
-  }
-}
+Inductive lock {P : Prop} : Prop :=
+| Lock (p : P).
+Arguments lock : clear implicits.
+
+Ltac lock H :=
+  match type of H with
+  | ?P =>
+    assert (Hlock : lock P)
+      by exact (Lock H);
+    clear H
+  end.
+
+Lemma acq_inv_stable {T} {i : Name T} :
+  forall e c r,
+  Stable (LiftSRelt (Rely i))
+    (λ _ _, LiftSPrec (λ s ρ,
+    (Inv i s ρ /\
+     fst s i = e) /\
+    PCalls ρ i = c /\
+    PRets ρ i = r)).
+Proof.
+  unfold Stable, stableRelt, sub, subRelt.
+  unfold LiftSRelt, LiftSPrec. intros. psimpl.
+  specialize (H0 x1 eq_refl). psimpl.
+  exists x0. split. easy. destruct H0.
+  split. split.
+  { now apply pres_inv0. }
+  easy. easy.
 Qed.
 
-Lemma ticketLockImpl_switch_code :
-  forall i A (m1 : LockSig A) B (m2 : LockSig B) v,
-  prComp (Precs i m1) (Posts i m1 v) <<- PrecToRelt (Returned i m1) <<-
-  TReturn ticketLockImpl i m1 ==>
-  Precs i m2.
-unfold sub, subPrec, Precs, Posts. intros. destruct m1, m2.
-{
-  psimpl. specialize (H2 x5 eq_refl). psimpl.
-  unfold TReturn, InterOStep in H0. psimpl. destruct x0.
-  dependent destruction H0. cbn in *. dependent destruction H.
-  symmetry in x1. unfold Returned in H1. apply H1 in x1.
-  2: repeat econstructor. psimpl. clear H1.
-  exists (retPoss i x1). split.
+Require Import Lia.
+
+Lemma tkts_eql2 {T} v w :
+  UCall Acq (inr Get)
+    (λ cur_tkt,
+      if cur_tkt =? v then
+        ret tt
+      else
+        acq_body (T:=T) v) =
+  UCall Acq (inr Get)
+    (λ cur_tkt,
+      if cur_tkt =? w then
+        ret tt
+      else
+        acq_body w) ->
+  v = w.
+Proof.
+  intros. ddestruct H.
+  apply equal_f with
+    (x:=v) in x.
+  rewrite eqb_id in x.
+  dec_eq_nats v w.
+  { easy. }
   {
-    unfold mapRetPoss.
-    extensionality σ. apply propositional_extensionality.
-    split; intros; psimpl.
-    {
-      destruct x2, σ. unfold retPoss. cbn in *.
-      f_equal; try easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H10; easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H11; easy.
-    }
-    {
-      exists x1. cbn. rewrite eqb_id.
-      repeat split; (easy || apply differ_pointwise_trivial).
-    }
+    rewrite eqb_nid in x; auto.
+    symmetry in x.
+    now rewrite frobProgId in x at 1.
   }
-  {
-    cbn. intros. destruct H2; psimpl; contradiction.
-  }
-}
-{
-  psimpl. specialize (H2 x5 eq_refl). psimpl.
-  unfold TReturn, InterOStep in H0. psimpl. destruct x0.
-  dependent destruction H0. cbn in *. dependent destruction H.
-  symmetry in x1. unfold Returned in H1. apply H1 in x1.
-  2: repeat econstructor. psimpl. clear H1.
-  exists (retPoss i x1). split.
-  {
-    unfold mapRetPoss.
-    extensionality σ. apply propositional_extensionality.
-    split; intros; psimpl.
-    {
-      destruct x2, σ. unfold retPoss. cbn in *.
-      f_equal; try easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H10; easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H11; easy.
-    }
-    {
-      exists x1. cbn. rewrite eqb_id.
-      repeat split; (easy || apply differ_pointwise_trivial).
-    }
-  }
-  {
-    cbn. intros. destruct H2; destruct_all.
-    2: { rewrite H in H1. discriminate. }
-    clear H3. unfold Inv in *. psimpl.
-    apply eq_inj in H3. subst.
-    split.
-    2:{
-      split.
-      exists x2.
-      erewrite countState_eq.
-      exact H9. easy.
-      erewrite varState_eq.
-      exact H10. easy.
-    }
-    exists (retPoss i x4). split.
-    unfold mapRetPoss.
-    extensionality σ. apply propositional_extensionality.
-    split; intros; psimpl.
-    {
-      destruct x1, σ. unfold retPoss. cbn in *.
-      f_equal; try easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H19; easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H20; easy.
-    }
-    {
-      exists x4. cbn. rewrite eqb_id.
-      repeat split; (easy || apply differ_pointwise_trivial).
-    }
-    repeat rewrite (countState_eq _ _ H4) in *.
-    repeat rewrite (newtkt_eq _ _ H4) in *.
-    repeat rewrite (mytkt_eq _ _ _ H4) in *.
-    repeat rewrite (ctrval_eq _ _ H4) in *.
-    easy.
-  }
-}
-{
-  psimpl. specialize (H2 x5 eq_refl). psimpl.
-  unfold TReturn, InterOStep in H0. psimpl. destruct x0.
-  dependent destruction H0. cbn in *. dependent destruction H.
-  symmetry in x1. unfold Returned in H1. apply H1 in x1.
-  2: repeat econstructor. psimpl. clear H1.
-  exists (retPoss i x1). split.
-  {
-    unfold mapRetPoss.
-    extensionality σ. apply propositional_extensionality.
-    split; intros; psimpl.
-    {
-      destruct x2, σ. unfold retPoss. cbn in *.
-      f_equal; try easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H10; easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H11; easy.
-    }
-    {
-      exists x1. cbn. rewrite eqb_id.
-      repeat split; (easy || apply differ_pointwise_trivial).
-    }
-  }
-  {
-    cbn. intros. destruct H2; destruct_all.
-    2: congruence.
-    clear H3. unfold Inv in *. psimpl.
-    split.
-    2:{
-      erewrite varState_eq.
-      exact H9. easy.
-    }
-    apply eq_inj in H3. subst.
-    exists (retPoss i x2). split.
-    unfold mapRetPoss.
-    extensionality σ. apply propositional_extensionality.
-    split; intros; psimpl.
-    {
-      destruct x1, σ. unfold retPoss. cbn in *.
-      f_equal; try easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H18; easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H19; easy.
-    }
-    {
-      exists x2. cbn. rewrite eqb_id.
-      repeat split; (easy || apply differ_pointwise_trivial).
-    }
-    repeat rewrite (countState_eq _ _ H4) in *.
-    repeat rewrite (newtkt_eq _ _ H4) in *.
-    repeat rewrite (mytkt_eq _ _ _ H4) in *.
-    repeat rewrite (ctrval_eq _ _ H4) in *.
-    easy.
-  }
-}
-{
-  psimpl. specialize (H2 x5 eq_refl). psimpl.
-  unfold TReturn, InterOStep in H0. psimpl. destruct x0.
-  dependent destruction H0. cbn in *. dependent destruction H.
-  symmetry in x1. unfold Returned in H1. apply H1 in x1.
-  2: repeat econstructor. psimpl. clear H1.
-  exists (retPoss i x1). split.
-  {
-    unfold mapRetPoss.
-    extensionality σ. apply propositional_extensionality.
-    split; intros; psimpl.
-    {
-      destruct x2, σ. unfold retPoss. cbn in *.
-      f_equal; try easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H10; easy.
-      extensionality j. dec_eq_nats i j.
-      rewrite eqb_id. easy.
-      rewrite eqb_nid, H11; easy.
-    }
-    {
-      exists x1. cbn. rewrite eqb_id.
-      repeat split; (easy || apply differ_pointwise_trivial).
-    }
-  }
-  {
-    cbn. intros. destruct H2; destruct_all.
-    congruence.
-    rewrite H in H1. discriminate.
-  }
-}
 Qed.
 
-Lemma acq_correct i :
-  VerifyProg i (Rely i) (Guar i) (prComp (Precs i Acq) (TInvoke ticketLockImpl i unit Acq) ->> Rely i) acq (fun v => Posts i Acq v ->> PrecToRelt (Returned i Acq)).
-Admitted.
+Lemma tkts_eql {T} v w :
+  Cont Acq (acq_body (T:=T) v) = Cont Acq (acq_body w) ->
+  v = w.
+Proof.
+  rewrite frobProgId with
+    (p := acq_body v).
+  rewrite frobProgId with
+    (p := acq_body w).
+  cbn. intros. ddestruct H.
+  apply equal_f with
+    (x:=v) in x.
+  rewrite eqb_id in x.
+  dec_eq_nats v w.
+  { easy. }
+  {
+    rewrite eqb_nid in x; auto.
+    symmetry in x.
+    now rewrite frobProgId in x at 1.
+  }
+Qed.
 
-Lemma rel_correct i :
-  VerifyProg i (Rely i) (Guar i) (prComp (Precs i Rel) (TInvoke ticketLockImpl i unit Rel) ->> Rely i) rel (fun v => Posts i Rel v ->> PrecToRelt (Returned i Rel)).
-unfold rel. unfold Precs.
-eapply weakenPrec with
-  (P:=fun s ρs t σs =>
-    exists ρ σ : Poss VF, ρs = eq ρ /\ σs = eq σ /\
-      σ.(PCalls) i = CallPoss Rel /\
-      σ.(PRets) i = RetIdle /\
-      PState ρ = PState σ /\
-      (PState σ = LockOwned i /\ Inv i t σs /\
-       (exists n, countState t = CounterIdle n) /\ varState t i = VarUnset \/
-       PState σ <> LockOwned i)).
-2:{
-  unfold sub, subRelt. intros. psimpl.
-  decide_prop (PState x1 = LockOwned i).
-  {
-    admit.
-  }
-  {
-    admit.
-  }
-}
-eapply weakenPost.
-eapply (lemCall
-  (Q:=fun s ρs t σs =>
-    exists ρ σ : Poss VF, ρs = eq ρ /\ σs = eq σ /\
-      σ.(PCalls) i = CallDone Rel /\
-      σ.(PRets) i = RetIdle /\
-      (PState ρ = LockOwned i /\ PState σ = LockRelRan i /\
-       Inv i t σs /\ (exists n, countState t = CounterIncRan i n) /\
-       varState t i = VarUnset \/
-       PState ρ <> LockOwned i /\ PState σ = LockUB))
-  (S:=fun _ s ρs t σs =>
-    exists ρ σ : Poss VF, ρs = eq ρ /\ σs = eq σ /\
-      σ.(PCalls) i = CallDone Rel /\
-      σ.(PRets) i = RetPoss Rel tt /\
-      (PState ρ = LockRelRan i /\ PState σ = LockUnowned /\
-       Inv i t σs /\ (exists n, countState t = CounterIdle n) /\
-       varState t i = VarUnset \/
-       PState ρ = LockUB /\ PState σ = LockUB))).
-{
-  admit.
-}
-{
-  admit.
-}
-{
-  eapply weakenCommitPre with
-    (P:=fun _ _ t σs =>
-      (exists σ : Poss VF, σs = eq σ /\
-        σ.(PCalls) i = CallPoss Rel /\
-        σ.(PRets) i = RetIdle /\
-        PState σ = LockOwned i /\ Inv i t σs /\
-        (exists n, countState t = CounterIdle n) /\
-        varState t i = VarUnset) \/
-      (exists σ : Poss VF, σs = eq σ /\
-        σ.(PCalls) i = CallPoss Rel /\
-        σ.(PRets) i = RetIdle /\
-        PState σ <> LockOwned i)).
-  {
-    unfold sub, subRelt. intros. psimpl.
-    destruct H4; destruct_all.
-    left. exists x0. repeat split; try easy. exists x1. easy.
-    right. exists x0. repeat split; try easy.
-  }
-  apply disjCommit; unfold Commit; intros; psimpl.
-  {
-    destruct_all.
-    exists (eq (comInvPoss i x1 Rel (LockRelRan i))).
-    split. repeat econstructor.
-    split.
-    {
-      intros. subst. exists x1. split. easy.
-      econstructor.
-      {
-        eapply PCommitCall with (i:=i) (m:=Rel) (σ:= comInvPoss i x1 Rel (LockRelRan i)). cbn.
-        rewrite H5.
-        constructor.
-        cbn. rewrite eqb_id. easy.
-        easy. easy.
-      }
-      intros. cbn. rewrite eqb_nid; easy.
-      intros. cbn. easy.
-      constructor.
-    }
-    split.
-    {
-      do 2 eexists.
-      split. easy.
-      split. easy.
-      cbn. rewrite eqb_id.
-      split. easy. split. easy.
-      unfold countState in *. dependent destruction H.
-      2:{ rewrite H7 in x4 at 1. discriminate. }
-      2:{ rewrite H7 in x4 at 1. discriminate. }
-      left. split. easy. split. easy.
-      unfold Inv in *. destruct_all.
-      apply eq_inj in H. subst.
-      split.
-      2:{
-        split.
-        exists n. easy.
-        unfold varState.
-        destruct s, t. cbn in *.
-        rewrite <- H8. unfold varState. cbn.
-        rewrite H15. easy.
-      }
-      eexists. split. easy.
-      assert (mytkt i s = mytkt i t).
-      { unfold mytkt. destruct s, t. cbn in *. rewrite H15. easy. }
-      assert (ctrval s = ctrval t).
-      { unfold ctrval, countState. rewrite <- x4, <- x at 1. easy. }
-      assert (newtkt s = newtkt t).
-      { unfold newtkt. destruct s, t. cbn in *. rewrite H11. easy. }
-      split. unfold countState. rewrite <- x at 1. easy.
-      split.
-      {
-        intros. move H5 at bottom. apply H20 in H5.
-        rewrite H, <- H23 in H5. dependent destruction H5.
-        rewrite H21. easy.
-      }
-      split.
-      {
-        rewrite <- H21, <- H22. easy.
-      }
-      split.
-      {
-        cbn. intros.
-        left. repeat econstructor.
-      }
-      split.
-      {
-        intros. cbn.
-        rewrite <- H21, <- H22 in H23.
-        apply H19 in H23. rewrite H23 in H5.
-        discriminate.
-      }
-      {
-        cbn. intros. dependent destruction H23.
-        rewrite <- H, <- H21.
-        eapply H20. exact H5.
-      }
-    }
-    {
-      admit.
-    }
-  }
-  {
-    exists (eq (comInvPoss i x1 Rel LockUB)).
-    split. repeat econstructor.
-    split.
-    {
-      intros. subst. exists x1. split. easy.
-      econstructor.
-      {
-        eapply PCommitCall with (i:=i) (m:=Rel) (σ:= comInvPoss i x1 Rel LockUB). cbn.
-        constructor. easy.
-        cbn. rewrite eqb_id. easy.
-        easy. easy.
-      }
-      intros. cbn. rewrite eqb_nid; easy.
-      intros. cbn. easy.
-      constructor.
-    }
-    split.
-    {
-      do 2 eexists.
-      split. easy.
-      split. easy.
-      cbn. rewrite eqb_id.
-      repeat split; try easy.
-      right. easy.
-    }
-    {
-      admit.
-    }
-  }
-}
-{
-  intros. destruct v.
-  eapply weakenCommitPre with
-    (P:=fun _ _ t σs =>
-      (exists σ : Poss VF, σs = eq σ /\
-        σ.(PCalls) i = CallDone Rel /\
-        σ.(PRets) i = RetIdle /\
-        PState σ = LockRelRan i /\ Inv i t σs /\
-        (exists n, countState t = CounterIncRan i n) /\
-        varState t i = VarUnset) \/
-      (exists σ : Poss VF, σs = eq σ /\
-        σ.(PCalls) i = CallDone Rel /\
-        σ.(PRets) i = RetIdle /\
-        PState σ <> LockOwned i)).
-  {
-    unfold sub, subRelt. intros. psimpl.
-    apply eq_inj in H0. subst.
-    destruct H4; destruct_all.
-    left. exists x2. split. easy.
-    repeat split; try easy.
-    exists x0. easy.
-    right. exists x2. rewrite H0. easy.
-  }
-  apply disjCommit; unfold Commit. intros. psimpl. destruct_all.
-  {
-    exists (eq (comRetPoss i x1 Rel LockUnowned tt)).
-    split. repeat econstructor.
-    split.
-    {
-      intros. subst. exists x1. split. easy.
-      eapply PossStepsStep with (i:=i) (σ:= comRetPoss i x1 Rel LockUnowned tt).
-      eapply PCommitRet with (m:=Rel) (v:=tt); cbn.
-      rewrite H5. constructor.
-      easy. easy. easy.
-      rewrite eqb_id. easy.
-      cbn. intros. easy.
-      cbn. intros. rewrite eqb_nid; easy.
-      constructor.
-    }
-    split.
-    {
-      exists x1, (comRetPoss i x1 Rel LockUnowned tt).
-      cbn. rewrite eqb_id, H5.
-      repeat split; try easy.
-      left. repeat split; try easy.
-      unfold Inv in *. unfold countState in H7.
-      rewrite H7 in H at 1. dependent destruction H.
-      cbv in x4. dependent destruction x4.
-      assert (mytkt i s = mytkt i t).
-      { unfold mytkt. destruct s, t. cbn in *. rewrite H15. easy. }
-      assert (ctrval t = S (ctrval s)).
-      { unfold ctrval, countState. rewrite H7, <- x at 1. cbn. constructor. }
-      assert (newtkt s = newtkt t).
-      { unfold newtkt. destruct s, t. cbn in *. rewrite H11. easy. }
-      eexists. split. easy. cbn.
-      psimpl. apply eq_inj in H6. subst.
-      split.
-      {
-        unfold countState. rewrite <- x at 1. easy.
-      }
-      split.
-      {
-        intros. unfold mytkt in H6.
-        destruct s, t. cbn in *.
-        rewrite <- H15 in H6.
-        unfold varState in H8. cbn in *.
-        rewrite H8 in H6. cbn in H6. discriminate.
-      }
-      split.
-      {
-        move H20 at bottom.
-        rewrite H17 in H20. rewrite H16.
-        
-      }
-    }
-    {
-
-    }
-  }
-  {
-
-  }
-}
-{
-  unfold sub, subRelt, Posts, Returned. intros. psimpl.
-  psplit.
+Lemma acq_correct {T} (i : Name T) :
+  VerifyProg i
+    (LiftSRelt (Rely i))
+    (LiftSRelt (Guar i))
+    (prComp
+      (LiftSPrec (Precs i Acq))
+      (TInvoke ticketLockImpl i unit Acq) ->>
+      LiftSRelt (Rely i))
+    acq
+    (λ v, LiftSRelt (Posts i Acq v)).
+Proof.
+  unfold acq.
+  eapply weakenPrec with
+    (P:=λ _ _, LiftSPrec (λ s ρ,
+      Inv i s ρ /\
+      PCalls ρ i = CallPoss Acq /\
+      PRets ρ i = RetIdle /\
+      fst s i = Cont Acq acq)).
   2:{
-    split. 2: easy.
+    unfold sub, subRelt, Precs, LiftSPrec, LiftSRelt.
     intros. psimpl.
-    exists x0. destruct v0. easy.
+    assert (exists x, x0 = eq x).
+    {
+      eapply Invoke_pres_single.
+      exact H1.
+    }
+    psimpl.
+    specialize (H0 x2 eq_refl). psimpl.
+    eexists. split. easy.
+    unfold TInvoke in H1. psimpl.
+    apply eq_sing in H4. psimpl.
+    destruct H0.
+    cut (
+      (Inv i t x0 /\ fst t i = Cont Acq acq) /\
+      PCalls x0 i = CallPoss Acq /\
+      PRets x0 i = RetIdle
+    ).
+    { easy. }
+    split. 2: now rewrite <- pres_call0, <- pres_ret0.
+    split.
+    {
+      apply pres_inv0. destruct H2.
+      constructor.
+      { now rewrite H5 at 1. }
+      {
+        intros.
+        unfold Ready in H2.
+        destruct H1. ddestruct H1.
+        now rewrite <- x in H2 at 1.
+      }
+      { now rewrite H5, <- H3 at 1. }
+      (* constructor. *)
+      {
+        intros.
+        destruct H1. ddestruct H1.
+        rewrite <- x in H4 at 1.
+        ddestruct H4.
+        rewrite frobProgId with
+          (p:=acq)
+          in x.
+        rewrite frobProgId with
+          (p:= acq_body _)
+          in x.
+        easy.
+      }
+      {
+        intros.
+        eapply owns_wait0.
+        {
+          destruct H1. cbn in *.
+          easy.
+          (* ddestruct H1. now rewrite <- x4. *)
+        }
+        {
+          unfold not. intros. psimpl.
+          unfold TIdle in H. psimpl.
+          setoid_rewrite H in H10.
+          now destruct H10; psimpl.
+        }
+        { now rewrite <- H5 at 1. }
+        { rewrite H3 at 1. exact H2. }
+        { now rewrite H3 at 1. }
+      }
+      {
+        intros.
+        rewrite <- H3 at 1.
+        apply tkts_less0.
+        {
+          unfold not. intros. psimpl.
+          destruct H1. ddestruct H1. cbn in *.
+          setoid_rewrite <- x4 in H4.
+          now destruct H4; psimpl.
+        }
+        { now rewrite <- H5 at 1. }
+        { now rewrite H3 at 1. }
+      }
+      {
+        intros. destruct H1.
+        cbn in *. ddestruct H1.
+        unfold Ready in H4.
+        destruct H4 as [H4 | H4];
+        rewrite <- x in H4 at 1.
+        { easy. }
+        {
+          rewrite frobProgId with
+            (p:=ticketLockImpl _ _)
+            in H4.
+          rewrite frobProgId with
+            (p:=acq_body _)
+            in H4.
+          easy.
+        }
+      }
+      {
+        unfold Ready. intros.
+        destruct H1. cbn in *.
+        rewrite <- H3 at 1.
+        eapply tkts_boun0 with
+          (j:=j).
+        { now rewrite <- H5 at 1. }
+        { exact H2. }
+        {
+          dec_eq_nats j i.
+          {
+            ddestruct H1.
+            setoid_rewrite <- x in H4.
+            destruct H4. easy.
+            rewrite frobProgId with
+              (p:= ticketLockImpl _ _)
+              in H1.
+            rewrite frobProgId with
+              (p:= acq_body _)
+              in H1.
+            easy.
+          }
+          unfold Ready.
+          now repeat rewrite H10 at 1.
+        }
+      }
+      {
+        setoid_rewrite H5.
+        setoid_rewrite <- H3 at 1.
+        easy.
+      }
+      {
+        setoid_rewrite H5.
+        setoid_rewrite <- H3.
+        easy.
+      }
+    }
+    {
+      destruct H1. ddestruct H0.
+      cbn in *. now rewrite <- pres_ths0 at 1.
+    }
   }
-  intros. subst.
-  exists x4. split. easy.
-  apply eq_inj in H, H0, H1. subst.
-  destruct H5; destruct_all.
+  eapply lemBind.
   {
-    left. split. rewrite H0. easy.
-    split. 2: easy.
-    rewrite H13. destruct H9; destruct_all.
-    easy.
-    rewrite H in H6 at 1. discriminate.
+    eapply (lemCall
+      (Q:= λ _ _,
+        LiftSPrec (fun s ρ =>
+          (Inv i s ρ /\
+           fst s i = UCall Acq (inl FAI) acq_body) /\
+          PCalls ρ i = CallPoss Acq /\
+          PRets ρ i = RetIdle))
+      (S:= λ my_tkt _ _,
+        LiftSPrec (fun s ρ =>
+          (Inv i s ρ /\
+             fst s i = Cont Acq (acq_body my_tkt)) /\
+          PCalls ρ i = CallPoss Acq /\
+          PRets ρ i = RetIdle))).
+    { apply acq_inv_stable. }
+    {
+      unfold Stable, stablePost.
+      intros. apply acq_inv_stable.
+    }
+    {
+      unfold Commit, Precs, LiftSPrec, LiftSRelt.
+      intros. do 2 psimpl.
+      exists (eq x1).
+      split.
+      { repeat eexists. }
+      split.
+      {
+        intros. subst.
+        repeat econstructor.
+      }
+      unfold acq in *.
+      rewrite H6 in H1. ddestruct H1.
+      rewrite frobProgId with
+        (p:= bindProg _ _)
+        in x2. cbn in x2.
+      ddestruct x2.
+      split.
+      {
+        exists x1.
+        split. easy.
+        split. 2: easy.
+        split.
+        {
+          destruct H3.
+          constructor.
+          { easy. }
+          {
+            unfold Ready. intros.
+            now rewrite <- x in H3 at 1.
+          }
+          { now rewrite <- H9 at 1. }
+          (* constructor. *)
+          {
+            intros.
+            rewrite <- x in H10 at 1.
+            easy.
+          }
+          {
+            intros. ddestruct H.
+            eapply owns_wait0.
+            {
+              easy.
+              (* rewrite H6 at 1.
+              rewrite frobProgId at 1.
+              easy. *)
+            }
+            {
+              unfold not. intros. psimpl.
+              setoid_rewrite H6 in H.
+              now destruct H; psimpl.
+            }
+            { easy. }
+            { rewrite H9 at 1. exact H3. }
+            { subst. now rewrite <- x3, <- x at 1. }
+          }
+          {
+            setoid_rewrite <- H9 at 1.
+            assert (faiVal t = faiVal s).
+            {
+              ddestruct H.
+              now rewrite <- x3, <- x at 1.
+            }
+            setoid_rewrite H1.
+            intro. apply tkts_less0.
+            {
+              unfold not. intros. psimpl.
+              setoid_rewrite H6 in H3.
+              now destruct H3; psimpl.
+            }
+          }
+          {
+            intros.
+            unfold Ready in H10.
+            destruct H10 as [H10 | H10];
+            now rewrite <- x in H10 at 1.
+          }
+          {
+            assert (faiVal t = faiVal s).
+            {
+              ddestruct H.
+              now rewrite <- x3, <- x at 1.
+            }
+            setoid_rewrite H1.
+            intros. eapply tkts_boun0 with
+              (j:=j).
+            { easy. }
+            { exact H10. }
+            {
+              dec_eq_nats j i.
+              {
+                unfold Ready in H11.
+                setoid_rewrite <- x in H11.
+                now destruct H11.
+              }
+              unfold Ready.
+              now rewrite <- H0.
+            }
+          }
+          { now setoid_rewrite <- H9 at 1. }
+          {
+            assert (faiVal t = faiVal s).
+            {
+              ddestruct H.
+              now rewrite <- x3, <- x at 1.
+            }
+            setoid_rewrite H1.
+            setoid_rewrite <- H9.
+            easy.
+          }
+        }
+        {
+          rewrite <- x at 1.
+          f_equal. extensionality my_tkt.
+          rewrite frobProgId with (p:=bindProg _ _).
+          rewrite frobProgId with (p:=acq_body my_tkt).
+          easy.
+        }
+      }
+      {
+        intros. apply eq_inj in H1.
+        subst. eexists. split. easy.
+        constructor.
+        2: easy.
+        2: easy.
+        2: now rewrite H0.
+        (* 2: easy. *)
+        intros.
+        destruct H10. constructor.
+        { easy. }
+        {
+          intros. apply owns_resp0.
+          { easy. }
+          {
+            unfold Ready in *.
+            now rewrite <- H0.
+          }
+          { now rewrite H9 at 1. }
+        }
+        { now rewrite <- H9 at 1. }
+        (* constructor. *)
+        {
+          setoid_rewrite <- H9.
+          now rewrite H0.
+        }
+        {
+          intros. subst.
+          eapply owns_wait0.
+          easy.
+          (* { now rewrite <- H0. } *)
+          { now setoid_rewrite <- H0. }
+          { easy. }
+          { rewrite H9 at 1. exact H11. }
+          {
+            ddestruct H.
+            now rewrite <- x3, <- x at 1.
+          }
+        }
+        {
+          setoid_rewrite <- H9 at 1.
+          assert (faiVal t = faiVal s).
+          {
+            ddestruct H.
+            now rewrite <- x3, <- x at 1.
+          }
+          setoid_rewrite H10.
+          intro. apply tkts_less0.
+          now setoid_rewrite <- H0.
+        }
+        {
+          intros.
+          eapply tkts_uniq0.
+          { easy. }
+          { exact H11. }
+          {
+            unfold Ready.
+            rewrite <- H0; auto.
+            exact H12.
+          }
+          {
+            assert (i ≠ j0).
+            {
+              unfold not. intros.
+              subst. unfold Ready in H13.
+              destruct H13;
+              now rewrite <- x in H13 at 1.
+            }
+            unfold Ready.
+            now rewrite <- H0.
+          }
+        }
+        {
+          ddestruct H.
+          assert (faiVal t = faiVal s).
+          { now rewrite <- x3, <- x at 1. }
+          setoid_rewrite H. intros.
+          eapply tkts_boun0 with
+            (j:=j0).
+          { easy. }
+          { exact H11. }
+          {
+            assert (j0 ≠ i).
+            {
+              unfold not. intros.
+              subst. unfold Ready in H12.
+              repeat rewrite <- x1 in H12 at 1.
+              now destruct H12.
+            }
+            unfold Ready.
+            rewrite <- H0; auto.
+          }
+        }
+        { now setoid_rewrite <- H9 at 1. }
+        {
+          assert (faiVal t = faiVal s).
+          {
+            ddestruct H.
+            now rewrite <- x3, <- x at 1.
+          }
+          setoid_rewrite H10.
+          setoid_rewrite <- H9.
+          easy.
+        }
+        { easy. }
+      }
+    }
+    {
+      intros.
+      unfold Commit, Precs, LiftSPrec, LiftSRelt.
+      intros. do 2 psimpl.
+      exists (eq x3).
+      split.
+      { repeat econstructor. }
+      split.
+      {
+        intros. subst.
+        repeat econstructor.
+      }
+      split.
+      {
+        intros. exists x3.
+        split. easy.
+        split. 2: easy.
+        rewrite H7 in H1.
+        ddestruct H1.
+        split. 2: easy.
+        destruct H4.
+        constructor.
+        { easy. }
+        {
+          unfold Ready. intros.
+          now rewrite <- x in H4 at 1.
+        }
+        { now rewrite <- H13 at 1. }
+        (* constructor. *)
+        {
+          intros.
+          assert (v = my_tkt).
+          {
+            eapply tkts_eql.
+            now transitivity (fst t i).
+          }
+          unfold not. intros. subst.
+          ddestruct H. psimpl.
+          assert (Some x7 = None).
+          {
+            apply owns_wait0 with
+              (cur_tkt:=cur_tkt).
+              congruence.
+            (* { now rewrite H7 at 1. } *)
+            {
+              unfold not. intros. psimpl.
+              setoid_rewrite H7 in H15.
+              now destruct H15; psimpl.
+            }
+            { easy. }
+            { now rewrite H13 at 1. }
+            { now rewrite <- x6 at 1. }
+          }
+          easy.
+        }
+        {
+          intros.
+          ddestruct H.
+          rewrite <- x in H14 at 1.
+          cbn in *. subst. exfalso.
+          assert (S v ≤ faiVal s).
+          {
+            apply tkts_less0.
+            {
+              setoid_rewrite H7.
+              unfold not. intros.
+              now destruct H; psimpl.
+            }
+            { now rewrite H1 at 1. }
+            { now rewrite H13 at 1. }
+          }
+          rewrite <- x6 in H at 1.
+          cbn in *. lia.
+        }
+        {
+          intros.
+          rewrite <- H13 in H4 at 1.
+          eapply tkts_less0 in H4; auto.
+          2:{
+            setoid_rewrite H7.
+            unfold not. intros.
+            now destruct H14; psimpl.
+          }
+          assert (faiVal s ≤ faiVal t).
+          {
+            ddestruct H.
+            rewrite <- x6, <- x at 1.
+            cbn. lia.
+          }
+          now transitivity (faiVal s).
+        }
+        {
+          intros. destruct H14;
+          unfold Ready in H14, H15.
+          { now rewrite <- x in H14 at 1. }
+          assert (v = cur_tkt).
+          {
+            eapply tkts_eql.
+            now transitivity (fst t i).
+          }
+          subst. ddestruct H.
+          rewrite H0 in H15; auto.
+          apply tkts_boun0 in H15; auto.
+          rewrite <- x5 in H15 at 1.
+          cbn in *. lia.
+        }
+        {
+          ddestruct H. intros.
+          dec_eq_nats j i.
+          {
+            unfold Ready in H4.
+            setoid_rewrite <- x5 in H4.
+            destruct H4. easy.
+            apply tkts_eql in H4. subst.
+            rewrite <- x at 1. cbn. lia.
+          }
+          assert (faiVal s < faiVal t).
+          {
+            rewrite <- x6, <- x at 1.
+            cbn. lia.
+          }
+          unfold Ready in H4.
+          rewrite H0 in H4; auto.
+          apply tkts_boun0 in H4; auto.
+          now transitivity (faiVal s).
+        }
+        { now setoid_rewrite <- H13 at 1. }
+        {
+          assert (faiVal s < faiVal t).
+          {
+            ddestruct H.
+            rewrite <- x6, <- x at 1.
+            cbn. lia.
+          }
+          intros.
+          transitivity (faiVal s).
+          2: easy.
+          eapply wait_less0.
+          { exact H4. }
+          { now rewrite H13 at 1. }
+        }
+      }
+      {
+        intros. apply eq_inj in H14.
+        subst. exists x2. split. easy.
+        constructor.
+        2: easy.
+        2: easy.
+        2: now rewrite H0.
+        (* 2: easy. *)
+        intros.
+        destruct H15. constructor.
+        { easy. }
+        {
+          intros.
+          apply owns_resp0.
+          { easy. }
+          {
+            unfold Ready.
+            now rewrite <- H0.
+          }
+          { now rewrite H13 at 1. }
+        }
+        { now rewrite <- H13 at 1. }
+        (* constructor. *)
+        {
+          setoid_rewrite <- H13 at 1.
+          setoid_rewrite H0; auto.
+        }
+        {
+          intros.
+          ddestruct H.
+          rewrite <- x in H17 at 1.
+          cbn in *. subst. exfalso.
+          assert (S v ≤ faiVal s).
+          {
+            apply tkts_less0.
+            { now setoid_rewrite <- H0. }
+            { now rewrite H15 at 1. }
+            { now rewrite H13 at 1. }
+          }
+          rewrite <- x5 in H at 1.
+          cbn in *. lia.
+        }
+        {
+          intros.
+          rewrite <- H13 in H16 at 1.
+          eapply tkts_less0 in H16; auto.
+          2: now setoid_rewrite <- H0.
+          assert (faiVal s ≤ faiVal t).
+          {
+            ddestruct H.
+            rewrite <- x5, <- x at 1.
+            cbn. lia.
+          }
+          now transitivity (faiVal s).
+        }
+        {
+          intros.
+          rewrite H7 in H1. ddestruct H1.
+          assert (j0 ≠ i).
+          {
+            unfold Ready in H18.
+            unfold not. intro. subst.
+            repeat rewrite <- x in H18 at 1.
+            destruct H18.
+            { easy. }
+            {
+              apply tkts_eql in H1. subst.
+              unfold Ready in H17.
+              do 2 rewrite H0 in H17; auto.
+              eapply H4.(tkts_boun) in H17.
+              2: easy. 2: easy.
+              ddestruct H.
+              rewrite <- x5 in H17 at 1.
+              cbn in *. lia.
+            }
+          }
+          eapply tkts_uniq0.
+          { easy. }
+          { exact H16. }
+          (* { rewrite H13 at 1. exact H17. } *)
+          {
+            unfold Ready.
+            rewrite <- H0 at 1; auto.
+            rewrite <- H0 at 1; auto.
+            exact H17.
+          }
+          {
+            unfold Ready.
+            now repeat rewrite <- H0.
+          }
+        }
+        {
+          ddestruct H. intros.
+          dec_eq_nats j0 i.
+          {
+            unfold Ready in H16.
+            rewrite H7 in H1. ddestruct H1.
+            setoid_rewrite <- x in H16.
+            destruct H16. easy.
+            apply tkts_eql in H1. subst.
+            rewrite <- x6 at 1. cbn. lia.
+          }
+          assert (faiVal s < faiVal t).
+          {
+            rewrite <- x5, <- x at 1.
+            cbn. lia.
+          }
+          destruct H16 as [H16 | H16].
+          {
+            unfold Ready in H16.
+            rewrite H0 in H16; auto.
+            assert (my_tkt < faiVal s).
+            {
+              eapply tkts_boun0 with
+                (j:=j0).
+              { easy. }
+              { exact H15. }
+              { now left. }
+            }
+            now transitivity (faiVal s).
+          }
+          {
+            rewrite H7 in H1 at 1.
+            ddestruct H1.
+            dec_eq_nats j0 i.
+            {
+              rewrite <- x in H16 at 1.
+              apply tkts_eql in H16. subst.
+              rewrite <- x6 at 1. cbn. lia.
+            }
+            {
+              rewrite H0 in H16; auto.
+              assert (my_tkt < faiVal s).
+              {
+                eapply tkts_boun0 with
+                  (j:=j0).
+                { easy. }
+                { exact H15. }
+                { now right. }
+              }
+              now transitivity (faiVal s).
+            }
+          }
+        }
+        { now setoid_rewrite <- H13 at 1. }
+        {
+          assert (faiVal s < faiVal t).
+          {
+            ddestruct H.
+            rewrite <- x5, <- x at 1.
+            cbn. lia.
+          }
+          intros.
+          transitivity (faiVal s).
+          2: easy.
+          eapply wait_less0.
+          { exact H16. }
+          { now rewrite H13 at 1. }
+        }
+        { easy. }
+      }
+    }
+  }
+  intros my_tkt.
+  eapply weakenPrec with
+    (P:=λ _ _,
+      LiftSPrec (fun s ρ =>
+        (Inv i s ρ /\
+          fst s i = Cont Acq (acq_body my_tkt)) /\
+        PCalls ρ i = CallPoss Acq /\
+        PRets ρ i = RetIdle)).
+  2:{
+    unfold sub, subRelt.
+    intros. now psimpl.
+  }
+  cut (
+    forall P,
+    P ==> (λ _ _,
+      LiftSPrec (fun s ρ =>
+        (Inv i s ρ /\
+          fst s i = Cont Acq (acq_body my_tkt)) /\
+        PCalls ρ i = CallPoss Acq /\
+        PRets ρ i = RetIdle)) ->
+    VerifyProg i
+      (LiftSRelt (Rely i)) (LiftSRelt (Guar i))
+      P
+      (acq_body my_tkt)
+      (λ v, LiftSRelt (Posts i Acq v))
+  ).
+  {
+    intros.
+    now apply H.
+  }
+  unfold VerifyProg.
+  setoid_rewrite paco_eqv.
+  pcofix rec. intros. pfold.
+  rename H0 into H.
+  rewrite frobProgId at 1.
+  eapply SafeBind with
+    (QI:=λ _ _,
+      LiftSPrec (fun s ρ =>
+        (Inv i s ρ /\
+         fst s i = UCall Acq (inr Get) (
+           λ cur_tkt,
+           if cur_tkt =? my_tkt then
+             ret tt
+           else
+             acq_body (my_tkt))) /\
+        PCalls ρ i = CallPoss Acq /\
+        PRets ρ i = RetIdle))
+    (QR:=λ cur_tkt _ _,
+      LiftSPrec (fun s ρ =>
+        if cur_tkt =? my_tkt then
+          (Inv i s ρ /\
+              fst s i = Cont Acq (ret tt)) /\
+          PCalls ρ i = CallDone Acq /\
+          PRets ρ i = RetPoss Acq tt
+        else
+          (Inv i s ρ /\
+            fst s i = Cont Acq (acq_body my_tkt)) /\
+          PCalls ρ i = CallPoss Acq /\
+          PRets ρ i = RetIdle)).
+  { apply acq_inv_stable. }
+  {
+    unfold Stable, stablePost.
+    intros. destruct (v =? my_tkt);
+    apply acq_inv_stable.
   }
   {
-    right. split. easy.
-    rewrite H13. destruct H9; destruct_all.
-    rewrite H2 in H. discriminate.
-    easy.
+    unfold Commit, Precs, LiftSPrec, LiftSRelt.
+    intros. do 2 psimpl. apply H in H0. clear H.
+    unfold LiftSPrec in H0. psimpl.
+    exists (eq x1).
+    split.
+    { repeat econstructor. }
+    split.
+    {
+      intros. subst.
+      repeat econstructor.
+    }
+    rewrite H10 in H2. ddestruct H2.
+    rewrite frobProgId with
+      (p:=acq_body _)
+      in x2. cbn in *.
+    ddestruct x2.
+    split.
+    {
+      exists x1. split. easy.
+      split. 2: easy.
+      split. 2: easy.
+      destruct H0.
+      constructor.
+      { easy. }
+      {
+        unfold Ready. intros.
+        rewrite <- x in H0 at 1.
+        ddestruct H0.
+        apply equal_f with
+          (x:=cur_tkt)
+          in x.
+        unfold not. intros.
+        subst. rewrite eqb_id in *.
+        assert (cur_tkt = my_tkt).
+        {
+          apply NNPP. unfold not at 1.
+          intros. rewrite eqb_nid in *; auto.
+          now rewrite frobProgId in x at 1.
+        }
+        subst. clear x.
+        eapply owns_resp3 with
+          (cur_tkt:=my_tkt)
+          (my_tkt:=my_tkt).
+        { easy. }
+        {
+          rewrite H2.
+          ddestruct H3.
+          now rewrite <- x3, <- x at 1.
+        }
+        { easy. }
+        { easy. }
+      }
+      {
+        intros. ddestruct H3.
+        rewrite <- x at 1.
+        apply rcnt_defn0 in H.
+        now rewrite <- x3 in H at 1.
+      }
+      (* constructor. *)
+      {
+        intros.
+        now rewrite <- x in H2 at 1.
+      }
+      {
+        assert ((cntSt t).(rcnt_num) = (cntSt s).(rcnt_num)).
+        {
+          ddestruct H3.
+          now rewrite <- x3, <- x at 1.
+        }
+        setoid_rewrite H.
+        setoid_rewrite <- H7.
+        intros own nown _. apply owns_wait0.
+        easy.
+        (* now rewrite H10, frobProgId at 1. *)
+        {
+          unfold not. intros. psimpl.
+          setoid_rewrite H10 in H0.
+          now destruct H0; psimpl.
+        }
+      }
+      {
+        assert ((cntSt t).(rcnt_num) = (cntSt s).(rcnt_num)).
+        {
+          ddestruct H3.
+          now rewrite <- x3, <- x at 1.
+        }
+        setoid_rewrite H.
+        setoid_rewrite <- H7.
+        intro. apply tkts_less0.
+        {
+          setoid_rewrite H10.
+          unfold not. intros.
+          now destruct H0; psimpl.
+        }
+      }
+      {
+        unfold Ready. intros. destruct H2.
+        2:now rewrite <- x in H2 at 1.
+        assert (my_tkt = cur_tkt).
+        {
+          clear - x H2.
+          rewrite <- x in H2 at 1.
+          clear - H2. ddestruct H2.
+          apply equal_f with
+            (x:=cur_tkt)
+            in x.
+          rewrite eqb_id in x.
+          dec_eq_nats cur_tkt my_tkt.
+          { easy. }
+          rewrite eqb_nid in *; auto.
+          now rewrite frobProgId in x at 1.
+        }
+        subst.
+        eapply tkts_uniq0.
+        { easy. }
+        { exact H0. }
+        (* {
+          assert ((cntSt s).(rcnt_num) = (cntSt t).(rcnt_num)).
+          {
+            ddestruct H3.
+            now rewrite <- x3, <- x at 1.
+          }
+          rewrite H2.
+          exact H2.
+        } *)
+        { right. exact H10. }
+        { now rewrite H1 in H11. }
+      }
+      {
+        setoid_rewrite <- H7.
+        intros.
+        eapply tkts_boun0 with
+          (j:=j).
+        { easy. }
+        { exact H0. }
+        {
+          unfold Ready.
+          dec_eq_nats j i.
+          {
+            unfold Ready in H2.
+            setoid_rewrite <- x in H2.
+            destruct H2. 2: easy.
+            apply tkts_eql2 in H2. subst.
+            setoid_rewrite H10.
+            now right.
+          }
+          rewrite <- H1; auto.
+        }
+      }
+      {
+        unfold not. intros.
+        psimpl. ddestruct H3;
+        now rewrite <- x in H2 at 1.
+      }
+      {
+        assert (rcnt_num (cntSt t) = rcnt_num (cntSt s)).
+        {
+          ddestruct H3;
+          now rewrite <- x3, <- x at 1.
+        }
+        setoid_rewrite H.
+        setoid_rewrite <- H7.
+        easy.
+      }
+    }
+    {
+      intros. apply eq_inj in H.
+      subst. exists x2. split. easy.
+      constructor.
+      2: easy.
+      2: easy.
+      2: now rewrite H1.
+      (* 2: easy. *)
+      intros. destruct H2.
+      constructor.
+      { easy. }
+      {
+        intros. apply owns_resp0.
+        { easy. }
+        {
+          unfold Ready.
+          now rewrite <- H1.
+        }
+        {
+          ddestruct H3.
+          rewrite <- x3 at 1.
+          rewrite <- x in H12 at 1.
+          easy.
+        }
+      }
+      (* constructor. *)
+      {
+        intros.
+        apply rcnt_defn0 in H2.
+        ddestruct H3.
+        rewrite <- x3 in H2 at 1.
+        rewrite <- x at 1.
+        easy.
+      }
+      {
+        intros.
+        apply owns_resp3.
+        { easy. }
+        {
+          rewrite H11. ddestruct H3.
+          now rewrite <- x3, <- x at 1.
+        }
+        { now rewrite <- H1. }
+      }
+      {
+        assert ((cntSt t).(rcnt_num) = (cntSt s).(rcnt_num)).
+        {
+          ddestruct H3.
+          now rewrite <- x3, <- x at 1.
+        }
+        setoid_rewrite H2.
+        setoid_rewrite <- H7.
+        intros own Heq1 Heq2. apply owns_wait0.
+        easy.
+        (* { now rewrite <- H1. } *)
+        { now rewrite <- H1. }
+      }
+      {
+        assert ((cntSt t).(rcnt_num) = (cntSt s).(rcnt_num)).
+        {
+          ddestruct H3.
+          now rewrite <- x3, <- x at 1.
+        }
+        setoid_rewrite H2.
+        setoid_rewrite <- H7.
+        intro. apply tkts_less0.
+        now setoid_rewrite <- H1.
+      }
+      {
+        intros.
+        dec_eq_nats j0 i.
+        {
+          assert (my_tkt = cur_tkt).
+          {
+            clear - x H13.
+            destruct H13 as [H13|H13].
+            2: now rewrite <- x in H13 at 1.
+            unfold Ready in H13.
+            rewrite <- x in H13 at 1.
+            clear - H13. ddestruct H13.
+            apply equal_f with
+              (x:=cur_tkt)
+              in x.
+            rewrite eqb_id in x.
+            dec_eq_nats cur_tkt my_tkt.
+            { easy. }
+            rewrite eqb_nid in *; auto.
+            now rewrite frobProgId in x at 1.
+          }
+          subst.
+          eapply tkts_uniq0.
+          { easy. }
+          { exact H11. }
+          (* {
+            assert ((cntSt t).(rcnt_num) = (cntSt s).(rcnt_num)).
+            {
+              ddestruct H3.
+              now rewrite <- x3, <- x at 1.
+            }
+            rewrite <- H14. exact H12.
+          } *)
+          {
+            unfold Ready.
+            rewrite <- H1; auto.
+            exact H12.
+          }
+          { now right. }
+        }
+        {
+          unfold Ready in H12, H13.
+          rewrite H1 in H12; auto.
+          rewrite H1 in H13; auto.
+          assert ((cntSt s).(rcnt_num) = (cntSt t).(rcnt_num)).
+          {
+            ddestruct H3.
+            now rewrite <- x, <- x3 at 1.
+          }
+          eapply tkts_uniq0.
+          { easy. }
+          { exact H11. }
+          (* { rewrite H15 at 1. exact H12. } *)
+          { exact H12. }
+          { easy. }
+        }
+      }
+      {
+        intros.
+        dec_eq_nats j0 i.
+        {
+          unfold Ready in H12.
+          destruct H12 as [H12|H12];
+          rewrite <- x in H12 at 1.
+          2: easy. apply tkts_eql2 in H12.
+          subst. rename my_tkt0 into my_tkt.
+          rewrite <- H7 at 1. eapply tkts_boun0
+            with (j:=i).
+          { easy. }
+          { exact H11. }
+          { now right. }
+        }
+        {
+          setoid_rewrite <- H7.
+          eapply tkts_boun0 with
+            (j:=j0).
+          { easy. }
+          { exact H11. }
+          {
+            unfold Ready.
+            rewrite <- H1; auto.
+          }
+        }
+      }
+      {
+        unfold not. intros.
+        psimpl. ddestruct H3;
+        now rewrite <- x in H12 at 1.
+      }
+      {
+        assert (rcnt_num (cntSt t) = rcnt_num (cntSt s)).
+        {
+          ddestruct H3;
+          now rewrite <- x3, <- x at 1.
+        }
+        setoid_rewrite H2.
+        setoid_rewrite <- H7.
+        easy.
+      }
+      { easy. }
+    }
   }
-}
+  intros cur_tkt.
+  split.
+  {
+    unfold Commit, Precs, LiftSPrec, LiftSRelt.
+    intros. do 2 psimpl. rewrite H8 in H2.
+    ddestruct H2. destruct H5.
+    dec_eq_nats cur_tkt my_tkt.
+    {
+      rewrite eqb_id in *.
+      remember x3.(PState).(lock_owner).
+      move Heqo at bottom.
+      destruct o. destruct o.
+      rename n into j.
+      dec_eq_nats j i.
+      {
+        pose (p' :=
+          comRetPoss i
+            (comInvPoss i
+              x3
+              Acq
+              (LockUB (Some (i, Acq))))
+            Acq
+            (LockUB None)
+            tt
+        ).
+        assert (
+          VisPossSteps
+            x3
+            (([] ++ [(i, CallEv Acq)]) ++ [(i, RetEv Acq tt)])
+            p'
+        ).
+        {
+          apply retStep.
+          apply callStep.
+          constructor.
+          {
+            assert (PState x3 = LockOwned i).
+            {
+              destruct x3, PState.
+              cbn in *. now f_equal.
+            }
+            rewrite H2.
+            split. easy.
+            split. easy.
+            constructor.
+          }
+          {
+            cbn. rewrite eqb_id.
+            split. easy.
+            split. easy.
+            constructor.
+          }
+        }
+        exists (eq p').
+        split.
+        { repeat econstructor. }
+        split.
+        {
+          intros. subst.
+          eexists. split. easy.
+          eapply erase_vis. exact H2.
+        }
+        split.
+        {
+          eexists.
+          split. easy.
+          split. 2:{ cbn. now rewrite eqb_id. }
+          split. 2: easy.
+          constructor.
+          { easy. }
+          {
+            unfold Ready. intros.
+            now rewrite <- x in H12 at 1.
+          }
+          { easy. }
+          {
+            intros.
+            rewrite <- x in H13 at 1.
+            rewrite frobProgId with
+              (p:=acq_body _)
+              in H13.
+            easy.
+          }
+          { easy. }
+          { easy. }
+          {
+            unfold Ready. intros.
+            repeat rewrite <- x in H14 at 1.
+            rewrite frobProgId with
+              (p:= acq_body cur_tkt)
+              in H14.
+            now destruct H14.
+          }
+          {
+            intros.
+            rewrite <- H11 at 1.
+            eapply tkts_boun0 with
+              (j:=i).
+            { easy. }
+            { exact H12. }
+            {
+              unfold Ready.
+              now rewrite <- H1.
+            }
+          }
+          {
+            unfold not. intros.
+            psimpl. ddestruct H3;
+            now rewrite <- x in H13 at 1.
+          }
+          {
+            assert (rcnt_num (cntSt t) = rcnt_num (cntSt s)).
+            {
+              ddestruct H3;
+              now rewrite <- x5, <- x at 1.
+            }
+            setoid_rewrite H5.
+            setoid_rewrite <- H11.
+            easy.
+          }
+        }
+        {
+          intros. apply eq_inj in H5.
+          subst. eexists. split. easy.
+          constructor.
+          2:{ cbn. now rewrite eqb_nid. }
+          2:{ cbn. now rewrite eqb_nid. }
+          2: now rewrite H1.
+          {
+            intros.
+            constructor; intros;
+            now psimpl.
+          }
+          { now rewrite <- Heqo at 1. }
+        }
+      }
+      {
+        exfalso.
+        apply owns_resp0 with
+          (my_tkt:=my_tkt)
+          (cur_tkt:=my_tkt).
+        { now exists j. }
+        { easy. }
+        {
+          ddestruct H3.
+          { now rewrite <- x5 at 1. }
+          {
+            exfalso.
+            apply rcnt_defn0.
+            { easy. }
+            { now rewrite <- x5 at 1. }
+          }
+        }
+        { easy. }
+      }
+      {
+        pose (p' :=
+          comRetPoss i
+            (comInvPoss i
+              x3
+              Acq
+              (LockAcqRan i))
+            Acq
+            (LockOwned i)
+            tt
+        ).
+        assert (
+          VisPossSteps
+            x3
+            (([] ++ [(i, CallEv Acq)]) ++ [(i, RetEv Acq tt)])
+            p'
+        ).
+        {
+          apply retStep.
+          apply callStep.
+          constructor.
+          {
+            assert (PState x3 = LockUnowned).
+            {
+              destruct x3, PState.
+              cbn in *. now f_equal.
+            }
+            rewrite H2.
+            split. easy.
+            split. easy.
+            constructor.
+          }
+          {
+            cbn. rewrite eqb_id.
+            split. easy.
+            split. easy.
+            constructor.
+          }
+        }
+        exists (eq p').
+        split.
+        { repeat econstructor. }
+        split.
+        {
+          intros. subst.
+          eexists. split. easy.
+          eapply erase_vis.
+          exact H2.
+        }
+        split.
+        {
+          eexists. split. easy.
+          split. 2:{ cbn. now rewrite eqb_id. }
+          split. 2: easy.
+          {
+            intros.
+            constructor; intros;
+            psimpl; cbn in *;
+            rewrite ?eqb_id in *;
+            try (easy || congruence).
+            {
+              ddestruct H3.
+              { now rewrite <- x at 1. }
+              {
+                assert (rcnt_num (cntSt s) ≠ None).
+                { now apply rcnt_defn0. }
+                now rewrite <- x5 in H3 at 1.
+              }
+            }
+            {
+              rewrite <- H11 at 1.
+              eapply tkts_less0.
+              {
+                unfold not. intros.
+                destruct H13. easy. psimpl.
+                now rewrite H8 in H13 at 1.
+              }
+              { easy. }
+              {
+                ddestruct H3;
+                rewrite <- x5 at 1;
+                rewrite <- x in H12 at 1;
+                easy.
+              }
+            }
+            (* {
+              rewrite <- H11 at 1.
+              apply tkts_less0.
+              {
+                setoid_rewrite H8.
+                unfold not. intros.
+                now destruct H13; psimpl.
+              }
+              { easy. }
+              {
+                assert (rcnt_num (cntSt s) = rcnt_num (cntSt t)).
+                {
+                  ddestruct H3;
+                  now rewrite <- x5, <- x at 1.
+                }
+                now rewrite H13 at 1.
+              }
+            } *)
+            {
+              unfold Ready in H13.
+              repeat rewrite <- x in H13 at 1.
+              rewrite frobProgId with
+                (p:= acq_body cur_tkt)
+                in H13.
+              now destruct H13.
+            }
+            {
+              rewrite <- H11 at 1.
+              eapply tkts_boun0 with
+                (j:=j).
+              { easy. }
+              { exact H12. }
+              {
+                dec_eq_nats j i.
+                {
+                  unfold Ready in H13.
+                  setoid_rewrite <- x in H13.
+                  destruct H13. easy. symmetry in H13.
+                  now rewrite frobProgId in H13 at 1.
+                }
+                unfold Ready.
+                now repeat rewrite <- H1.
+              }
+            }
+            {
+              unfold not. intros.
+              psimpl. ddestruct H3;
+              now rewrite <- x in H13 at 1.
+            }
+            {
+              ddestruct H3;
+              rewrite <- x in H12 at 1.
+              2: easy. cbn in *. ddestruct H12.
+              rewrite <- H11 at 1.
+              eapply tkts_boun0 with
+                (j:=i).
+              { easy. }
+              { easy. }
+              { now left. }
+            }
+          }
+        }
+        {
+          intros. apply eq_inj in H5.
+          subst. eexists. split. easy.
+          constructor.
+          2:{ cbn. now rewrite eqb_nid. }
+          2:{ cbn. now rewrite eqb_nid. }
+          2: now rewrite H1.
+          (* 2:{
+            rewrite <- Heqo at 1.
+            intros. now ddestruct H12.
+          }
+          2: now rewrite <- Heqo at 1. *)
+          {
+            intros. destruct H12.
+            constructor.
+            { easy. }
+            {
+              intros. psimpl. ddestruct H15.
+              rename x3 into i. unfold not.
+              assert (rcnt_num (cntSt t) = rcnt_num (cntSt s)).
+              {
+                ddestruct H3.
+                now rewrite <- x3, <- x at 1.
+                now rewrite <- x in H14 at 1.
+              }
+              intros. subst. eapply tkts_uniq1.
+              { now rewrite <- Heqo at 1. }
+              { exact H12. }
+              (* { rewrite <- H15 at 1. exact H14. } *)
+              {
+                left. unfold Ready.
+                rewrite <- H1; auto.
+                exact H13.
+              }
+              {
+                assert (cur_tkt = my_tkt).
+                {
+                  clear - H3 H14.
+                  ddestruct H3.
+                  {
+                    rewrite <- x in H14 at 1.
+                    cbn in *. now ddestruct H14.
+                  }
+                  {
+                    now rewrite <- x in H14 at 1.
+                  }
+                }
+                left.
+                now subst.
+              }
+            }
+            {
+              intros.
+              ddestruct H3.
+              { now rewrite <- x at 1. }
+              {
+                exfalso.
+                assert (rcnt_num (cntSt s) ≠ None).
+                {
+                  apply rcnt_defn1.
+                  { now rewrite <- Heqo. }
+                }
+                now rewrite <- x3 in H3 at 1.
+              }
+            }
+            {
+              intros. unfold not.
+              intros. subst. psimpl.
+              ddestruct H15. rename x3 into i.
+              assert (my_tkt = cur_tkt).
+              {
+                ddestruct H3;
+                rewrite <- x in H13 at 1.
+                { cbn in *. now ddestruct H13. }
+                { easy. }
+              }
+              subst.
+              eapply tkts_uniq1.
+              { now rewrite <- Heqo. }
+              { exact H12. }
+              (* {
+                assert (rcnt_num (cntSt s) = rcnt_num (cntSt t)).
+                {
+                  ddestruct H3;
+                  now rewrite <- x, <- x3 at 1.
+                }
+                rewrite H15 at 1. exact H13.
+              } *)
+              {
+                right.
+                rewrite <- H1; auto.
+                exact H14.
+              }
+              { now left. }
+            }
+            {
+              cbn. intros. ddestruct H12.
+              exfalso. ddestruct H3.
+              2: now rewrite <- x in H13 at 1.
+              rewrite <- x in H13 at 1. cbn in *.
+              ddestruct H13. rename my_tkt into cur_tkt.
+              assert (cur_tkt < faiVal s).
+              {
+                eapply tkts_boun1 with
+                  (j:=i).
+                { now rewrite <- Heqo at 1. }
+                { easy. }
+                { now left. }
+              }
+              subst.
+              rewrite H11 in H3 at 1.
+              destruct t, t0, LState.
+              cbn in *. lia.
+            }
+            {
+              assert ((cntSt t).(rcnt_num) = (cntSt s).(rcnt_num)).
+              {
+                ddestruct H3.
+                { now rewrite <- x3, <- x at 1. }
+                {
+                  assert (rcnt_num (cntSt s) ≠ None).
+                  {
+                    apply rcnt_defn1.
+                    { now rewrite <- Heqo. }
+                  }
+                  now rewrite <- x3 in H3 at 1.
+                }
+              }
+              setoid_rewrite H12.
+              setoid_rewrite <- H11.
+              intros Heq1 Heq2. apply tkts_less1.
+              { now setoid_rewrite <- H1. }
+              { now rewrite <- Heqo at 1. }
+            }
+            {
+              intros.
+              assert (j0 ≠ i).
+              {
+                unfold not.
+                intro. subst.
+                unfold Ready in H15.
+                repeat rewrite <- x in H15 at 1.
+                rewrite frobProgId with
+                  (p:= acq_body _)
+                  in H15.
+                now destruct H15.
+              }
+              (* assert (rcnt_num (cntSt s) = rcnt_num (cntSt t)).
+              {
+                ddestruct H3.
+                { now rewrite <- x3, <- x at 1. }
+                { now rewrite <- x in H14 at 1. }
+              } *)
+              eapply tkts_uniq1.
+              { now rewrite <- Heqo. }
+              { exact H13. }
+              (* { rewrite H18. exact H14. } *)
+              {
+                unfold Ready.
+                rewrite <- H1; auto.
+                exact H14.
+              }
+              {
+                unfold Ready.
+                now rewrite <- H1.
+              }
+            }
+            {
+              intros.
+              assert (j0 ≠ i).
+              {
+                unfold not.
+                intro. subst.
+                unfold Ready in H14.
+                repeat rewrite <- x in H14 at 1.
+                rewrite frobProgId with
+                  (p:= acq_body _)
+                  in H14.
+                now destruct H14.
+              }
+              rewrite <- H11 at 1.
+              eapply tkts_boun1 with
+                (j:=j0).
+              { now rewrite <- Heqo. }
+              { exact H13. }
+              {
+                unfold Ready.
+                now rewrite <- H1.
+              }
+            }
+            {
+              unfold not. intros.
+              psimpl. ddestruct H3;
+              now rewrite <- x in H14 at 1.
+            }
+            {
+              move H3 at bottom.
+              intros. ddestruct H3;
+              rewrite <- x in H13 at 1;
+              cbn in *; ddestruct H13.
+              setoid_rewrite <- H11.
+              eapply tkts_boun1 with
+                (j:=i).
+              { now rewrite <- Heqo at 1. }
+              { easy. }
+              { now left. }
+            }
+          }
+          { now rewrite <- Heqo at 1. }
+        }
+      }
+      {
+        pose (p' :=
+          comRetPoss i
+            (comInvPoss i
+              x3
+              Acq
+              (LockUB (Some (i, Acq))))
+            Acq
+            (LockUB None)
+            tt
+        ).
+        assert (
+          VisPossSteps
+            x3
+            (([] ++ [(i, CallEv Acq)]) ++ [(i, RetEv Acq tt)])
+            p'
+        ).
+        {
+          apply retStep.
+          apply callStep.
+          constructor.
+          {
+            assert (PState x3 = LockUB None).
+            {
+              destruct x3, PState.
+              cbn in *. now f_equal.
+            }
+            rewrite H2.
+            split. easy.
+            split. easy.
+            constructor.
+          }
+          {
+            cbn. rewrite eqb_id.
+            split. easy.
+            split. easy.
+            constructor.
+          }
+        }
+        exists (eq p').
+        split.
+        { repeat econstructor. }
+        split.
+        {
+          intros. subst.
+          eexists. split. easy.
+          eapply erase_vis. exact H2.
+        }
+        split.
+        {
+          eexists.
+          split. easy.
+          split. 2:{ cbn. now rewrite eqb_id. }
+          split. 2: easy.
+          constructor.
+          { easy. }
+          {
+            unfold Ready. intros.
+            now rewrite <- x in H12 at 1.
+          }
+          { easy. }
+          {
+            intros.
+            rewrite <- x in H13 at 1.
+            rewrite frobProgId with
+              (p:=acq_body _)
+              in H13.
+            easy.
+          }
+          { easy. }
+          { easy. }
+          { easy. }
+          { easy. }
+          {
+            unfold not. intros.
+            psimpl. ddestruct H3;
+            now rewrite <- x in H13 at 1.
+          }
+          { easy. }
+        }
+        {
+          intros. apply eq_inj in H5.
+          subst. eexists. split. easy.
+          constructor.
+          2:{ cbn. now rewrite eqb_nid. }
+          2:{ cbn. now rewrite eqb_nid. }
+          2: now rewrite H1.
+          (* 2:{ now rewrite <- Heqo at 1. }
+          2:{ now rewrite <- Heqo. } *)
+          {
+            intros.
+            constructor; intros;
+            now psimpl.
+          }
+          { easy. }
+        }
+      }
+    }
+    {
+      rewrite eqb_nid in *; auto.
+      exists (eq x3).
+      split.
+      { repeat econstructor. }
+      split.
+      {
+        intros. subst.
+        repeat econstructor.
+      }
+      split.
+      {
+        exists x3.
+        split. easy.
+        split. 2: easy.
+        split. 2: easy.
+        constructor.
+        { easy. }
+        {
+          unfold Ready. intros.
+          rewrite <- x in H12 at 1.
+          easy.
+        }
+        {
+          intros.
+          apply rcnt_defn0 in H5.
+          ddestruct H3.
+          { now rewrite <- x at 1. }
+          { now rewrite <- x6 in H5 at 1. }
+        }
+        {
+          intros.
+          rewrite <- x in H13 at 1.
+          apply tkts_eql in H13. subst.
+          ddestruct H3;
+          rewrite <- x in H12 at 1.
+          { now ddestruct H12. }
+          { easy. }
+        }
+        {
+          intros.
+          ddestruct H3;
+          rewrite <- x in H12 at 1.
+          2: easy. eapply owns_wait0.
+          easy.
+          (* { now rewrite H8 at 1. } *)
+          {
+            unfold not. intros. psimpl.
+            setoid_rewrite H8 in H3.
+            now destruct H3; psimpl.
+          }
+          { easy. }
+          { now rewrite <- x6 at 1. }
+          { rewrite H11 at 1. now ddestruct H12. }
+        }
+        {
+          intros.
+          ddestruct H3;
+          rewrite <- x in H12 at 1.
+          2: easy. rewrite <- H11 at 1.
+          eapply tkts_less0.
+          {
+            setoid_rewrite H8.
+            unfold not. intros.
+            now destruct H3; psimpl.
+          }
+          { easy. }
+          { ddestruct H12. now rewrite <- x6 at 1. }
+        }
+        {
+          intros.
+          (* ddestruct H3. *)
+          (* rewrite <- x in H13 at 1. *)
+          (* 2: easy. ddestruct H13. *)
+          eapply tkts_uniq0.
+          { easy. }
+          { exact H12. }
+          {
+            unfold Ready in H13.
+            repeat rewrite <- x in H13 at 1.
+            destruct H13. easy.
+            apply tkts_eql in H13. subst.
+            left. exact H8.
+          }
+          {
+            unfold Ready in H14.
+            now rewrite H1 in H14.
+          }
+        }
+        {
+          intros.
+          rewrite <- H11 at 1.
+          dec_eq_nats j i.
+          {
+            unfold Ready in H13.
+            setoid_rewrite <- x in H13.
+            destruct H13. easy.
+            apply tkts_eql in H13. subst.
+            eapply tkts_boun0 with
+              (j:=i).
+            { easy. }
+            { easy. }
+            { now left. }
+          }
+          eapply tkts_boun0 with
+            (j:=j).
+          { easy. }
+          { exact H12. }
+          {
+            unfold Ready.
+            now rewrite <- H1.
+          }
+        }
+        {
+          unfold not. intros.
+          psimpl. ddestruct H3;
+          now rewrite <- x in H13 at 1.
+        }
+        {
+          assert (rcnt_num (cntSt t) = rcnt_num (cntSt s)).
+          {
+            ddestruct H3;
+            now rewrite <- x6, <- x at 1.
+          }
+          setoid_rewrite H5.
+          setoid_rewrite <- H11.
+          easy.
+        }
+      }
+      {
+        intros. apply eq_inj in H5.
+        subst. eexists. split. easy.
+        constructor.
+        2: easy.
+        2: easy.
+        (* 2: now rewrite H1.
+        2: easy. *)
+        intros. destruct H12.
+        assert (
+          ∀ tkt,
+            Some tkt = rcnt_num (cntSt t) ->
+            cur_tkt = tkt /\
+            rcnt_num (cntSt s) = Some cur_tkt
+        ).
+        {
+          intros.
+          ddestruct H3;
+          rewrite <- x in H12 at 1;
+          ddestruct H12.
+          now rewrite <- x6 at 1.
+        }
+        constructor.
+        { easy. }
+        {
+          intros.
+          eapply owns_resp1.
+          { easy. }
+          {
+            unfold Ready.
+            now rewrite <- H1.
+          }
+          apply H12 in H15.
+          now psimpl.
+        }
+        {
+          intros.
+          apply rcnt_defn1 in H13.
+          ddestruct H3;
+          rewrite <- x6 in H13 at 1;
+          auto.
+          now rewrite <- x at 1.
+        }
+        {
+          intros.
+          eapply owns_resp4.
+          { easy. }
+          {
+            apply H12 in H14.
+            now psimpl.
+          }
+          { now rewrite <- H1. }
+        }
+        {
+          intros.
+          eapply owns_wait1 with
+            (cur_tkt:=cur_tkt0).
+          easy.
+          (* { now rewrite <- H1. } *)
+          { now setoid_rewrite <- H1. }
+          { easy. }
+          {
+            apply H12 in H14.
+            now psimpl.
+          }
+          { now rewrite H11 at 1. }
+        }
+        {
+          intros.
+          rewrite <- H11 at 1.
+          eapply tkts_less1.
+          { now setoid_rewrite <- H1. }
+          { easy. }
+          {
+            apply H12 in H14.
+            now psimpl.
+          }
+        }
+        {
+          intros.
+          (* apply H12 in H15. psimpl. *)
+          eapply tkts_uniq1.
+          { easy. }
+          { exact H14. }
+          {
+            unfold Ready.
+            repeat rewrite <- H1 at 1; auto.
+            exact H15.
+          }
+          {
+            unfold Ready in H16.
+            dec_eq_nats j0 i.
+            {
+              repeat rewrite <- x in H16 at 1.
+              destruct H16. easy.
+              apply tkts_eql in H16.
+              subst. now left.
+            }
+            {
+              unfold Ready.
+              repeat rewrite <- H1 at 1.
+              all: easy.
+            }
+          }
+        }
+        {
+          intros.
+          rewrite <- H11 at 1.
+          eapply tkts_boun1 with
+            (j:=j0).
+          { easy. }
+          { exact H14. }
+          {
+            unfold Ready in H15.
+            dec_eq_nats j0 i.
+            {
+              repeat rewrite <- x in H15 at 1.
+              destruct H15. easy.
+              apply tkts_eql in H15.
+              subst. now left.
+            }
+            {
+              unfold Ready.
+              repeat rewrite <- H1 at 1.
+              all: easy.
+            }
+          }
+        }
+        {
+          unfold not. intros.
+          psimpl. ddestruct H3;
+          now rewrite <- x in H15 at 1.
+        }
+        {
+          move H3 at bottom.
+          assert (rcnt_num (cntSt t) = rcnt_num (cntSt s)).
+          {
+            ddestruct H3;
+            now rewrite <- x6, <- x at 1.
+          }
+          setoid_rewrite H13.
+          setoid_rewrite <- H11.
+          easy.
+        }
+        { now rewrite H1. }
+        { easy. }
+      }
+    }
+  }
+  destruct (cur_tkt =? my_tkt).
+  {
+    left. pfold.
+    econstructor.
+    unfold sub, subRelt, Posts, LiftSPrec, LiftSRelt.
+    intros. psimpl. now exists x4.
+  }
+  {
+    right.
+    apply rec.
+    {
+      unfold sub, subRelt.
+      intros. now psimpl.
+    }
+  }
+Qed.
 
-Theorem ticketLockCorrect :
-  VerifyImpl VE VF Rely Guar Precs ticketLockImpl Posts.
-constructor.
-apply Rely_refl.
-apply Rely_trans.
-apply Guar_in_Rely.
-apply Inv_in_Rely.
-apply Ret_in_Rely.
-apply init_in_Precs.
-apply Precs_stable.
-apply Posts_stable.
-apply ticketLockImpl_switch_code.
-intros. destruct m; cbn.
-apply acq_correct.
+Lemma classicT_left {P : Prop} :
+  ∀ p : P,
+    classicT P = left _ p.
+Proof.
+  intros.
+  destruct (classicT P).
+  {
+    f_equal.
+    apply proof_irrelevance.
+  }
+  { easy. }
+Qed.
+
+Lemma classicT_right {P : Prop} :
+  ∀ p : ¬P,
+    classicT P = right _ p.
+Proof.
+  intros.
+  destruct (classicT P).
+  2:{
+    f_equal.
+    apply proof_irrelevance.
+  }
+  { easy. }
+Qed.
+
+Lemma rel_correct {T} (i : Name T) :
+  VerifyProg i
+    (LiftSRelt (Rely i))
+    (LiftSRelt (Guar i))
+    (prComp
+      (LiftSPrec (Precs i Rel))
+      (TInvoke ticketLockImpl i unit Rel) ->>
+      LiftSRelt (Rely i))
+    rel
+    (λ v, LiftSRelt (Posts i Rel v)).
+Proof.
+  unfold rel.
+  eapply weakenPrec with
+    (P:=λ _ _, LiftSPrec (λ s ρ,
+      (Inv i s ρ /\ fst s i = Cont Rel rel) /\
+      PCalls ρ i = CallPoss Rel /\
+      PRets ρ i = RetIdle)).
+  2:{
+    unfold sub, subRelt, Precs, LiftSPrec, LiftSRelt.
+    intros. psimpl.
+    assert (exists x, x0 = eq x).
+    {
+      eapply Invoke_pres_single.
+      exact H1.
+    }
+    psimpl.
+    specialize (H0 x2 eq_refl). psimpl.
+    eexists. split. easy.
+    unfold TInvoke in H1. psimpl.
+    apply eq_sing in H4. psimpl.
+    destruct H0.
+    cut (
+      (Inv i t x0 /\ fst t i = Cont Rel rel) /\
+      PCalls x0 i = CallPoss Rel /\
+      PRets x0 i = RetIdle
+    ).
+    { easy. }
+    split. 2: now rewrite <- pres_call0, <- pres_ret0.
+    split.
+    {
+      apply pres_inv0. destruct H2.
+      constructor.
+      { now rewrite H5 at 1. }
+      {
+        intros.
+        unfold Ready in H2.
+        destruct H1. ddestruct H1.
+        now rewrite <- x in H2 at 1.
+      }
+      { now rewrite H5, <- H3 at 1. }
+      (* constructor. *)
+      {
+        intros.
+        destruct H1. ddestruct H1.
+        rewrite <- x in H4 at 1.
+        ddestruct H4.
+      }
+      {
+        intros.
+        eapply owns_wait0.
+        {
+          destruct H1. cbn in *.
+          ddestruct H1. easy.
+          (* now rewrite <- x4. *)
+        }
+        {
+          unfold not. intros. psimpl.
+          unfold TIdle in H. psimpl.
+          setoid_rewrite H in H10.
+          now destruct H10; psimpl.
+        }
+        { now rewrite <- H5 at 1. }
+        { rewrite H3 at 1. exact H2. }
+        { now rewrite H3 at 1. }
+      }
+      {
+        intros.
+        rewrite <- H3 at 1.
+        apply tkts_less0.
+        {
+          unfold not. intros. psimpl.
+          destruct H1. ddestruct H1. cbn in *.
+          setoid_rewrite <- x4 in H4.
+          now destruct H4; psimpl.
+        }
+        { now rewrite <- H5 at 1. }
+        { now rewrite H3 at 1. }
+      }
+      {
+        intros. destruct H1.
+        cbn in *. ddestruct H1.
+        unfold Ready in H4.
+        destruct H4 as [H4 | H4];
+        rewrite <- x in H4 at 1.
+        { easy. }
+        {
+          rewrite frobProgId with
+            (p:=ticketLockImpl _ _)
+            in H4.
+          rewrite frobProgId with
+            (p:=acq_body _)
+            in H4.
+          easy.
+        }
+      }
+      {
+        unfold Ready. intros.
+        destruct H1. cbn in *.
+        rewrite <- H3 at 1.
+        eapply tkts_boun0 with
+          (j:=j).
+        { now rewrite <- H5 at 1. }
+        { exact H2. }
+        {
+          dec_eq_nats j i.
+          {
+            ddestruct H1.
+            rewrite frobProgId in x at 1.
+            setoid_rewrite <- x in H4.
+            now destruct H4.
+          }
+          unfold Ready.
+          now repeat rewrite H10 at 1.
+        }
+      }
+      {
+        setoid_rewrite H5.
+        setoid_rewrite <- H3 at 1.
+        easy.
+      }
+      {
+        setoid_rewrite H5.
+        setoid_rewrite <- H3.
+        easy.
+      }
+    }
+    {
+      destruct H1. ddestruct H0.
+      cbn in *. now rewrite <- pres_ths0 at 1.
+    }
+  }
+  eapply weakenPost.
+  eapply (lemCall
+    (Q:=λ _ _, LiftSPrec (λ (s : InterState _ (VE _)) (ρ : Poss (VF _)),
+      (
+        (Inv i s ρ /\
+          fst s i = UCall Rel (inr Inc) Return) /\
+        PCalls ρ i = CallPoss Rel /\
+        PRets ρ i = RetIdle)
+      \/
+      (ρ.(PState).(lock_owner) = None /\
+        (Inv i s ρ /\
+          fst s i = UCall Rel (inr Inc) Return) /\
+        PCalls ρ i = CallDone Rel /\
+        PRets ρ i = RetPoss Rel tt)))
+    (S:=λ _ _ _, LiftSPrec (λ s ρ,
+      (Inv i s ρ /\
+        fst s i = Cont Rel (Return tt)) /\
+      PCalls ρ i = CallDone Rel /\
+      PRets ρ i = RetPoss Rel tt))).
+  {
+    unfold
+      Stable, stableRelt,
+      sub, subRelt,
+      LiftSPrec, LiftSRelt.
+    intros. psimpl.
+    specialize (H0 x1 eq_refl).
+    psimpl. eexists. split. easy.
+    destruct H1; psimpl.
+    {
+      left.
+      split. split.
+      { now apply H0. }
+      { now rewrite <- H0.(pres_ths) at 1. }
+      split.
+      { now rewrite <- H0.(pres_call) at 1. }
+      { now rewrite <- H0.(pres_ret) at 1. }
+    }
+    {
+      right.
+      split. now apply H0.
+      split. split.
+      { now apply H0. }
+      { now rewrite <- H0.(pres_ths) at 1. }
+      split.
+      { now rewrite <- H0.(pres_call) at 1. }
+      { now rewrite <- H0.(pres_ret) at 1. }
+    }
+  }
+  {
+    unfold Stable, stablePost.
+    intros []. apply acq_inv_stable.
+  }
+  {
+    unfold Commit, Precs, LiftSPrec, LiftSRelt.
+    intros. do 2 psimpl.
+    decide_prop (x1.(PState).(lock_owner) = Some (Some i)).
+    {
+      ddestruct H.
+      2:{
+        destruct H3.
+        exfalso. apply rcnt_wait0.
+        split. easy.
+        exists i0.
+        now rewrite <- x2 at 1.
+      }
+      assert (rcnt_num (cntSt s) = rcnt_num (cntSt t)).
+      { now rewrite <- x2, <- x at 1. }
+      exists (eq x1).
+      split.
+      { repeat econstructor. }
+      split.
+      {
+        intros. subst.
+        repeat econstructor.
+      }
+      rewrite H6 in H1.
+      ddestruct H1.
+      split.
+      {
+        eexists. split. easy.
+        left.
+        split. 2: easy.
+        split.
+        {
+          destruct H3.
+          constructor.
+          { easy. }
+          {
+            unfold Ready. intros.
+            now rewrite <- x in H3 at 1.
+          }
+          { now setoid_rewrite <- H. }
+          { now setoid_rewrite <- x. }
+          {
+            setoid_rewrite <- x.
+            intros. exfalso.
+            apply nrel. right.
+            repeat eexists.
+          }
+          {
+            setoid_rewrite <- x.
+            intros. exfalso.
+            apply nrel. right.
+            repeat eexists.
+          }
+          {
+            unfold Ready.
+            setoid_rewrite <- x.
+            intros. now destruct H11.
+          }
+          {
+            intros.
+            rewrite <- H9 at 1.
+            eapply tkts_boun0 with
+              (j:=j).
+            { easy. }
+            { exact H3. }
+            {
+              dec_eq_nats j i.
+              {
+                unfold Ready in H11.
+                setoid_rewrite <- x in H11.
+                now destruct H11.
+              }
+              unfold Ready.
+              now setoid_rewrite <- H0.
+            }
+          }
+          {
+            unfold not at 1. intros.
+            psimpl. rewrite <- x4 in H11 at 1.
+            cbn in *. now ddestruct H11.
+          }
+          {
+            setoid_rewrite <- H.
+            setoid_rewrite <- H9.
+            easy.
+          }
+        }
+        { easy. }
+      }
+      {
+        intros. apply eq_inj in H1.
+        subst. eexists. split. easy.
+        constructor.
+        {
+          intros. destruct H11.
+          constructor.
+          { easy. }
+          {
+            unfold Ready.
+            setoid_rewrite H0; auto.
+            setoid_rewrite <- H.
+            easy.
+          }
+          { now setoid_rewrite <- H. }
+          {
+            unfold Ready.
+            setoid_rewrite H0; auto.
+            setoid_rewrite <- H.
+            easy.
+          }
+          {
+            setoid_rewrite <- H9.
+            setoid_rewrite H0; auto.
+            setoid_rewrite <- H.
+            easy.
+          }
+          {
+            setoid_rewrite <- H9.
+            setoid_rewrite H0; auto.
+            setoid_rewrite <- H.
+            easy.
+          }
+          {
+            unfold Ready. intros.
+            assert (j0 ≠ i).
+            {
+              unfold not. intros. subst.
+              setoid_rewrite <- x in H14.
+              now destruct H14.
+            }
+            eapply tkts_uniq0 with
+              (cur_tkt:=cur_tkt).
+            { easy. }
+            { exact H12. }
+            (* { rewrite H at 1. exact H13. } *)
+            { now setoid_rewrite H0 in H13. }
+            { now setoid_rewrite H0 in H14. }
+          }
+          {
+            unfold Ready. intros.
+            setoid_rewrite <- H9.
+            eapply tkts_boun0.
+            { easy. }
+            { exact H12. }
+            {
+              assert (j0 ≠ i).
+              {
+                unfold not. intros. subst.
+                setoid_rewrite <- x in H13.
+                now destruct H13.
+              }
+              setoid_rewrite H0 in H13; auto.
+              exact H13.
+            }
+          }
+          {
+            unfold not. intros. psimpl.
+            rewrite H10 in H11 at 1.
+            now ddestruct H11.
+          }
+          {
+            setoid_rewrite <- H.
+            setoid_rewrite <- H9.
+            easy.
+          }
+        }
+        { easy. }
+        { easy. }
+        { now rewrite H0 at 1. }
+        { easy. }
+      }
+    }
+    {
+      pose (p' :=
+        comRetPoss i
+          (comInvPoss i
+            x1
+            Rel
+            (LockUB (Some (i, Rel))))
+          Rel
+          (LockUB None)
+          tt
+      ).
+      assert (
+        VisPossSteps
+          x1
+          (([] ++ [(i, CallEv Rel)]) ++ [(i, RetEv Rel tt)])
+          p'
+      ).
+      {
+        apply retStep.
+        apply callStep.
+        constructor.
+        {
+          destruct x1, PState. cbn in *.
+          assert (lock_pend = None) by apply H3.
+          subst. destruct lock_owner. destruct o.
+          rename n into j. dec_eq_nats j i.
+          { easy. }
+          { repeat (easy || constructor). }
+          { repeat (easy || constructor). }
+          { repeat (easy || constructor). }
+        }
+        {
+          cbn. rewrite eqb_id.
+          repeat (easy || constructor).
+        }
+      }
+      exists (eq p').
+      split.
+      { repeat econstructor. }
+      split.
+      {
+        intros. subst. eexists.
+        split. easy. eapply erase_vis.
+        exact H11.
+      }
+      split.
+      {
+        eexists. split. easy. cbn.
+        right. split. easy.
+        rewrite eqb_id.
+        split. split.
+        { constructor; intros; now psimpl. }
+        { rewrite H6 in H1. now ddestruct H1. }
+        { easy. }
+      }
+      {
+        intros. apply eq_inj in H12. subst.
+        eexists. split. easy. constructor.
+        {
+          intros.
+          constructor; intros; now psimpl.
+        }
+        { cbn. now rewrite eqb_nid. }
+        { cbn. now rewrite eqb_nid. }
+        { now rewrite H0 at 1. }
+        { easy. }
+      }
+    }
+  }
+  intros [].
+  {
+    
+    unfold Commit, Precs, LiftSRelt.
+    intros. do 2 psimpl. clear H.
+    unfold LiftSPrec in *. psimpl.
+    destruct H3; psimpl.
+    {
+      remember (x3.(PState).(lock_owner)).
+      destruct o. destruct o.
+      rename n into j.
+      dec_eq_nats j i.
+      {
+        pose (p' :=
+          comRetPoss i
+            (comInvPoss i
+              x3
+              Rel
+              (LockRelRan i))
+            Rel
+            LockUnowned
+            tt
+        ).
+        assert (
+          VisPossSteps
+            x3
+            (([] ++ [(i, CallEv Rel)]) ++ [(i, RetEv Rel tt)])
+            p'
+        ).
+        {
+          apply retStep.
+          apply callStep.
+          constructor.
+          {
+            assert (PState x3 = LockOwned i).
+            {
+              destruct x3, PState, H.
+              cbn in *. now subst.
+            }
+            rewrite H10.
+            repeat (easy || constructor).
+          }
+          {
+            cbn. rewrite eqb_id.
+            repeat (easy || constructor).
+          }
+        }
+        exists (eq p').
+        split.
+        { repeat econstructor. }
+        split.
+        {
+          intros. subst. eexists.
+          split. easy. eapply erase_vis.
+          exact H10.
+        }
+        rewrite H9 in H1.
+        ddestruct H1.
+        split.
+        {
+          eexists. split. easy.
+          split. 2:{ cbn. now rewrite eqb_id. }
+          split. 2: easy.
+          constructor; cbn;
+          unfold Ready;
+          try setoid_rewrite <- x;
+          try setoid_rewrite <- Heqo;
+          intros; try now psimpl.
+          {
+            assert (lock_owner (PState x3) ≠ None).
+            { now rewrite <- Heqo at 1. }
+            apply H in H11.
+            ddestruct H2;
+            rewrite <- x2 in H11 at 1;
+            rewrite <- x at 1;
+            easy.
+          }
+          { now ddestruct H1. }
+          {
+            rewrite <- H7 at 1.
+            move H at bottom.
+            ddestruct H2;
+            rewrite <- x in H11 at 1;
+            try easy. cbn in *.
+            ddestruct H11.
+            assert (n < faiVal s).
+            {
+              eapply H.(wait_less).
+              { symmetry. exact Heqo. }
+              { now rewrite <- x2 at 1. }
+            }
+            easy.
+          }
+          { now destruct H12. }
+          {
+            rewrite <- H7 at 1.
+            destruct H. eapply tkts_boun0.
+            { now rewrite <- Heqo at 1. }
+            { exact H11. }
+            {
+              unfold Ready.
+              rewrite <- H0.
+              exact H12.
+              {
+                unfold not. intros. subst.
+                setoid_rewrite <- x in H12.
+                now destruct H12.
+              }
+            }
+          }
+        }
+        {
+          intros. apply eq_inj in H1.
+          subst. eexists. split. easy.
+          constructor.
+          {
+            intros. destruct H11.
+            constructor; cbn;
+            unfold Ready;
+            try setoid_rewrite <- x;
+            try setoid_rewrite <- Heqo;
+            intros; try now psimpl.
+            {
+              assert (lock_owner (PState x1) ≠ None).
+              { now rewrite <- Heqo at 1. }
+              apply H in H12.
+              ddestruct H2;
+              rewrite <- x3 in H12 at 1;
+              rewrite <- x at 1;
+              easy.
+            }
+            { now ddestruct H11. }
+            {
+              assert (
+                ∀ i,
+                  x1.(PState).(lock_owner) = Some (Some i) ->
+                  ∀ cur_tkt,
+                    Some cur_tkt = rcnt_num (cntSt s) ->
+                    cur_tkt < faiVal s
+              ) by easy.
+              move Heqo at bottom.
+              assert (rcnt_num (cntSt s) ≠ None).
+              {
+                apply rcnt_defn0.
+                now rewrite <- Heqo at 1.
+              }
+              move H2 at bottom.
+              ddestruct H2;
+              try now rewrite <- x3 in H14 at 1.
+              symmetry in Heqo.
+              rewrite <- x in H12 at 1.
+              cbn in *. ddestruct H12.
+              apply H13 with
+                (cur_tkt:=n)
+                in Heqo.
+              2: now rewrite <- x3 at 1.
+              rewrite <- H7 at 1.
+              easy.
+            }
+            {
+              eapply tkts_uniq0 with
+                (cur_tkt:=cur_tkt).
+              { now rewrite <- Heqo at 1. }
+              { exact H12. }
+              {
+                unfold Ready.
+                now rewrite <- H0.
+              }
+              {
+                unfold Ready.
+                rewrite <- H0; auto.
+                unfold not. intro. subst.
+                setoid_rewrite <- x in H14.
+                now destruct H14.
+              }
+            }
+            {
+              rewrite <- H7 at 1.
+              destruct H. eapply tkts_boun0
+                with (j:=j0).
+              { now rewrite <- Heqo at 1. }
+              { exact H12. }
+              {
+                unfold Ready.
+                rewrite <- H0; auto.
+                unfold not. intros. subst.
+                setoid_rewrite <- x in H13.
+                now destruct H13.
+              }
+            }
+          }
+          { cbn. now rewrite eqb_nid. }
+          { cbn. now rewrite eqb_nid. }
+          { now rewrite H0. }
+          { now rewrite <- Heqo at 1. }
+        }
+      }
+      {
+        pose (p' :=
+          comRetPoss i
+            (comInvPoss i
+              x3
+              Rel
+              (LockUB (Some (i, Rel))))
+            Rel
+            (LockUB None)
+            tt
+        ).
+        assert (
+          VisPossSteps
+            x3
+            (([] ++ [(i, CallEv Rel)]) ++ [(i, RetEv Rel tt)])
+            p'
+        ).
+        {
+          apply retStep.
+          apply callStep.
+          constructor.
+          {
+            assert (PState x3 = LockOwned j).
+            {
+              destruct x3, PState, H.
+              cbn in *. now subst.
+            }
+            rewrite H11.
+            repeat (easy || constructor).
+          }
+          {
+            cbn. rewrite eqb_id.
+            repeat (easy || constructor).
+          }
+        }
+        exists (eq p').
+        split.
+        { repeat econstructor. }
+        split.
+        {
+          intros. subst. eexists.
+          split. easy. eapply erase_vis.
+          exact H11.
+        }
+        rewrite H9 in H1.
+        ddestruct H1.
+        split.
+        {
+          eexists. split. easy.
+          split. 2:{ cbn. now rewrite eqb_id. }
+          split. 2: easy.
+          constructor; cbn;
+          unfold Ready;
+          try setoid_rewrite <- x;
+          try setoid_rewrite <- Heqo;
+          intros; try now psimpl.
+        }
+        {
+          intros. apply eq_inj in H1.
+          subst. eexists. split. easy.
+          constructor.
+          {
+            intros. destruct H12.
+            constructor; cbn;
+            intros; now psimpl.
+          }
+          { cbn. now rewrite eqb_nid. }
+          { cbn. now rewrite eqb_nid. }
+          { now rewrite H0. }
+          { now rewrite <- Heqo at 1. }
+        }
+      }
+      {
+        pose (p' :=
+          comRetPoss i
+            (comInvPoss i
+              x3
+              Rel
+              (LockUB (Some (i, Rel))))
+            Rel
+            (LockUB None)
+            tt
+        ).
+        assert (
+          VisPossSteps
+            x3
+            (([] ++ [(i, CallEv Rel)]) ++ [(i, RetEv Rel tt)])
+            p'
+        ).
+        {
+          apply retStep.
+          apply callStep.
+          constructor.
+          {
+            assert (PState x3 = LockUnowned).
+            {
+              destruct x3, PState, H.
+              cbn in *. now subst.
+            }
+            rewrite H10.
+            repeat (easy || constructor).
+          }
+          {
+            cbn. rewrite eqb_id.
+            repeat (easy || constructor).
+          }
+        }
+        exists (eq p').
+        split.
+        { repeat econstructor. }
+        split.
+        {
+          intros. subst. eexists.
+          split. easy. eapply erase_vis.
+          exact H10.
+        }
+        rewrite H9 in H1.
+        ddestruct H1.
+        split.
+        {
+          eexists. split. easy.
+          split. 2:{ cbn. now rewrite eqb_id. }
+          split. 2: easy.
+          constructor; cbn;
+          unfold Ready;
+          try setoid_rewrite <- x;
+          try setoid_rewrite <- Heqo;
+          intros; try now psimpl.
+        }
+        {
+          intros. apply eq_inj in H1.
+          subst. eexists. split. easy.
+          constructor.
+          {
+            intros. destruct H11.
+            constructor; cbn;
+            intros; now psimpl.
+          }
+          { cbn. now rewrite eqb_nid. }
+          { cbn. now rewrite eqb_nid. }
+          { now rewrite H0. }
+          { now rewrite <- Heqo at 1. }
+        }
+      }
+      {
+        pose (p' :=
+          comRetPoss i
+            (comInvPoss i
+              x3
+              Rel
+              (LockUB (Some (i, Rel))))
+            Rel
+            (LockUB None)
+            tt
+        ).
+        assert (
+          VisPossSteps
+            x3
+            (([] ++ [(i, CallEv Rel)]) ++ [(i, RetEv Rel tt)])
+            p'
+        ).
+        {
+          apply retStep.
+          apply callStep.
+          constructor.
+          {
+            assert (PState x3 = LockUB None).
+            {
+              destruct x3, PState, H.
+              cbn in *. now subst.
+            }
+            rewrite H10.
+            repeat (easy || constructor).
+          }
+          {
+            cbn. rewrite eqb_id.
+            repeat (easy || constructor).
+          }
+        }
+        exists (eq p').
+        split.
+        { repeat econstructor. }
+        split.
+        {
+          intros. subst. eexists.
+          split. easy. eapply erase_vis.
+          exact H10.
+        }
+        rewrite H9 in H1.
+        ddestruct H1.
+        split.
+        {
+          eexists. split. easy.
+          split. 2:{ cbn. now rewrite eqb_id. }
+          split. 2: easy.
+          constructor; cbn;
+          unfold Ready;
+          try setoid_rewrite <- x;
+          try setoid_rewrite <- Heqo;
+          intros; try now psimpl.
+        }
+        {
+          intros. apply eq_inj in H1.
+          subst. eexists. split. easy.
+          constructor.
+          {
+            intros. destruct H11.
+            constructor; cbn;
+            intros; now psimpl.
+          }
+          { cbn. now rewrite eqb_nid. }
+          { cbn. now rewrite eqb_nid. }
+          { now rewrite H0. }
+          { now rewrite <- Heqo at 1. }
+        }
+      }
+    }
+    {
+      exists (eq x3).
+      split.
+      { repeat econstructor. }
+      split.
+      {
+        intros. subst.
+        repeat econstructor.
+      }
+      rewrite H10 in H1.
+      ddestruct H1.
+      split.
+      {
+        destruct H3.
+        eexists. split. easy.
+        split. 2: easy.
+        split. 2: easy.
+        constructor.
+        { easy. }
+        {
+          unfold Ready.
+          now setoid_rewrite <- x.
+        }
+        {
+          intros.
+          ddestruct H2.
+          { now rewrite <- x at 1. }
+          {
+            apply rcnt_defn0 in H2.
+            now rewrite <- x2 in H2 at 1.
+          }
+          {
+            apply rcnt_defn0 in H1.
+            now rewrite <- x2 in H1 at 1.
+          }
+          {
+            apply rcnt_defn0 in H1.
+            now rewrite <- x2 in H1 at 1.
+          }
+        }
+        { now setoid_rewrite <- x. }
+        { now setoid_rewrite H. }
+        { now setoid_rewrite H. }
+        {
+          unfold Ready.
+          setoid_rewrite <- x.
+          intros. now destruct H11.
+        }
+        {
+          intros.
+          rewrite <- H7 at 1.
+          eapply tkts_boun0 with
+            (j:=j).
+          { easy. }
+          { exact H3. }
+          {
+            unfold Ready.
+            now setoid_rewrite <- H0.
+          }
+        }
+        {
+          unfold not at 1.
+          intros. psimpl.
+          ddestruct H2;
+          now rewrite <- x in H11 at 1.
+        }
+        { now setoid_rewrite H. }
+      }
+      {
+        intros. apply eq_inj in H1.
+        subst. eexists. split. easy.
+        constructor.
+        {
+          intros. destruct H11.
+          constructor;
+          try setoid_rewrite H;
+          intros; now psimpl.
+        }
+        { easy. }
+        { easy. }
+        { now rewrite H0. }
+        { easy. }
+      }
+    }
+  }
+  {
+    unfold
+      sub, subRelt, Posts,
+      LiftSPrec, LiftSRelt.
+    intros. psimpl.
+    eexists. split. easy.
+    now destruct v.
+  }
+Qed.
+
+Theorem ticketLockCorrect {T} :
+  VerifyImpl (VE T) (VF T)
+    (fun i => LiftSRelt (Rely i))
+    (fun i => LiftSRelt (Guar i))
+    (fun i _ m => LiftSPrec (Precs i m))
+    ticketLockImpl
+    (fun i _ m v => LiftSRelt (Posts i m v))
+    (fun i _ m _ _ _ => LiftSPrec (Precs i m)).
+Proof.
+  constructor.
+  {
+    unfold LiftSRelt. intros.
+    psimpl. eexists. split. easy.
+    now constructor.
+  }
+  {
+    unfold
+      LiftSRelt,
+      sub, subRelt.
+    intros. psimpl.
+    specialize (H x eq_refl). psimpl.
+    specialize (H1 x2 eq_refl). psimpl.
+    eexists. split. easy.
+    destruct H0, H1.
+    constructor; try tauto.
+    { now rewrite pres_call0 at 1. }
+    { now rewrite pres_ret0 at 1. }
+    { now rewrite pres_ths0 at 1. }
+  }
+  {
+    unfold
+      Guar, sub,
+      subRelt, LiftSRelt.
+    intros. psimpl.
+    specialize (H0 x eq_refl). psimpl.
+    eexists. split. easy.
+    now apply H1.
+  }
+  {
+    unfold sub, subRelt, LiftSRelt.
+    unfold InvokeAny, TInvoke.
+    intros. psimpl. exists (invPoss i x x1).
+    split.
+    {
+      set_ext y. split; intros; psimpl.
+      {
+        destruct x2, y. cbn in *.
+        subst. unfold invPoss. cbn.
+        f_equal; extensionality k;
+        dec_eq_nats i k.
+        now rewrite eqb_id.
+        now rewrite eqb_nid, H7.
+        now rewrite eqb_id.
+        now rewrite eqb_nid, H8.
+      }
+      {
+        eexists. split. easy.
+        cbn. rewrite eqb_id.
+        repeat split; try easy.
+        apply differ_pointwise_trivial.
+        apply differ_pointwise_trivial.
+      }
+    }
+    {
+      destruct H2. cbn in *.
+      constructor.
+      {
+        intros. destruct H4.
+        unfold invPoss.
+        move H3 at bottom.
+        move H2 at bottom.
+        constructor; cbn.
+        { easy. }
+        {
+          intros.
+          eapply owns_resp0.
+          { easy. }
+          {
+            unfold Ready.
+            now rewrite H2.
+          }
+          { now rewrite H3 at 1. }
+        }
+        { now rewrite <- H3 at 1. }
+        {
+          setoid_rewrite <- H3.
+          setoid_rewrite <- H2.
+          all: easy.
+        }
+        {
+          setoid_rewrite <- H3.
+          setoid_rewrite <- H2.
+          all: easy.
+        }
+        {
+          setoid_rewrite <- H3.
+          setoid_rewrite <- H2.
+          all: easy.
+        }
+        {
+          intros.
+          eapply tkts_uniq0.
+          { easy. }
+          { exact H5. }
+          {
+            unfold Ready.
+            rewrite H2; auto.
+            exact H6.
+          }
+          {
+            dec_eq_nats j0 i.
+            {
+              unfold Ready in H7.
+              ddestruct H1.
+              setoid_rewrite <- x in H7.
+              destruct H7. easy.
+              destruct x1;
+              rewrite frobProgId with
+                (p:= ticketLockImpl _ _)
+                in H1;
+              rewrite frobProgId with
+                (p:= acq_body _)
+                in H1;
+              easy.
+            }
+            unfold Ready.
+            rewrite H2; auto.
+          }
+        }
+        {
+          setoid_rewrite <- H3.
+          intros. eapply tkts_boun0
+            with (j:=j0).
+          { easy. }
+          { easy. }
+          {
+            dec_eq_nats j0 i.
+            {
+              unfold Ready in H6. ddestruct H1.
+              setoid_rewrite <- x in H6.
+              destruct H6. easy.
+              destruct x1;
+              rewrite frobProgId with
+                (p:= ticketLockImpl _ _)
+                in H1;
+              rewrite frobProgId with
+                (p:= acq_body _)
+                in H1;
+              easy.
+            }
+            unfold Ready.
+            now rewrite H2.
+          }
+        }
+        { now setoid_rewrite <- H3. }
+        { now setoid_rewrite <- H3. }
+      }
+      { cbn. now rewrite eqb_nid. }
+      { cbn. now rewrite eqb_nid. }
+      { now rewrite H2. }
+      { easy. }
+    }
+  }
+  {
+    unfold sub, subRelt, LiftSRelt.
+    unfold ReturnAny, TReturn.
+    intros. psimpl. exists (retPoss i x).
+    split.
+    {
+      set_ext y. split; intros; psimpl.
+      {
+        unfold mapRetPoss in H4.
+        psimpl. destruct x3, y. cbn in *.
+        subst. unfold retPoss. cbn.
+        f_equal; extensionality k;
+        dec_eq_nats i k.
+        now rewrite eqb_id.
+        now rewrite eqb_nid, H7.
+        now rewrite eqb_id.
+        now rewrite eqb_nid, H8.
+      }
+      {
+        unfold mapRetPoss.
+        destruct H2. cbn in *.
+        ddestruct H1. symmetry in x4.
+        unfold Returned in H0.
+        eapply H0 in x4. 2: easy.
+        eexists. split. easy.
+        cbn. rewrite eqb_id.
+        repeat split; try easy.
+        apply differ_pointwise_trivial.
+        apply differ_pointwise_trivial.
+      }
+    }
+    {
+      destruct H2. cbn in *.
+      constructor.
+      {
+        intros. destruct H4.
+        unfold invPoss.
+        move H3 at bottom.
+        move H2 at bottom.
+        constructor; cbn.
+        { easy. }
+        {
+          intros.
+          eapply owns_resp0.
+          { easy. }
+          {
+            unfold Ready.
+            now rewrite H2.
+          }
+          { now rewrite H3 at 1. }
+        }
+        { now rewrite <- H3 at 1. }
+        {
+          setoid_rewrite <- H3.
+          setoid_rewrite <- H2.
+          all: easy.
+        }
+        {
+          setoid_rewrite <- H3.
+          setoid_rewrite <- H2.
+          all: easy.
+        }
+        {
+          setoid_rewrite <- H3.
+          setoid_rewrite <- H2.
+          all: easy.
+        }
+        {
+          intros.
+          eapply tkts_uniq0.
+          { easy. }
+          { exact H5. }
+          {
+            unfold Ready.
+            rewrite H2; auto.
+            exact H6.
+          }
+          {
+            dec_eq_nats j0 i.
+            {
+              unfold Ready in H7.
+              ddestruct H1.
+              setoid_rewrite <- x in H7.
+              destruct H7; easy.
+            }
+            unfold Ready.
+            rewrite H2; auto.
+          }
+        }
+        {
+          setoid_rewrite <- H3.
+          intros. eapply tkts_boun0
+            with (j:=j0).
+          { easy. }
+          { easy. }
+          {
+            dec_eq_nats j0 i.
+            {
+              unfold Ready in H6. ddestruct H1.
+              setoid_rewrite <- x in H6.
+              destruct H6. easy.
+              now destruct x1.
+            }
+            unfold Ready.
+            now rewrite H2.
+          }
+        }
+        { now setoid_rewrite <- H3. }
+        { now setoid_rewrite <- H3. }
+      }
+      { cbn. now rewrite eqb_nid. }
+      { cbn. now rewrite eqb_nid. }
+      { now rewrite H2. }
+      { easy. }
+    }
+  }
+  {
+    unfold Precs, LiftSPrec.
+    intros. eexists.
+    split. easy.
+    constructor;
+    cbn; intros; try now psimpl.
+    { now ddestruct H. }
+    { now ddestruct H0. }
+    {
+      unfold Ready in *. cbn in *.
+      now destruct H1.
+    }
+    {
+      unfold Ready in *. cbn in *.
+      now destruct H1.
+    }
+  }
+  {
+    unfold
+      Stable, stablePrec,
+      sub, subPrec,
+      LiftSPrec, LiftSRelt.
+    intros. psimpl.
+    specialize (H0 x1 eq_refl). psimpl.
+    eexists. split. easy.
+    unfold Precs in *.
+    now apply H0.
+  }
+  {
+    unfold sub, subPrec.
+    intros. now psimpl.
+  }
+  {
+    intros. destruct m; cbn.
+    apply acq_correct.
+    apply rel_correct.
+  }
+  {
+    unfold
+      ReturnStep, Posts,
+      LiftSPrec, LiftSRelt.
+    intros. psimpl.
+    specialize (H1 x1 eq_refl). psimpl.
+    exists (eq x0).
+    split.
+    { repeat econstructor. }
+    split.
+    {
+      intros. subst.
+      repeat econstructor.
+    }
+    split.
+    {
+      intros. now subst.
+    }
+    split.
+    {
+      exists (retPoss i x0).
+      split.
+      {
+        set_ext y. split; intros; psimpl.
+        {
+          unfold mapRetPoss in H5.
+          psimpl. destruct x2, y. cbn in *.
+          subst. unfold retPoss. cbn.
+          f_equal; extensionality k;
+          dec_eq_nats i k.
+          now rewrite eqb_id.
+          now rewrite eqb_nid, H8.
+          now rewrite eqb_id.
+          now rewrite eqb_nid, H9.
+        }
+        {
+          unfold mapRetPoss.
+          destruct H2. cbn in *.
+          eexists. split. easy.
+          rewrite eqb_id.
+          repeat split; try easy.
+          apply differ_pointwise_trivial.
+          apply differ_pointwise_trivial.
+        }
+      }
+      {
+        unfold retPoss.
+        destruct H1.
+        constructor; cbn;
+        unfold Ready; cbn;
+        try setoid_rewrite eqb_id;
+        try easy.
+        {
+          intros.
+          eapply owns_wait0.
+          { easy. }
+          {
+            setoid_rewrite H0.
+            unfold not. intros.
+            destruct H6; now psimpl.
+          }
+          { easy. }
+          { exact H1. }
+          { easy. } 
+        }
+        {
+          intros.
+          eapply tkts_less0.
+          {
+            setoid_rewrite H0.
+            unfold not. intros.
+            destruct H5; now psimpl.
+          }
+          { easy. }
+          { easy. }
+        }
+        {
+          intros.
+          now destruct H5.
+        }
+        {
+          intros.
+          dec_eq_nats i j.
+          {
+            rewrite eqb_id in H5.
+            now destruct H5.
+          }
+          {
+            rewrite eqb_nid in *; auto.
+            eapply tkts_boun0.
+            { easy. }
+            { easy. }
+            { exact H5. }
+          }
+        }
+      }
+    }
+    {
+      intros. apply eq_inj in H. subst.
+      exists (retPoss i x2).
+      split.
+      {
+        set_ext y. split; intros; psimpl.
+        {
+          unfold mapRetPoss in H5.
+          psimpl. destruct x0, y. cbn in *.
+          subst. unfold retPoss. cbn.
+          f_equal; extensionality k;
+          dec_eq_nats i k.
+          now rewrite eqb_id.
+          now rewrite eqb_nid, H8.
+          now rewrite eqb_id.
+          now rewrite eqb_nid, H9.
+        }
+        {
+          unfold mapRetPoss.
+          destruct H2. cbn in *.
+          eexists. split. easy.
+          rewrite eqb_id.
+          repeat split; try easy.
+          apply differ_pointwise_trivial.
+          apply differ_pointwise_trivial.
+        }
+      }
+      {
+        constructor.
+        {
+          intros. destruct H5.
+          constructor; cbn;
+          unfold Ready; cbn;
+          try (setoid_rewrite eqb_nid; auto);
+          try easy.
+          {
+            intros.
+            rewrite eqb_nid in *; auto.
+          }
+          {
+            intros.
+            rewrite eqb_nid with
+              (n:=i) (m:=j)
+              in *; auto.
+            dec_eq_nats j0 i.
+            {
+              rewrite eqb_id in *.
+              now destruct H8.
+            }
+            rewrite eqb_nid in *; auto.
+            eapply tkts_uniq0.
+            { easy. }
+            { exact H6. }
+            { exact H7. }
+            { exact H8. }
+          }
+          {
+            intros.
+            dec_eq_nats j0 i.
+            {
+              rewrite eqb_id in *.
+              now destruct H7.
+            }
+            rewrite eqb_nid in *; auto.
+            eapply tkts_boun0.
+            { easy. }
+            { easy. }
+            { exact H7. }
+          }
+        }
+        { cbn. now rewrite eqb_nid. }
+        { cbn. now rewrite eqb_nid. }
+        { cbn. now rewrite eqb_nid. }
+        { easy. }
+      }
+    }
+  }
+Qed.
