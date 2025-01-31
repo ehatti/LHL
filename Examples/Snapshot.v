@@ -1,4 +1,5 @@
 From LHL.Core Require Import
+  LogicPaco
   ProgramRules
   LogicFacts
   SingConds
@@ -10,8 +11,11 @@ From LHL.Core Require Import
   Specs
   Logic.
 
+From Paco Require Import paco.
+
 From LHL.Examples Require Import
   SnapshotSpec
+  AtomicSpec
   ArraySpec
   NameSpec
   RegSpec.
@@ -39,15 +43,17 @@ Definition E T A :=
 Definition VE T A : Spec T (E T A) :=
   tensorSpec
     nameSpec
-    (arraySpec T (regSpec {| val := None; ran := false |})).
+    (arraySpec T (LiftRacy (regSpec {| val := None; ran := false |}))).
 
 Definition F A := SnapSig A.
 Definition VF T A := @snapSpec T A.
 
+Notation arrSt s i := (
+  RState (snd s) i
+).
+
 Notation valSt s i := (
-  match RState (snd s) i with
-  | RegDef s _ => s.(val)
-  end
+  ((RState (snd s) i).(racy_val))
 ).
 
 Notation oranSt ρ i := (
@@ -57,9 +63,7 @@ Notation oranSt ρ i := (
 ).
 
 Notation uranSt s i := (
-  match RState (snd s) i with
-  | RegDef s _ => s.(ran)
-  end
+  ((RState (snd s) i).(racy_val))
 ).
 
 Notation snapSt x := (
@@ -126,7 +130,7 @@ CoFixpoint whileAux (e' : Prog E (unit * A)) : Prog E (unit * A) :=
   | NoOp e' => NoOp (whileAux e')
   end.
 
-Definition while s := NoOp (whileAux (e s)).
+Definition while s := whileAux (e s).
 
 End while.
 
@@ -154,6 +158,33 @@ Context
   {T : nat} {E F : ESig}
   {VE : Spec T E} {VF : Spec T F}
   {R G : Relt VE VF}.
+
+Lemma lemWhile {A} {i : Name T} :
+  ∀ (b : A -> bool) (e : StateM E A unit)
+    (I : A -> Relt VE VF),
+    (* (∀ ths tht s x ρs,
+      PointStep UnderThreadStep ths (i, None) tht ->
+      I x (ths, s) ρs ()) *)
+    (∀ x,
+      VerifyProg i R G
+        (λ s ρs t σs,
+          b x = true /\
+          I x s ρs t σs)
+        (runStateM x e)
+        (λ '(tt, y), I y)) ->
+    ∀ x,
+      VerifyProg i R G
+        (I x)
+        (runStateM x (while b e))
+        (λ '(tt, y) s ρs t σs,
+          b y = false /\
+          I y s ρs t σs).
+Proof.
+  intros b e I H x. unfold while.
+  unfold VerifyProg. rewrite paco_eqv.
+  generalize dependent x. pcofix rec.
+  intros x. pfold. unfold runStateM.
+Admitted.
 
 Lemma lemRange {A} {i : Name T} :
   ∀ (N : nat) (e : Index N -> StateM E A unit)
@@ -270,11 +301,12 @@ Proof.
   now right.
 Qed.
 
-Record loop_st {A} := {
+Record loop_st {A} := MkSt {
   old : set A;
   new : set A
 }.
 Arguments loop_st : clear implicits.
+Arguments MkSt {A}.
 
 Definition fill_old {A} T : StateM (E T A) (loop_st A) unit :=
   range T (λ i,
@@ -305,7 +337,6 @@ Definition write_snapshot {T A} (v : A) : Prog (E T A) (option (set A)) :=
   else
     call (At i (Write {| val := Some v; ran := true |}));;
     res <- runStateM {| old := emp; new := emp |} (
-      fill_old T;;'
       fill_new T;;'
       while (λ s, negb (s.(new) =? s.(old))) (
         s <- get;'
@@ -329,16 +360,32 @@ Notation "x ⊆ y" :=
   (forall v, v ∈ x -> v ∈ y)
   (at level 40).
 
+Record Idling {T} {F : ESig} {VF : Spec T F} (i : Name T)
+  (x : Poss VF)
+:= {
+  call_waiting : PCalls x i = CallIdle;
+  ret_waiting : PRets x i = RetIdle;
+}.
+
 Record Inv {T A}
   (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
 := {
-  snap_cons :
-    ∀ ρ, ρs ρ ->
-      ∀ v, (∃ i, valSt s i = Some v) <-> v ∈ snapSt ρ;
-  rans_cons :
-    ∀ ρ, ρs ρ ->
-      ∀ i, uranSt s i = oranSt ρ i
+  vals_def :
+    ∀ i, ∃ r, (RState (snd s) i).(racy_val) = Some r;
+  ran_cons :
+    ∀ ρ i, ρs ρ ->
+      match uranSt s i with
+      | Some r => r.(ran) = oranSt ρ i
+      | None => False
+      end;
 }.
+
+Notation arr_set s i v := (
+  match (arrSt s i).(racy_val) with
+  | Some w => w.(val) = Some v
+  | None => False
+  end
+).
 
 Record FillNewInv {T A} (i : Name T) (v : A) (vs : set A) (n : nat) (x : loop_st A)
   (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
@@ -347,62 +394,84 @@ Record FillNewInv {T A} (i : Name T) (v : A) (vs : set A) (n : nat) (x : loop_st
   old_subs :
     x.(old) ⊆ vs;
   subs_new :
-    (λ v, v ∈ vs /\ ∃ i, `i ≥ n /\ valSt s i = Some v) ⊆ x.(new);
+    vs ⊆ x.(new);
   pfx_subs :
-    vs ⊆ (λ v, ∃ i, valSt s i = Some v);
-  poss_class :
-    ∀ ρ, ρs ρ ->
-      Waiting i (WriteSnap v) ρ \/ Done i (WriteSnap v) (Some vs) ρ;
-  poss_wait :
-    ∃ ρ, ρs ρ /\
-      Waiting i (WriteSnap v) ρ;
-  poss_done :
-    ∃ ρ, ρs ρ /\
-      Done i (WriteSnap v) (Some vs) ρ;
-}.
-
-Record Precs {T A} (i : Name T) (v : A)
-  (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
-:= {
-  ps_inv : Inv s ρs;
-  ps_wait : ∀ ρ, ρs ρ -> Waiting i (WriteSnap v) ρ
-}.
-
-Record Posts {T A} (i : Name T) (v : A) (r : option (set A))
-  (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
-:= {
-  qs_precs_hold : Precs i v s ρs;
-  qs_call_done : ∀ ρ, ρs ρ -> PCalls ρ i = CallDone (WriteSnap v);
-  qs_ret_done : ∀ ρ, ρs ρ -> PRets ρ i = RetPoss (WriteSnap v) r
+    vs ⊆ (λ v, ∃ i, arr_set s i v);
+  backup_ex :
+    ∃ backup, ρs backup /\
+      Waiting i (WriteSnap v) backup;
+  guess_ex :
+    ∃ guess, ρs guess /\
+      Done i (WriteSnap v) (Some vs) guess
 }.
 
 Record Rely {T A} (i : Name T)
   (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
   (t : InterState (F A) (VE T A)) (σs : PossSet (VF T A))
 := {
-
+  pres_inv :
+    Inv s ρs -> Inv t σs;
+  pres_wait :
+    ∀ v,
+      (∃ ρ, ρs ρ /\ Waiting i (WriteSnap v) ρ) ->
+       ∃ σ, σs σ /\ Waiting i (WriteSnap v) σ;
+  pres_done :
+    ∀ v vs,
+      (∃ ρ, ρs ρ /\ Done i (WriteSnap v) (Some vs) ρ) ->
+       ∃ σ, σs σ /\ Done i (WriteSnap v) (Some vs) σ;
+  mem_incl :
+    ∀ i v, arr_set s i v -> arr_set t i v
 }.
+
+Lemma fill_new_inv_stable {T A} :
+  ∀ i v vs n x,
+    Stable (Rely (T:=T) i) (FillNewInv (A:=A) i v vs n x).
+Proof.
+  intros i v vs n x s ρs H.
+  psimpl. destruct H, H0.
+  constructor.
+  { now apply pres_inv0. }
+  { easy. }
+  { easy. }
+  {
+    intros v1 H.
+    apply pfx_subs0 in H.
+    destruct H. exists x2.
+    now apply mem_incl0.
+  }
+  { now apply pres_wait0. }
+  { now apply pres_done0. }
+Qed.
 
 Record Guar {T A} (i : Name T)
   (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
   (t : InterState (F A) (VE T A)) (σs : PossSet (VF T A))
 := {
-
+  inv_holds : Inv t σs;
+  wait_holds :
+    ∀ v j, i ≠ j ->
+      (∃ ρ, ρs ρ /\ Waiting j (WriteSnap v) ρ) ->
+       ∃ σ, σs σ /\ Waiting j (WriteSnap v) σ;
+  done_holds :
+    ∀ v vs j, i ≠ j ->
+      (∃ ρ, ρs ρ /\ Done j (WriteSnap v) (Some vs) ρ) ->
+       ∃ σ, σs σ /\ Done j (WriteSnap v) (Some vs) σ;
+  incl_holds :
+    ∀ i v, arr_set s i v -> arr_set t i v
 }.
 
-Lemma fill_new_inv_stable {T A} {i : Name T} :
-  ∀ v vs n x,
-  Stable (Rely i) (FillNewInv (A:=A) i v vs n x).
+Lemma guar_in_rely {T A} :
+  ∀ i j,
+    i ≠ j ->
+    @Guar T A i ==> @Rely T A j.
 Proof.
-Admitted.
-
-Lemma fill_old_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
-  VerifyProg i (Rely i) (Guar i)
-    (λ _ _, Precs i v)
-    (fill_old T x)
-    (λ '(tt, y) _ _ s ρs, ∃ vs, FillNewInv i v vs T y s ρs).
-Proof.
-Admitted.
+  intros i j H1 s ρs t σs H2.
+  destruct H2. constructor.
+  { easy. }
+  { intros. now apply wait_holds0. }
+  { intros. now apply done_holds0. }
+  { easy. }
+Qed.
 
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   VerifyProg i (Rely i) (Guar i)
@@ -448,7 +517,13 @@ Proof.
         apply fill_new_inv_stable.
         psplit. exact H. easy.
       }
-      { admit. }
+      {
+        intros s ρs t Hinv Hdpt Hus Hss.
+        simpl in *. psimpl. ddestruct H.
+        cbn in *. ddestruct H3.
+        clear H H0 H1 H5.
+        
+      }
       { admit. }
     }
     {
@@ -504,20 +579,20 @@ Proof.
   }
   {
     eapply lemBind with
-      (Q:=λ _ _ _, Precs i v).
+      (Q:=λ _ _ _ s ρs, ∃ vs, FillNewInv i v vs T (MkSt emp emp) s ρs).
     {
       admit.
     }
-    intros [].
+    intros []. clear val.
     eapply lemBind.
     {
       unfold runStateM, bindM.
       eapply lemBind.
-      { apply fill_old_correct. }
-      intros [[] [val' ran]].
-      eapply lemBind.
       { apply fill_new_correct. }
-      intros [[] [val'' ran']].
+      intros [[] [val ran]].
       eapply lemBind.
+      {
+
+      }
     }
   }

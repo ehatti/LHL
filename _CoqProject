@@ -56,6 +56,7 @@
 
 ./Examples/RegSpec.v
 ./Examples/SnapshotSpec.v
+./Examples/Snapshot.v
 
 # ./Examples/LockSpec.v
 # ./Examples/FAISpec.v

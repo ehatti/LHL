@@ -64,13 +64,10 @@ Definition WFStack A : Impl (E A) (F A) :=
   | WFPop => wfpop
   end.
 
-Module Type WFS_PARAMS.
-  Parameter T:nat.
-  Parameter A:Type.
-End WFS_PARAMS.
-
-Module AtomicWFStackProof (Import Params : WFS_PARAMS).
+Section AtomicWFStackProof.
   Import AtomicWFStack.
+
+  Context {T : nat} {A : Type}.
 
   Definition VE : Spec T (E A) := tensorSpec casSpec memSpec.
   Definition VF : Spec T (F A) := WFStackSpec.
@@ -172,7 +169,7 @@ Module AtomicWFStackProof (Import Params : WFS_PARAMS).
     Definition on_chain_written (s:ISt) :=
       on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (eval_cas (casSt s)) None.
 
-    Lemma OCWAlloc {T} : forall h l loc hd v (i:Name T),
+    Lemma OCWAlloc {T1} : forall h l loc hd v (i:Name T1),
       h l = None ->
       on_chain_written_aux (Some h) loc hd None ->
       on_chain_written_aux
@@ -192,7 +189,7 @@ Module AtomicWFStackProof (Import Params : WFS_PARAMS).
         rewrite HeapUpdateOther; eauto.
     Qed.        
 
-    Lemma OWCWrite {T} : forall h loc hd (i:Name T) data new,
+    Lemma OWCWrite {T1} : forall h loc hd (i:Name T1) data new,
       loc new = Some (LAlloc i) ->
       on_chain_written_aux (Some h) loc hd None ->
       on_chain_written_aux (Some (heap_update new data h)) (heap_update new LWritten loc) hd None.
@@ -242,7 +239,7 @@ Module AtomicWFStackProof (Import Params : WFS_PARAMS).
       rewrite HeapUpdateOther; auto.
     Qed.
     
-    Lemma OwnedOffChain {T}: forall h loc (i:Name T) new hd,
+    Lemma OwnedOffChain {T1}: forall h loc (i:Name T1) new hd,
       loc new = Some (LAlloc i) ->
       on_chain_written_aux (Some h) loc hd None ->
       off_chain_aux (Some h) new hd None.
@@ -742,8 +739,8 @@ Module AtomicWFStackProof (Import Params : WFS_PARAMS).
       }
     Qed.
 
-    Lemma sing_elem {A} {P : A -> Prop} :
-      forall x : A,
+    Lemma sing_elem {B} {P : B -> Prop} :
+      forall x : B,
       eq x = P ->
       P x.
     Proof.
@@ -850,6 +847,7 @@ Module AtomicWFStackProof (Import Params : WFS_PARAMS).
           ddestruct H2. ddestruct H13.
           forward_pstep y p2; simpl in *; simp_eqs.
           - apply StkRet_inj in H13; subst. ddestruct H5.
+            ddestruct H22.
           - forward_istep_cas.
             + inversion same_stack0; subst.
               inversion H13; subst.
@@ -1514,7 +1512,7 @@ Module AtomicWFStackProof (Import Params : WFS_PARAMS).
       }
     Qed.
 
-    Lemma stepCall {E E' A B} {m : E' A} {k : A -> Prog E B} `{SigCoercion E' E} : (x <- call m; k x) = Bind (coerceOp _ m) k.
+    Lemma stepCall {E E' A' B} {m : E' A'} {k : A' -> Prog E B} `{SigCoercion E' E} : (x <- call m; k x) = Bind (coerceOp _ m) k.
     Proof.
       rewrite frobProgId at 1. cbn.
       f_equal. extensionality x.
@@ -1525,8 +1523,8 @@ Module AtomicWFStackProof (Import Params : WFS_PARAMS).
     Ltac begin_commit :=
       unfold Commit, LiftSPrec; intros.
 
-    Lemma eq_inj {A} :
-      forall x y : A,
+    Lemma eq_inj {A'} :
+      forall x y : A',
       eq x = eq y ->
       x = y.
     intros. now rewrite H.
@@ -3113,5 +3111,3 @@ Module AtomicWFStackProof (Import Params : WFS_PARAMS).
     }
   Qed.
 End AtomicWFStackProof.
-
-

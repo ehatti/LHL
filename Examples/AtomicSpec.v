@@ -90,42 +90,67 @@ Arguments MkRacy {T E A}.
 Notation "[ i ]" := (insert i emp).
 Notation "[ i , j ]" := (insert i (insert j emp)).
 
-Variant RacyStep {T A E} {Step : A -> Name T * {R & prod (E R) R} -> A -> Prop} :
+(* Variant RacyStep {T A E} {Step : A -> Name T * {R & prod (E R) R} -> A -> Prop} :
   RacyState T E A -> ThreadEvent T E -> RacyState T E A -> Prop :=
-| RacyCall s i R m p :
+| RacyDefCall s i R m :
     RacyStep
-      (MkRacy s p)
+      (MkRacy (Some s) emp)
       (i, CallEv m)
-      (MkRacy s (insert (i, existT E R m) p))
+      (MkRacy (Some s) [(i, existT E R m)])
 | RacyDefRet s i R m v t :
     Step s (i, existT _ R (m, v)) t ->
     RacyStep
       (MkRacy (Some s) [(i, existT E R m)])
       (i, RetEv m v)
       (MkRacy (Some t) emp)
+| RacyRaceCall s i j R1 m1 R2 m2 :
+    i ≠ j ->
+    RacyStep
+      (MkRacy (Some s) [(i, existT E R1 m1)])
+      (j, CallEv m2)
+      (MkRacy None [(i, existT E R1 m1), (j, existT E R2 m2)])
+| RacyUBCall i R m p :
+    RacyStep
+      (MkRacy None p)
+      (i, CallEv m)
+      (MkRacy None (insert (i, existT E R m) p))
+| RacyUBRet i R m v p :
+  RacyStep
+    (MkRacy None (insert (i, existT _ R m) p))
+    (i, RetEv m v)
+    (MkRacy None p).
+Arguments RacyStep {T A E} Step. *)
+
+Variant RacyStep {T A E} {Step : A -> Name T * {R & prod (E R) R} -> A -> Prop} :
+  RacyState T E A -> ThreadEvent T E -> RacyState T E A -> Prop :=
+| RacyCall s i R m :
+    RacyStep
+      (MkRacy s emp)
+      (i, CallEv m)
+      (MkRacy s [(i, existT E R m)])
+| RacyDefRet s i R m v t :
+    Step s (i, existT _ R (m, v)) t ->
+    RacyStep
+      (MkRacy (Some s) [(i, existT E R m)])
+      (i, RetEv m v)
+      (MkRacy (Some t) emp)
+| RacyUBRet i R m v :
+    RacyStep
+      (MkRacy None [(i, existT E R m)])
+      (i, RetEv m v)
+      (MkRacy None emp)
 | RaceCall s i j R1 m1 R2 m2 :
     i ≠ j ->
     RacyStep
       (MkRacy (Some s) [(i, existT E R1 m1)])
       (j, CallEv m2)
       (MkRacy None [(i, existT E R1 m1), (j, existT E R2 m2)])
-(* | RaceRet i j R1 m1 v R2 m2 :
+| RaceRet i j R1 m1 v R2 m2 :
     i ≠ j ->
     RacyStep
       (MkRacy None [(i, existT E R1 m1), (j, existT E R2 m2)])
       (i, RetEv m1 v)
-      (MkRacy None [(j, existT E R2 m2)])
-| RacyUBRet i R m v :
-    RacyStep
-      (MkRacy None [(i, existT E R m)])
-      (i, RetEv m v)
-      (MkRacy None emp) *)
-| RaceRet i R m v p :
-  RacyStep
-    (MkRacy None (insert (i, existT _ R m) p))
-    (i, RetEv m v)
-    (MkRacy None p)
-.
+      (MkRacy None [(j, existT E R2 m2)]).
 Arguments RacyStep {T A E} Step.
 
 Lemma contract_set {A} :

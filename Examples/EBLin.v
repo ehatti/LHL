@@ -53,12 +53,7 @@ Proof.
   now apply hcomp_lin.
 Qed.
 
-Module EB_Lin(Import Params : WFS_PARAMS).
-
-Module AtomicWFStackProof := AtomicWFStackProof(Params).
-Import AtomicWFStack AtomicWFStackProof.
-
-Theorem EBStack_lin :
+Theorem EBStack_lin {T A} :
   LinkedEBUnderlay T A ▷ LinkedEBImpl T A ↝ atomicStackSpec.
 Proof.
   unfold LinkedEBUnderlay, LinkedEBImpl.
@@ -91,7 +86,9 @@ Proof.
     }
   }
   {
-    eapply soundness. cbn.
+    eapply soundness with
+      (R:=fun i => SingConds.LiftSRelt (Rely i)).
+    cbn.
     apply WFStackCorrect.
   }
 Qed.

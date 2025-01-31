@@ -1021,7 +1021,7 @@ split.
     intros.
     specialize (H' i).
     assert (n =? i = (i =? n)) by apply beq_comm.
-    rewrite H1. clear H1.
+    rewrite H1 at 1. clear H1.
     assert (i = n \/ i <> n) by apply excluded_middle.
     destruct H1.
     subst.
@@ -1078,7 +1078,7 @@ split.
     intros.
     specialize (H' i).
     assert (n =? i = (i =? n)) by apply beq_comm.
-    rewrite H1. clear H1.
+    rewrite H1 at 1. clear H1.
     assert (i = n \/ i <> n) by apply excluded_middle.
     destruct H1.
     subst.
