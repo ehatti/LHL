@@ -90,37 +90,6 @@ Arguments MkRacy {T E A}.
 Notation "[ i ]" := (insert i emp).
 Notation "[ i , j ]" := (insert i (insert j emp)).
 
-(* Variant RacyStep {T A E} {Step : A -> Name T * {R & prod (E R) R} -> A -> Prop} :
-  RacyState T E A -> ThreadEvent T E -> RacyState T E A -> Prop :=
-| RacyDefCall s i R m :
-    RacyStep
-      (MkRacy (Some s) emp)
-      (i, CallEv m)
-      (MkRacy (Some s) [(i, existT E R m)])
-| RacyDefRet s i R m v t :
-    Step s (i, existT _ R (m, v)) t ->
-    RacyStep
-      (MkRacy (Some s) [(i, existT E R m)])
-      (i, RetEv m v)
-      (MkRacy (Some t) emp)
-| RacyRaceCall s i j R1 m1 R2 m2 :
-    i ≠ j ->
-    RacyStep
-      (MkRacy (Some s) [(i, existT E R1 m1)])
-      (j, CallEv m2)
-      (MkRacy None [(i, existT E R1 m1), (j, existT E R2 m2)])
-| RacyUBCall i R m p :
-    RacyStep
-      (MkRacy None p)
-      (i, CallEv m)
-      (MkRacy None (insert (i, existT E R m) p))
-| RacyUBRet i R m v p :
-  RacyStep
-    (MkRacy None (insert (i, existT _ R m) p))
-    (i, RetEv m v)
-    (MkRacy None p).
-Arguments RacyStep {T A E} Step. *)
-
 Variant RacyStep {T A E} {Step : A -> Name T * {R & prod (E R) R} -> A -> Prop} :
   RacyState T E A -> ThreadEvent T E -> RacyState T E A -> Prop :=
 | RacyCall s i R m :
@@ -373,5 +342,237 @@ Program Definition LiftRacy {T E} (V : AtomicSpec T E) : Spec T E := {|
 Next Obligation.
 Proof.
   eapply racySC.
+  { exact H. }
+Qed.
+
+Variant SemiRacyStep {T A E}
+  {P : Name T * sigT E -> Name T * sigT E -> Prop}
+  {Step : A -> Name T * {R & prod (E R) R} -> A -> Prop} :
+  RacyState T E A -> ThreadEvent T E -> RacyState T E A -> Prop :=
+| SemiRacyCall s i R m :
+    SemiRacyStep
+      (MkRacy s emp)
+      (i, CallEv m)
+      (MkRacy s [(i, existT E R m)])
+| SemiRacyDefRet s i R m v t :
+    Step s (i, existT _ R (m, v)) t ->
+    SemiRacyStep
+      (MkRacy (Some s) [(i, existT E R m)])
+      (i, RetEv m v)
+      (MkRacy (Some t) emp)
+| SemiRacyUBRet i R m v :
+    SemiRacyStep
+      (MkRacy None [(i, existT E R m)])
+      (i, RetEv m v)
+      (MkRacy None emp)
+| SemiRaceCall s i j R1 m1 R2 m2 :
+    P (i, existT E R1 m1) (j, existT E R2 m2) ->
+    i ≠ j ->
+    SemiRacyStep
+      (MkRacy (Some s) [(i, existT E R1 m1)])
+      (j, CallEv m2)
+      (MkRacy None [(i, existT E R1 m1), (j, existT E R2 m2)])
+| SemiRaceRet i j R1 m1 v R2 m2 :
+    i ≠ j ->
+    SemiRacyStep
+      (MkRacy None [(i, existT E R1 m1), (j, existT E R2 m2)])
+      (i, RetEv m1 v)
+      (MkRacy None [(j, existT E R2 m2)]).
+Arguments SemiRacyStep {T A E} P Step.
+
+Program Fixpoint semiracySC {T E} {P} {V : AtomicSpec T E}
+  (p : list (ThreadEvent T E)) {measure (length p)}
+:
+  ∀ s t,
+    Steps (SemiRacyStep P V.(AStep)) (MkRacy s emp) p t ->
+    SeqConsistent (fun _ => None) p
+:= _.
+Next Obligation.
+Proof.
+  ddestruct H. constructor. ddestruct H.
+  all: try now apply disj_cons in x.
+  eapply SCCall with
+    (a':=λ j,
+      if i =? j then
+        Some (existT _ _ m)
+      else
+        None).
+  { easy. }
+  { now rewrite eqb_id. }
+  { apply differ_pointwise_trivial. }
+  ddestruct H0. constructor.
+  ddestruct H.
+  { symmetry in x. now apply disj_cons in x. }
+  {
+    apply insert_cong1 in x.
+    ddestruct x.
+    eapply SCRet with
+      (a':=λ _, None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    eapply semiracySC.
+    { simpl. lia. }
+    { exact H0. }
+  }
+  {
+    apply insert_cong1 in x.
+    ddestruct x.
+    eapply SCRet with
+      (a':=λ _, None).
+    { now rewrite eqb_id. }
+    { easy. }
+    {
+      unfold differ_pointwise.
+      intros. now rewrite eqb_nid.
+    }
+    eapply semiracySC.
+    { simpl. lia. }
+    { exact H0. }
+  }
+  {
+    apply insert_cong1 in x.
+    ddestruct x.
+    eapply SCCall with
+      (a':=λ k,
+        if j =? k then
+          Some (existT _ _ m2)
+        else if i =? k then
+          Some (existT _ _ m)
+        else
+          None).
+    { now rewrite eqb_nid. }
+    { now rewrite eqb_id. }
+    { apply differ_pointwise_trivial. }
+    ddestruct H1. constructor.
+    ddestruct H1.
+    {
+      clear - x. exfalso.
+      unfold emp in x.
+      eapply equal_f with
+        (x:=_) in x.
+      rewrite x.
+      now left.
+    }
+    {
+      apply contract_set in x.
+      destruct x.
+      ddestruct H1.
+      ddestruct H3.
+      easy.
+    }
+    {
+      apply insert_cong2 in x.
+      destruct x as [[Heq1 Heq2] | [Heq1 Heq2]];
+      ddestruct Heq1; ddestruct Heq2.
+      {
+        eapply SCRet with
+          (a':=λ k,
+            if j =? k then
+              Some (existT _ _ m2)
+            else
+              None).
+        { now rewrite eqb_id, eqb_nid. }
+        { now rewrite eqb_nid. }
+        {
+          unfold differ_pointwise. intros.
+          now rewrite eqb_nid with (n:=i) (m:=j0).
+        }
+        ddestruct H2. constructor.
+        ddestruct H2.
+        { symmetry in x. now apply disj_cons in x. }
+        {
+          apply insert_cong1 in x.
+          ddestruct x.
+          eapply SCRet with
+            (a':=λ _, None).
+          { now rewrite eqb_id. }
+          { easy. }
+          {
+            unfold differ_pointwise.
+            intros. now rewrite eqb_nid.
+          }
+          eapply semiracySC.
+          { simpl. lia. }
+          { exact H3. }
+        }
+        {
+          symmetry in x.
+          apply contract_set in x.
+          destruct x.
+          ddestruct H4.
+          ddestruct H5.
+          easy.
+        }
+      }
+      {
+        eapply SCRet with
+          (a':=λ k,
+            if i =? k then
+              Some (existT _ _ m)
+            else
+              None).
+        { now rewrite eqb_id. }
+        { now rewrite eqb_nid. }
+        {
+          unfold differ_pointwise. intros.
+          now rewrite eqb_nid with (n:=j) (m:=j0).
+        }
+        ddestruct H2. constructor.
+        ddestruct H2.
+        { symmetry in x. now apply disj_cons in x. }
+        {
+          apply insert_cong1 in x.
+          ddestruct x.
+          eapply SCRet with
+            (a':=λ _, None).
+          { now rewrite eqb_id. }
+          { easy. }
+          {
+            unfold differ_pointwise.
+            intros. now rewrite eqb_nid.
+          }
+          eapply semiracySC.
+          { simpl. lia. }
+          { exact H3. }
+        }
+        {
+          symmetry in x.
+          apply contract_set in x.
+          destruct x.
+          ddestruct H4.
+          ddestruct H5.
+          easy.
+        }
+      }
+      {
+        unfold not. intros.
+        now ddestruct H3.
+      }
+    }
+  }
+  {
+    symmetry in x.
+    apply contract_set in x.
+    destruct x.
+    ddestruct H1.
+    ddestruct H2.
+    easy.
+  }
+Qed.
+
+
+Program Definition LiftSemiRacy {T E} P (V : AtomicSpec T E) : Spec T E := {|
+  State := RacyState T E V.(AState);
+  Step := SemiRacyStep P V.(AStep);
+  Init := (MkRacy (Some V.(AInit)) emp)
+|}.
+
+Next Obligation.
+Proof.
+  eapply semiracySC.
   { exact H. }
 Qed.

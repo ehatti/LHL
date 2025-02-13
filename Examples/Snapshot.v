@@ -40,10 +40,23 @@ Definition E T A :=
   NameSig T |+|
   ArraySig (RegSig (reg_st A)) T.
 
+Definition RegCond {T A} (m1 m2 : Name T * sigT (RegSig A)) :=
+  match snd m1 with
+  | existT _ _ Read => False
+  | _ =>
+    match snd m2 with
+    | existT _ _ Read => False
+    | _ => True
+    end
+  end.
+
 Definition VE T A : Spec T (E T A) :=
   tensorSpec
     nameSpec
-    (arraySpec T (LiftRacy (regSpec {| val := None; ran := false |}))).
+    (arraySpec T
+      (LiftSemiRacy
+        RegCond
+        (regSpec {| val := None; ran := false |}))).
 
 Definition F A := SnapSig A.
 Definition VF T A := @snapSpec T A.
@@ -308,16 +321,6 @@ Record loop_st {A} := MkSt {
 Arguments loop_st : clear implicits.
 Arguments MkSt {A}.
 
-Definition fill_old {A} T : StateM (E T A) (loop_st A) unit :=
-  range T (λ i,
-    v <- lift (call (At i Read));'
-    s <- get;'
-    match v.(val) with
-    | Some v => put {| old := insert v s.(old); new := s.(new)|}
-    | None => retM tt
-    end
-  ).
-
 Definition fill_new {A} T : StateM (E T A) (loop_st A) unit :=
   range T (λ i,
     v <- lift (call (At i Read));'
@@ -353,125 +356,664 @@ Definition snapImpl T A : Impl (E T A) (SnapSig A) :=
   | WriteSnap v => write_snapshot v
   end.
 
-Definition Relt T A := SRelt (VE T A) (VF T A).
-Definition Prec T A := SPrec (VE T A) (VF T A).
+Definition Relt T A := Relt (VE T A) (VF T A).
+Definition Prec T A := Prec (VE T A) (VF T A).
 
 Notation "x ⊆ y" :=
   (forall v, v ∈ x -> v ∈ y)
   (at level 40).
 
+Notation "x ⊂ y" :=
+  (x ≠ y /\ forall v, v ∈ x -> v ∈ y)
+  (at level 40).
+
 Record Idling {T} {F : ESig} {VF : Spec T F} (i : Name T)
   (x : Poss VF)
 := {
-  call_waiting : PCalls x i = CallIdle;
-  ret_waiting : PRets x i = RetIdle;
+  p_idle : PCalls x i = CallIdle;
+  r_idle : PRets x i = RetIdle;
 }.
 
-Record Inv {T A}
-  (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
+Record Called {T R} {F : ESig} {VF : Spec T F} (i : Name T) (m : F R)
+  (x : Poss VF)
 := {
-  vals_def :
-    ∀ i, ∃ r, (RState (snd s) i).(racy_val) = Some r;
-  ran_cons :
-    ∀ ρ i, ρs ρ ->
-      match uranSt s i with
-      | Some r => r.(ran) = oranSt ρ i
-      | None => False
-      end;
+  pcalled : PCalls x i = CallDone m;
+  ridle : PRets x i = RetIdle;
 }.
 
-Notation arr_set s i v := (
-  match (arrSt s i).(racy_val) with
-  | Some w => w.(val) = Some v
-  | None => False
-  end
+Definition arr_set {T A} (s : InterState (F A) (VE T A)) (i : Name T) (v : A) := (
+  ∃ w,
+    (arrSt s i).(racy_val) = Some w /\
+    w.(val) = Some v
 ).
 
-Record FillNewInv {T A} (i : Name T) (v : A) (vs : set A) (n : nat) (x : loop_st A)
-  (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
+Notation bound_set vs n s := (
+  λ v, v ∈ vs /\ ∃ j, `j ≥ n /\ arr_set s j v
+).
+
+Notation collect s := (λ v, ∃ i, arr_set s i v).
+
+Lemma bound_set_emp {T A} :
+  ∀ (vs : set A) (s : InterState (F A) (VE T A)),
+    bound_set vs T s = emp.
+Proof.
+  intros. set_ext v.
+  split; intros.
+  {
+    psimpl. destruct x.
+    simpl in *. lia.
+  }
+  { easy. }
+Qed.
+
+Lemma bound_set_full {T A} :
+  ∀ (vs : set A) (s : InterState (F A) (VE T A)),
+    bound_set vs 0 s = (λ v, v ∈ vs /\ collect s v).
+Proof.
+  intros. set_ext v.
+  split; intros; psimpl.
+  {
+    split. easy.
+    now exists x.
+  }
+  {
+    split. easy.
+    exists x.
+    split. lia.
+    easy.
+  }
+Qed.
+
+Record Inv {T A}
+  {s : InterState (F A) (VE T A)} {ρs : PossSet (VF T A)}
 := {
-  fn_inv : Inv s ρs;
-  old_subs :
-    x.(old) ⊆ vs;
-  subs_new :
-    vs ⊆ x.(new);
-  pfx_subs :
-    vs ⊆ (λ v, ∃ i, arr_set s i v);
-  backup_ex :
-    ∃ backup, ρs backup /\
-      Waiting i (WriteSnap v) backup;
-  guess_ex :
-    ∃ guess, ρs guess /\
-      Done i (WriteSnap v) (Some vs) guess
+  val_def :
+    ∀ i, (arrSt s i).(racy_val) ≠ None;
+  st_cons :
+    ∀ ρ, ρs ρ ->
+      snapSt ρ = collect s;
 }.
+Arguments Inv {T A} s ρs.
+
+Definition AllCombs {T A} (i : Name T) (v : A) (vs : set A) (ρs : PossSet (VF T A)) :=
+  ∀ i j,
+    i ≠ j ->
+    (∃ ρ, ρs ρ /\ Done i (WriteSnap v) (Some vs) ρ) ->
+  ∀ ρ', ρs ρ' ->
+    ~Idling j ρ' ->
+    ∃ ρ, ρs ρ /\
+      Done i (WriteSnap v) (Some vs) ρ /\
+      PCalls ρ j = PCalls ρ' j /\
+      PRets ρ j = PRets ρ' j.
+
+Record FillNewInv {T A} {i : Name T} {vi : set A} {v : A} {n : nat} {new : set A}
+  {s : InterState (F A) (VE T A)} {ρs : PossSet (VF T A)}
+: Prop := {
+  fn_inv :
+    Inv s ρs;
+  inter_ex :
+    ∀ vs,
+      vi ⊆ vs ->
+      vs ⊆ collect s ->
+      ∃ ρ, ρs ρ /\
+        Done i (WriteSnap v) (Some vs) ρ;
+  new_sub :
+    vi ⊆ (λ v, v ∈ new \/ (∃ i, `i < n /\ arr_set s i v /\ ¬(v ∈ new)));
+  new_bound :
+    new ⊆ collect s;
+  vi_sub :
+    vi ⊆ collect s;
+  call_ex :
+    ∃ ρ, ρs ρ /\
+      Called i (WriteSnap v) ρ;
+  all_combs : AllCombs i v new ρs
+}.
+Arguments FillNewInv {T A} i vi v n new s ρs.
 
 Record Rely {T A} (i : Name T)
   (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
   (t : InterState (F A) (VE T A)) (σs : PossSet (VF T A))
 := {
   pres_inv :
-    Inv s ρs -> Inv t σs;
-  pres_wait :
+    Inv s ρs ->
+    Inv t σs;
+  val_mono :
+    ∀ i v,
+      arr_set s i v ->
+      arr_set t i v;
+  fill_all :
     ∀ v,
-      (∃ ρ, ρs ρ /\ Waiting i (WriteSnap v) ρ) ->
-       ∃ σ, σs σ /\ Waiting i (WriteSnap v) σ;
+      (∃ ρ, ρs ρ /\
+        Called i (WriteSnap v) ρ) ->
+      (∃ ρ, ρs ρ /\
+        Done i (WriteSnap v) (Some (collect s)) ρ) ->
+    ∀ vs,
+      collect s ⊆ vs ->
+      vs ⊆ collect t ->
+      ∃ σ, σs σ /\
+        Done i (WriteSnap v) (Some vs) σ;
+  pres_call :
+    ∀ v,
+      (∃ ρ, ρs ρ /\
+        Called i (WriteSnap v) ρ) ->
+      (∃ σ, σs σ /\
+        Called i (WriteSnap v) σ);
   pres_done :
     ∀ v vs,
-      (∃ ρ, ρs ρ /\ Done i (WriteSnap v) (Some vs) ρ) ->
-       ∃ σ, σs σ /\ Done i (WriteSnap v) (Some vs) σ;
-  mem_incl :
-    ∀ i v, arr_set s i v -> arr_set t i v
+      (∃ ρ, ρs ρ /\
+        Done i (WriteSnap v) (Some vs) ρ) ->
+      (∃ σ, σs σ /\
+        Done i (WriteSnap v) (Some vs) σ);
+  pres_combs :
+    ∀ v vs,
+      AllCombs i v vs ρs ->
+      AllCombs i v vs σs
 }.
 
-Lemma fill_new_inv_stable {T A} :
-  ∀ i v vs n x,
-    Stable (Rely (T:=T) i) (FillNewInv (A:=A) i v vs n x).
+Definition Guar {T A} (i : Name T) : Relt T A :=
+  λ s ρs t σs,
+    ∀ j, i ≠ j ->
+      Rely j s ρs t σs.
+
+Lemma rely_refl {T A} :
+  ∀ (i : Name T) s ρs,
+    Rely (A:=A) i s ρs s ρs.
 Proof.
-  intros i v vs n x s ρs H.
-  psimpl. destruct H, H0.
-  constructor.
-  { now apply pres_inv0. }
-  { easy. }
-  { easy. }
+  intros.
+  constructor; auto.
+  intros. psimpl.
+  exists x.
+  split. easy.
+  assert (vs = collect s).
   {
-    intros v1 H.
-    apply pfx_subs0 in H.
-    destruct H. exists x2.
-    now apply mem_incl0.
+    set_ext y.
+    split; intro.
+    { now apply H2. }
+    { now apply H1. }
   }
-  { now apply pres_wait0. }
-  { now apply pres_done0. }
+  now subst.
 Qed.
 
-Record Guar {T A} (i : Name T)
-  (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
-  (t : InterState (F A) (VE T A)) (σs : PossSet (VF T A))
-:= {
-  inv_holds : Inv t σs;
-  wait_holds :
-    ∀ v j, i ≠ j ->
-      (∃ ρ, ρs ρ /\ Waiting j (WriteSnap v) ρ) ->
-       ∃ σ, σs σ /\ Waiting j (WriteSnap v) σ;
-  done_holds :
-    ∀ v vs j, i ≠ j ->
-      (∃ ρ, ρs ρ /\ Done j (WriteSnap v) (Some vs) ρ) ->
-       ∃ σ, σs σ /\ Done j (WriteSnap v) (Some vs) σ;
-  incl_holds :
-    ∀ i v, arr_set s i v -> arr_set t i v
-}.
+Lemma rt_help {A} :
+  ∀ s1 s2 : set A,
+    ¬ s1 ⊆ s2 ->
+    s2 ⊂ s1.
+Proof.
+  split.
+  {
+    unfold not.
+    intro. subst.
+    now apply H.
+  }
+  {
+    admit.
+  }
+Admitted.
+
+Lemma rely_trans {T A} :
+  ∀ i : Name T,
+    Rely (A:=A) i ->> Rely i ==> Rely i.
+Proof.
+  unfold sub, subRelt.
+  intros. psimpl.
+  destruct H, H0.
+  constructor; auto.
+  intros.
+  decide_prop (vs ⊆ collect x).
+  { now apply pres_done1, fill_all0. }
+  {
+    apply rt_help in H3.
+    destruct H3.
+    assert (collect s ⊆ collect x).
+    {
+      intros.
+      destruct H5.
+      apply val_mono0 in H5.
+      now exists x1.
+    }
+    apply fill_all1; auto.
+  }
+Qed.
+
+Lemma sub_inter {A} :
+  ∀ s1 s2 : set A,
+    s1 ⊆ s2 ->
+    (λ x, s1 x /\ s2 x) = s1.
+Proof.
+  intros. set_ext y.
+  split; intros; psimpl.
+  { easy. }
+  {
+    split. easy.
+    now apply H.
+  }
+Qed.
+
+Lemma done_ret {T F R} {VF : Spec T F} :
+  ∀ (i j : Name T) (m : F R) (v : R) (ρ : Poss VF),
+    i ≠ j ->
+    Done i m v ρ ->
+    Done i m v (retPoss j ρ).
+Proof.
+  intros. destruct H0.
+  constructor; simpl;
+  now rewrite eqb_nid.
+Qed.
+
+Lemma fill_new_inv_stable {T A} :
+  ∀ (i : Name T) (v : A) vi n x,
+    Stable (Rely i) (FillNewInv i vi v n x).
+Proof.
+  intros i v vi n x s ρs H.
+  psimpl. destruct H, H0.
+  assert (collect x0 ⊆ collect s).
+  {
+    intros. destruct H.
+    apply val_mono0 in H.
+    now exists x2.
+  }
+  constructor; auto.
+  {
+    intros.
+    decide_prop (vs ⊆ collect x0).
+    {
+      apply pres_done0.
+      apply inter_ex0; auto.
+    }
+    {
+      apply rt_help in H2.
+      destruct H2.
+      apply fill_all0; auto.
+    }
+  }
+  {
+    intros.
+    apply new_sub0 in H0.
+    destruct H0. now left.
+    right. psimpl.
+    exists x2. auto.
+  }
+Qed.
 
 Lemma guar_in_rely {T A} :
   ∀ i j,
     i ≠ j ->
     @Guar T A i ==> @Rely T A j.
 Proof.
-  intros i j H1 s ρs t σs H2.
-  destruct H2. constructor.
-  { easy. }
-  { intros. now apply wait_holds0. }
-  { intros. now apply done_holds0. }
-  { easy. }
+  unfold sub, subRelt.
+  intros. now apply H0.
 Qed.
+
+Lemma map_ret_triv {T F R} {VF : Spec T F} :
+  ∀ (i : Name T) (m : F R) (v : R) (ρ : Poss VF),
+    Done i m v ρ ->
+    mapRetPoss i m v ρ (retPoss i ρ).
+Proof.
+  unfold mapRetPoss.
+  intros. simpl. destruct H.
+  rewrite eqb_id. repeat split;
+  (easy || apply differ_pointwise_trivial).
+Qed.
+
+Lemma return_step {T A} :
+  ∀ (i : Name T) (v : A) (r : option (set A)),
+    ReturnStep i (Guar i)
+      (λ s ρs,
+        (
+          r = None /\
+          Inv s ρs /\
+          (∃ ρ, ρs ρ) /\
+          ∀ ρ, ρs ρ ->
+            Done i (WriteSnap v) r ρ
+        ) \/
+        (
+          ∃ vi new,
+            r = Some new /\
+            FillNewInv i vi v 0 new s ρs
+        ))
+      (WriteSnap v) r
+      (λ _ _, Inv).
+Proof.
+  intros i v r s ρs H H0.
+  destruct H; psimpl.
+  {
+    exists ρs.
+    split.
+    { now exists x. }
+    split.
+    {
+      intros. exists σ.
+      repeat (easy || constructor).
+    }
+    split.
+    {
+      intros.
+      apply H3 in H.
+      now destruct H.
+    }
+    assert (
+      Inv
+        (λ j, if i =? j then Idle else fst s j, snd s)
+        (λ τ, ∃ σ, ρs σ ∧ mapRetPoss i (WriteSnap v) None σ τ)
+    ).
+    {
+      destruct H1. constructor; auto.
+      unfold mapRetPoss. intros. psimpl.
+      rewrite H9, st_cons0; auto.
+    }
+    split.
+    { easy. }
+    {
+      intros j H4.
+      constructor; auto.
+      {
+        intros. psimpl.
+        exists (retPoss i x0).
+        split.
+        {
+          exists x0.
+          split. easy.
+          apply map_ret_triv.
+          now apply H3.
+        }
+        {
+          change (
+            collect (λ j : Name T, if i =? j then Idle else fst s j, snd s)
+          ) with (
+            collect s
+          ) in H8.
+          assert (vs = collect s).
+          {
+            set_ext y;
+            split; intros.
+            { now apply H8. }
+            { now apply H7. }
+          }
+          subst. destruct H9.
+          constructor; simpl;
+          now rewrite eqb_nid.
+        }
+      }
+      {
+        intros. psimpl.
+        exists (retPoss i x0).
+        split.
+        {
+          exists x0.
+          split. easy.
+          apply map_ret_triv.
+          now apply H3.
+        }
+        {
+          destruct H6.
+          constructor; simpl;
+          now rewrite eqb_nid.
+        }
+      }
+      {
+        intros. psimpl.
+        exists (retPoss i x0).
+        split.
+        {
+          exists x0.
+          split. easy.
+          apply map_ret_triv.
+          now apply H3.
+        }
+        {
+          destruct H6.
+          constructor; simpl;
+          now rewrite eqb_nid.
+        }
+      }
+      {
+        unfold AllCombs. intros.
+        unfold mapRetPoss in H7, H8.
+        psimpl.
+        assert (i ≠ i0).
+        {
+          intros ?. subst. destruct H17.
+          now rewrite H18 in call_done.
+        }
+        assert (j0 ≠ i).
+        {
+          intros ?.
+          subst. apply H9.
+          now constructor.
+        }
+        eassert _.
+        {
+          apply H5.
+          { exact H6. }
+          {
+            exists x2. split. easy. destruct H17.
+            constructor; now rewrite <-?H22, <-?H23.
+          }
+          { exact H8. }
+          {
+            intros ?. apply H9.
+            destruct H27. constructor;
+            now rewrite ?H14, ?H15.
+          }
+        }
+        psimpl.
+        exists (retPoss i x3).
+        split.
+        {
+          exists x3.
+          auto using map_ret_triv.
+        }
+        {
+          simpl.
+          rewrite eqb_nid, H14, H15; auto.
+          auto using done_ret.
+        }
+      }
+    }
+  }
+  {
+    rename x into vi.
+    rename x0 into new.
+    destruct H1.
+    assert (
+      (λ v, v ∈ new ∨ (∃ i, `i < 0 ∧ arr_set s i v ∧ ¬ v ∈ new)) =
+      new
+    ).
+    {
+      set_ext v0.
+      split; intro.
+      {
+        destruct H.
+        { easy. }
+        { psimpl. lia. }
+      }
+      { now left. }
+    }
+    assert (vi ⊆ new).
+    { now rewrite <- H. }
+    clear new_sub0 H. 
+    exists (λ ρ,
+      ρs ρ /\
+      Done i (WriteSnap v) (Some new) ρ).
+    split.
+    { now apply inter_ex0. }
+    split.
+    {
+      intros. psimpl. exists σ.
+      repeat (easy || constructor).
+    }
+    split.
+    {
+      intros. psimpl.
+      now destruct H2.
+    }
+    assert (
+      Inv
+        (λ j, if i =? j then Idle else fst s j, snd s)
+        (λ τ, ∃ σ,
+          (ρs σ ∧ Done i (WriteSnap v) (Some new) σ) ∧
+          mapRetPoss i (WriteSnap v) (Some new) σ τ)
+    ).
+    {
+      destruct fn_inv0.
+      constructor; auto.
+      unfold mapRetPoss.
+      intros. psimpl.
+      now rewrite H8, st_cons0.
+    }
+    split.
+    { easy. }
+    {
+      intros j H2.
+      psimpl.
+      constructor; auto.
+      {
+        intros. psimpl.
+        assert (vs = collect s).
+        {
+          set_ext y.
+          split; intro.
+          { now apply H8. }
+          { now apply H7. }
+        }
+        subst. clear H7 H8.
+        assert (
+          ∃ ρ, ρs ρ /\
+            Done i (WriteSnap v) (Some new) ρ /\
+            Done j (WriteSnap v0) (Some (collect s)) ρ
+        ).
+        {
+          eassert (∃ ρ, _).
+          {
+            apply all_combs0 with
+              (i:=i) (j:=j)
+              (ρ':=x0); auto.
+            {
+              intros [].
+              destruct H9.
+              congruence.
+            }
+          }
+          psimpl. exists x2.
+          split. easy.
+          split. easy.
+          destruct H9.
+          constructor.
+          { now rewrite H11. }
+          { now rewrite H12. }
+        }
+        psimpl.
+        exists (retPoss i x2).
+        split.
+        {
+          exists x2.
+          auto using map_ret_triv.
+        }
+        {
+          destruct H11.
+          constructor; simpl;
+          now rewrite eqb_nid.
+        }
+      }
+      {
+        intros. psimpl.
+        assert (
+          ∃ ρ, ρs ρ /\
+            Done i (WriteSnap v) (Some new) ρ /\
+            Called j (WriteSnap v0) ρ
+        ).
+        {
+          eassert (∃ ρ, _).
+          {
+            apply all_combs0 with
+              (i:=i) (j:=j)
+              (ρ':=x0); auto.
+            {
+              intros [].
+              destruct H6.
+              congruence.
+            }
+          }
+          psimpl. exists x1.
+          split. easy.
+          split. easy.
+          destruct H6.
+          constructor.
+          { now rewrite H9. }
+          { now rewrite H10. }
+        }
+        psimpl.
+        exists (retPoss i x1).
+        split.
+        {
+          exists x1.
+          auto using map_ret_triv.
+        }
+        {
+          destruct H9.
+          constructor; simpl;
+          now rewrite eqb_nid.
+        }
+      }
+      {
+        intros. psimpl.
+        assert (
+          ∃ ρ, ρs ρ /\
+            Done i (WriteSnap v) (Some new) ρ /\
+            Done j (WriteSnap v0) (Some vs) ρ
+        ).
+        {
+          eassert (∃ ρ, _).
+          {
+            apply all_combs0 with
+              (i:=i) (j:=j)
+              (ρ':=x0); auto.
+            {
+              intros [].
+              destruct H6.
+              congruence.
+            }
+          }
+          psimpl. exists x1.
+          split. easy.
+          split. easy.
+          destruct H6.
+          constructor.
+          { now rewrite H9. }
+          { now rewrite H10. }
+        }
+        psimpl.
+        exists (retPoss i x1).
+        split.
+        {
+          exists x1.
+          auto using map_ret_triv.
+        }
+        {
+          destruct H9.
+          constructor; simpl;
+          now rewrite eqb_nid.
+        }
+      }
+      {
+        unfold AllCombs. intros.
+        unfold mapRetPoss in H7, H8.
+        psimpl.
+        assert (i0 ≠ i).
+        {
+          intros ?. subst.
+          destruct H18.
+          congruence.
+        }
+        assert (j0 ≠ i).
+        {
+          intros ?. subst.
+          apply H9. now constructor.
+        }
+        
+      }
+    }
+  }
 
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   VerifyProg i (Rely i) (Guar i)
@@ -522,9 +1064,121 @@ Proof.
         simpl in *. psimpl. ddestruct H.
         cbn in *. ddestruct H3.
         clear H H0 H1 H5.
-        
+        2:{
+          cbv in H0.
+          now destruct m1.
+        }
+        assert (∀ j, (arrSt t j).(racy_val) = (arrSt s j).(racy_val)).
+        {
+          intros.
+          dec_eq_nats j (exist (λ i, i < T) n Hlt).
+          { now rewrite <- x1, <- x at 1. }
+          { now rewrite H2. }
+        }
+        assert (Inv t ρs).
+        {
+          destruct H4, fn_inv0.
+          constructor.
+          (* { now setoid_rewrite H. } *)
+          { now setoid_rewrite H. }
+          { easy. }
+          { easy. }
+        }
+        exists ρs.
+        split.
+        { apply H0. }
+        split.
+        {
+          intros. exists σ.
+          repeat (easy || constructor).
+        }
+        split.
+        {
+          exists x2.
+          destruct H4.
+          constructor; try easy.
+          (* {
+            intros ??.
+            apply pfx_subs0 in H1.
+            destruct H1. exists x3.
+            now rewrite H.
+          } *)
+        }
+        {
+          constructor.
+          { easy. }
+          { easy. }
+          { now setoid_rewrite H. }
+        }
       }
-      { admit. }
+      intros [val ran].
+      {
+        intros s ρs t Hinv Hdpt Hus Hss.
+        destruct Hinv, H, H, H, H. clear H.
+        psimpl. psimpl. simpl in *.
+        ddestruct H0. simpl in *.
+        ddestruct H4; simpl in *.
+        2:{
+          exfalso.
+          eapply H.(fn_inv).(val_def).
+          now rewrite <- x1 at 1.
+        }
+        2:{
+          exfalso.
+          eapply H.(fn_inv).(val_def).
+          now rewrite <- x1 at 1.
+        }
+        ddestruct H1. clear - H H3 H6 x1 x.
+        destruct H, fn_inv0. psimpl.
+        exists (λ σ,
+          ∃ ρ, ρs ρ /\
+            Called i (WriteSnap v) ρ /\
+            (
+              σ = ρ \/
+              VisPossSteps ρ ((i, RetEv (WriteSnap v) (Some (snapSt ρ))) :: nil) σ
+            )
+        ).
+        assert (∀ j, (arrSt t j).(racy_val) = (arrSt s j).(racy_val)).
+        {
+          intros.
+          dec_eq_nats j (exist (λ i, i < T) n Hlt).
+          { now rewrite <- x1, <- x at 1. }
+          { now rewrite H3. }
+        }
+        split.
+        { admit. }
+        split.
+        {
+          intros. psimpl.
+          destruct H4; subst;
+          (exists x3;
+          split;[easy|idtac]).
+          { constructor. }
+          { eapply erase_vis. exact H4. }
+        }
+        split.
+        {
+          exists (snapSt x2).
+          constructor.
+          {
+            constructor.
+            { now setoid_rewrite H0. }
+            { admit. }
+            { admit. }
+          }
+          {
+            destruct val.
+            {
+              intros ??. right.
+              now apply old_subs0.
+            }
+            { easy. }
+          }
+          {
+            
+          }
+        }
+      }
     }
     {
       intros [val ran].

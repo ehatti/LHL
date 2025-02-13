@@ -48,7 +48,6 @@
 ./Examples/Counter/CounterSig.v
 ./Examples/Counter/RacyCounterSpec.v
 ./Examples/FAISpec.v
-./Examples/SeqCell.v
 ./Examples/LockSpec.v
 ./Examples/TicketLock.v
 ./Examples/AtomicSpec.v
