@@ -435,8 +435,8 @@ Record Inv {T A}
 }.
 Arguments Inv {T A} s ρs.
 
-Definition AllCombs {T A} (i : Name T) (v : A) (vs : set A) (ρs : PossSet (VF T A)) :=
-  ∀ i j,
+(* Definition AllCombs {T A} (i : Name T) (v : A) (vs : set A) (ρs : PossSet (VF T A)) :=
+  ∀ j,
     i ≠ j ->
     (∃ ρ, ρs ρ /\ Done i (WriteSnap v) (Some vs) ρ) ->
   ∀ ρ', ρs ρ' ->
@@ -444,7 +444,24 @@ Definition AllCombs {T A} (i : Name T) (v : A) (vs : set A) (ρs : PossSet (VF T
     ∃ ρ, ρs ρ /\
       Done i (WriteSnap v) (Some vs) ρ /\
       PCalls ρ j = PCalls ρ' j /\
-      PRets ρ j = PRets ρ' j.
+      PRets ρ j = PRets ρ' j. *)
+
+Definition AllCombs {T A} (ρs : PossSet (VF T A)) :=
+  ∀ sel : Name T -> option (A * option (set A)),
+    (∀ i v vs,
+      sel i = Some (v, vs) ->
+      ∃ ρ, ρs ρ /\
+        match vs with
+        | Some vs => Done i (WriteSnap v) (Some vs) ρ
+        | None => Called i (WriteSnap v) ρ
+        end) ->
+  ∃ ρ, ρs ρ /\
+    ∀ i v vs,
+      sel i = Some (v, vs) ->
+      match vs with
+      | Some vs => Done i (WriteSnap v) (Some vs) ρ
+      | None => Called i (WriteSnap v) ρ
+      end.
 
 Record FillNewInv {T A} {i : Name T} {vi : set A} {v : A} {n : nat} {new : set A}
   {s : InterState (F A) (VE T A)} {ρs : PossSet (VF T A)}
@@ -466,7 +483,7 @@ Record FillNewInv {T A} {i : Name T} {vi : set A} {v : A} {n : nat} {new : set A
   call_ex :
     ∃ ρ, ρs ρ /\
       Called i (WriteSnap v) ρ;
-  all_combs : AllCombs i v new ρs
+  all_combs : AllCombs ρs
 }.
 Arguments FillNewInv {T A} i vi v n new s ρs.
 
@@ -505,9 +522,8 @@ Record Rely {T A} (i : Name T)
       (∃ σ, σs σ /\
         Done i (WriteSnap v) (Some vs) σ);
   pres_combs :
-    ∀ v vs,
-      AllCombs i v vs ρs ->
-      AllCombs i v vs σs
+    AllCombs ρs ->
+    AllCombs σs
 }.
 
 Definition Guar {T A} (i : Name T) : Relt T A :=
@@ -594,6 +610,17 @@ Lemma done_ret {T F R} {VF : Spec T F} :
     i ≠ j ->
     Done i m v ρ ->
     Done i m v (retPoss j ρ).
+Proof.
+  intros. destruct H0.
+  constructor; simpl;
+  now rewrite eqb_nid.
+Qed.
+
+Lemma called_ret {T F R} {VF : Spec T F} :
+  ∀ (i j : Name T) (m : F R) (ρ : Poss VF),
+    i ≠ j ->
+    Called i m ρ ->
+    Called i m (retPoss j ρ).
 Proof.
   intros. destruct H0.
   constructor; simpl;
@@ -768,45 +795,51 @@ Proof.
       }
       {
         unfold AllCombs. intros.
-        unfold mapRetPoss in H7, H8.
-        psimpl.
-        assert (i ≠ i0).
-        {
-          intros ?. subst. destruct H17.
-          now rewrite H18 in call_done.
-        }
-        assert (j0 ≠ i).
-        {
-          intros ?.
-          subst. apply H9.
-          now constructor.
-        }
         eassert _.
         {
-          apply H5.
-          { exact H6. }
+          apply H5 with
+            (sel:=sel).
+          intros.
+          apply H6 in H7.
+          unfold mapRetPoss in H7.
+          psimpl. exists x1.
+          split. easy.
+          dec_eq_nats i0 i.
           {
-            exists x2. split. easy. destruct H17.
-            constructor; now rewrite <-?H22, <-?H23.
+            destruct vs, H8;
+            congruence.
           }
-          { exact H8. }
-          {
-            intros ?. apply H9.
-            destruct H27. constructor;
-            now rewrite ?H14, ?H15.
-          }
+          destruct vs, H8;
+          constructor;
+          now rewrite <-?H13, <-?H14.
         }
         psimpl.
-        exists (retPoss i x3).
+        exists (retPoss i x0).
         split.
         {
-          exists x3.
+          exists x0.
           auto using map_ret_triv.
         }
         {
-          simpl.
-          rewrite eqb_nid, H14, H15; auto.
-          auto using done_ret.
+          intros.
+          dec_eq_nats i0 i.
+          {
+            apply H8 in H9.
+            apply H3 in H7.
+            destruct H7, vs, H9.
+            {
+              rewrite ret_done in ret_done0.
+              ddestruct ret_done0.
+            }
+            {
+              rewrite ret_done in ridle0.
+              congruence.
+            }
+          }
+          apply H8 in H9.
+          destruct vs.
+          { now apply done_ret. }
+          { now apply called_ret. }
         }
       }
     }
@@ -883,24 +916,43 @@ Proof.
             Done j (WriteSnap v0) (Some (collect s)) ρ
         ).
         {
-          eassert (∃ ρ, _).
+          unfold AllCombs in all_combs0.
+          eassert _.
           {
             apply all_combs0 with
-              (i:=i) (j:=j)
-              (ρ':=x0); auto.
+              (sel:=λ k,
+                if i =? k then
+                  Some (v, Some new)
+                else if j =? k then
+                  Some (v0, Some (collect s))
+                else
+                  None).
+            intros.
+            dec_eq_nats i0 i.
             {
-              intros [].
-              destruct H9.
-              congruence.
+              rewrite eqb_id in H7.
+              inversion H7. subst.
+              apply inter_ex0; auto.
             }
+            rewrite eqb_nid in H7; auto.
+            dec_eq_nats i0 j.
+            {
+              rewrite eqb_id in H7.
+              inversion H7. subst.
+              exists x0. auto.
+            }
+            { now rewrite eqb_nid in H7; auto. }
           }
           psimpl. exists x2.
-          split. easy.
-          split. easy.
-          destruct H9.
-          constructor.
-          { now rewrite H11. }
-          { now rewrite H12. }
+          split. easy. split.
+          {
+            apply H8 with (vs:= Some new).
+            now rewrite eqb_id.
+          }
+          {
+            apply H8 with (vs:= Some (collect s)).
+            now rewrite eqb_id, eqb_nid.
+          }
         }
         psimpl.
         exists (retPoss i x2).
@@ -923,24 +975,45 @@ Proof.
             Called j (WriteSnap v0) ρ
         ).
         {
-          eassert (∃ ρ, _).
+          unfold AllCombs in all_combs0.
+          eassert _.
           {
             apply all_combs0 with
-              (i:=i) (j:=j)
-              (ρ':=x0); auto.
+              (sel:=λ k,
+                if i =? k then
+                  Some (v, Some new)
+                else if j =? k then
+                  Some (v0, None)
+                else
+                  None).
+            intros.
+            dec_eq_nats i0 i.
             {
-              intros [].
-              destruct H6.
-              congruence.
+              rewrite eqb_id in H7.
+              inversion H7. subst.
+              apply inter_ex0; auto.
             }
+            rewrite eqb_nid in H7; auto.
+            dec_eq_nats i0 j.
+            {
+              rewrite eqb_id in H7.
+              inversion H7. subst.
+              exists x0. auto.
+            }
+            { now rewrite eqb_nid in H7; auto. }
           }
-          psimpl. exists x1.
+          psimpl.
+          exists x1.
           split. easy.
-          split. easy.
-          destruct H6.
-          constructor.
-          { now rewrite H9. }
-          { now rewrite H10. }
+          split.
+          {
+            apply H8 with (vs:= Some new).
+            now rewrite eqb_id.
+          }
+          {
+            apply H8 with (vs:=None).
+            now rewrite eqb_id, eqb_nid.
+          }
         }
         psimpl.
         exists (retPoss i x1).
@@ -963,24 +1036,45 @@ Proof.
             Done j (WriteSnap v0) (Some vs) ρ
         ).
         {
-          eassert (∃ ρ, _).
+          unfold AllCombs in all_combs0.
+          eassert _.
           {
             apply all_combs0 with
-              (i:=i) (j:=j)
-              (ρ':=x0); auto.
+              (sel:=λ k,
+                if i =? k then
+                  Some (v, Some new)
+                else if j =? k then
+                  Some (v0, Some vs)
+                else
+                  None).
+            intros.
+            dec_eq_nats i0 i.
             {
-              intros [].
-              destruct H6.
-              congruence.
+              rewrite eqb_id in H7.
+              inversion H7. subst.
+              apply inter_ex0; auto.
             }
+            rewrite eqb_nid in H7; auto.
+            dec_eq_nats i0 j.
+            {
+              rewrite eqb_id in H7.
+              inversion H7. subst.
+              exists x0. auto.
+            }
+            { now rewrite eqb_nid in H7; auto. }
           }
-          psimpl. exists x1.
+          psimpl.
+          exists x1.
           split. easy.
-          split. easy.
-          destruct H6.
-          constructor.
-          { now rewrite H9. }
-          { now rewrite H10. }
+          split.
+          {
+            apply H8 with (vs:= Some new).
+            now rewrite eqb_id.
+          }
+          {
+            apply H8 with (vs:= Some vs).
+            now rewrite eqb_id, eqb_nid.
+          }
         }
         psimpl.
         exists (retPoss i x1).
@@ -997,20 +1091,44 @@ Proof.
       }
       {
         unfold AllCombs. intros.
-        unfold mapRetPoss in H7, H8.
-        psimpl.
-        assert (i0 ≠ i).
+        eassert _.
         {
-          intros ?. subst.
-          destruct H18.
-          congruence.
+          apply H5 with
+            (sel:=λ k,
+              if i =? k then
+                Some (v, Some new)
+              else
+                sel k).
+          intros. dec_eq_nats i0 i.
+          {
+            rewrite eqb_id in H7.
+            ddestruct H7.
+            apply inter_ex0; auto.
+          }
+          {
+            rewrite eqb_nid in H7; auto.
+            apply H6 in H7. psimpl.
+            unfold mapRetPoss in H10. psimpl.
+            exists x1.
+            split. easy.
+            destruct vs, H9;
+            constructor;
+            now rewrite <-?H15, <-?H16.
+          }
         }
-        assert (j0 ≠ i).
+        clear H5 H6. psimpl.
+        exists (retPoss i x0).
+        split.
         {
-          intros ?. subst.
-          apply H9. now constructor.
+          exists x0.
+          specialize (H6 i v (Some new)).
+          rewrite eqb_id in H6.
+          auto using map_ret_triv.
         }
-        
+        {
+          intros.
+          dec_eq_nats i0 i.
+        }
       }
     }
   }
