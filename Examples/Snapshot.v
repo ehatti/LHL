@@ -30,10 +30,11 @@ From Coq Require Import
   Logic.FunctionalExtensionality
   Unicode.Utf8.
 
-Record reg_st {A} := {
+Record reg_st {A} := MkReg {
   val : option A;
   ran : bool
 }.
+Arguments MkReg {A}.
 Arguments reg_st : clear implicits.
 
 Definition E T A :=
@@ -424,112 +425,133 @@ Proof.
   }
 Qed.
 
+Set Warnings "-cannot-define-projection".
+Arguments MkPoss {T F VF}.
+
+Definition possState {T A}
+  (und_val : Index T -> reg_st A)
+  (s : InterState (F A) (VE T A))
+:=
+  SnapDef
+    (collect s)
+    (λ i, (und_val i).(val))
+    (λ i, (und_val i).(ran)).
+
+Definition possCalls {T A}
+  (ret_map : Name T -> option (A * option (set A)))
+:=
+  λ i, match ret_map i with
+  | None => CallIdle
+  | Some (v, None) => CallPoss (WriteSnap v)
+  | Some (v, Some _) => CallDone (WriteSnap v)
+  end.
+
+Definition PossDefn {T A}
+  (und_val : Index T -> reg_st A)
+  (ret_map : Name T -> option (A * option (set A)))
+  (s : InterState (F A) (VE T A))
+  (ρ : Poss (VF T A)) : Prop :=
+  ρ = MkPoss (VF:= VF T A)
+    (possState und_val s)
+    (possCalls ret_map)
+    (λ i,
+      match ret_map i with
+      | None | Some (_, None) => RetIdle
+      | Some (v, Some vs) => RetPoss (WriteSnap v) (Some vs)
+      end) \/
+  (* Waiting *)
+  ρ = MkPoss (VF:= VF T A)
+    (possState und_val s)
+    (possCalls ret_map)
+    (λ i, RetIdle).
+
 Record Inv {T A}
   {s : InterState (F A) (VE T A)} {ρs : PossSet (VF T A)}
-:= {
+: Prop := {
+  und_val : Index T -> reg_st A;
   val_def :
-    ∀ i, (arrSt s i).(racy_val) ≠ None;
-  st_cons :
-    ∀ ρ, ρs ρ ->
-      snapSt ρ = collect s;
+    ∀ i, (arrSt s i).(racy_val) = Some (und_val i);
+  (*
+    if first option None, Idle
+    if second option None, Waiting
+  *)
+  ret_map : Name T -> option (A * option (set A));
+  poss_inv :
+    ρs = PossDefn und_val ret_map s
 }.
 Arguments Inv {T A} s ρs.
 
-(* Definition AllCombs {T A} (i : Name T) (v : A) (vs : set A) (ρs : PossSet (VF T A)) :=
-  ∀ j,
-    i ≠ j ->
-    (∃ ρ, ρs ρ /\ Done i (WriteSnap v) (Some vs) ρ) ->
-  ∀ ρ', ρs ρ' ->
-    ~Idling j ρ' ->
+Set Warnings "cannot-define-projection".
+
+Definition updt {A B} (m : A -> B) (i : A) (v : B) : A -> B :=
+  λ j, if i =? j then v else m j.
+
+Variant SnapTran {T A} {i : Name T} :
+  (Index T -> reg_st A) -> PossSet (VF T A) ->
+  (Index T -> reg_st A) -> PossSet (VF T A) ->
+  Prop :=
+| SnapInvoke v s ρs :
+  (∀ ρ, ρs ρ ->
+    PCalls ρ i = CallIdle /\
+    PRets ρ i = RetIdle) ->
+  SnapTran s ρs s (λ σ,
+    ∃ ρ, ρs ρ /\
+      σ = invPoss i ρ (WriteSnap v))
+| SnapReturn v vs s ρs :
+  (∃ ρ, ρs ρ /\
+    Done i (WriteSnap v) (Some vs) ρ) ->
+  SnapTran s ρs s (λ σ,
     ∃ ρ, ρs ρ /\
       Done i (WriteSnap v) (Some vs) ρ /\
-      PCalls ρ j = PCalls ρ' j /\
-      PRets ρ j = PRets ρ' j. *)
-
-Definition AllCombs {T A} (ρs : PossSet (VF T A)) :=
-  ∀ sel : Name T -> option (A * option (set A)),
-    (∀ i v vs,
-      sel i = Some (v, vs) ->
-      ∃ ρ, ρs ρ /\
-        match vs with
-        | Some vs => Done i (WriteSnap v) (Some vs) ρ
-        | None => Called i (WriteSnap v) ρ
-        end) ->
-  ∃ ρ, ρs ρ /\
-    ∀ i v vs,
-      sel i = Some (v, vs) ->
-      match vs with
-      | Some vs => Done i (WriteSnap v) (Some vs) ρ
-      | None => Called i (WriteSnap v) ρ
-      end.
-
-Record FillNewInv {T A} {i : Name T} {vi : set A} {v : A} {n : nat} {new : set A}
-  {s : InterState (F A) (VE T A)} {ρs : PossSet (VF T A)}
-: Prop := {
-  fn_inv :
-    Inv s ρs;
-  inter_ex :
-    ∀ vs,
-      vi ⊆ vs ->
-      vs ⊆ collect s ->
-      ∃ ρ, ρs ρ /\
-        Done i (WriteSnap v) (Some vs) ρ;
-  new_sub :
-    vi ⊆ (λ v, v ∈ new \/ (∃ i, `i < n /\ arr_set s i v /\ ¬(v ∈ new)));
-  new_bound :
-    new ⊆ collect s;
-  vi_sub :
-    vi ⊆ collect s;
-  call_ex :
-    ∃ ρ, ρs ρ /\
-      Called i (WriteSnap v) ρ;
-  all_combs : AllCombs ρs
-}.
-Arguments FillNewInv {T A} i vi v n new s ρs.
-
-Record Rely {T A} (i : Name T)
-  (s : InterState (F A) (VE T A)) (ρs : PossSet (VF T A))
-  (t : InterState (F A) (VE T A)) (σs : PossSet (VF T A))
-:= {
-  pres_inv :
-    Inv s ρs ->
-    Inv t σs;
-  val_mono :
-    ∀ i v,
-      arr_set s i v ->
-      arr_set t i v;
-  fill_all :
-    ∀ v,
-      (∃ ρ, ρs ρ /\
-        Called i (WriteSnap v) ρ) ->
-      (∃ ρ, ρs ρ /\
-        Done i (WriteSnap v) (Some (collect s)) ρ) ->
-    ∀ vs,
-      collect s ⊆ vs ->
-      vs ⊆ collect t ->
-      ∃ σ, σs σ /\
-        Done i (WriteSnap v) (Some vs) σ;
-  pres_call :
-    ∀ v,
-      (∃ ρ, ρs ρ /\
-        Called i (WriteSnap v) ρ) ->
-      (∃ σ, σs σ /\
-        Called i (WriteSnap v) σ);
-  pres_done :
-    ∀ v vs,
-      (∃ ρ, ρs ρ /\
-        Done i (WriteSnap v) (Some vs) ρ) ->
-      (∃ σ, σs σ /\
-        Done i (WriteSnap v) (Some vs) σ);
-  pres_combs :
-    AllCombs ρs ->
-    AllCombs σs
-}.
-
-Definition Guar {T A} (i : Name T) : Relt T A :=
-  λ s ρs t σs,
-    ∀ j, i ≠ j ->
-      Rely j s ρs t σs.
+      σ = retPoss i ρ)
+| SnapNoOp s ρs :
+  SnapTran s ρs s ρs
+| SnapWrite v s ρs :
+  SnapTran
+    (updt s i (MkReg None false))
+    ρs
+    (updt s i (MkReg (Some v) true))
+    (λ σ,
+      ∃ ρ, ρs ρ /\ (
+        σ = MkPoss (VF:= VF T A)
+          match ρ.(PState) with
+          | SnapDef vs vals rans =>
+            SnapDef
+              (insert v vs)
+              (updt vals i (Some v))
+              (updt rans i true)
+          end
+          (λ i,
+            match ρ.(PCalls) i with
+            | CallIdle => CallIdle
+            | CallPoss _ => CallDone (WriteSnap v)
+            | CallDone m => CallDone m
+            end)
+          (λ i,
+            match ρ.(PRets) i with
+            | RetIdle => RetPoss (WriteSnap v) (Some (snapSt ρ))
+            | RetPoss m r => RetPoss m r
+            end) \/
+        σ = MkPoss (VF:= VF T A)
+          match ρ.(PState) with
+          | SnapDef vs vals rans =>
+            SnapDef
+              (insert v vs)
+              (updt vals i (Some v))
+              (updt rans i true)
+          end
+          (λ i,
+            match ρ.(PCalls) i with
+            | CallIdle => CallIdle
+            | CallPoss _ => CallDone (WriteSnap v)
+            | CallDone m => CallDone m
+            end)
+          (λ i,
+            match ρ.(PRets) i with
+            | RetIdle => RetPoss (WriteSnap v) (Some (snapSt ρ))
+            | RetPoss m r => RetPoss m r
+            end)
+      )).
 
 Lemma rely_refl {T A} :
   ∀ (i : Name T) s ρs,
