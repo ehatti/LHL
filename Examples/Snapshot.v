@@ -420,8 +420,11 @@ Qed.
 
 Arguments MkPoss {T F VF}.
 
+Definition RRet' (T : nat) (A R : Type) :=
+  option (A * option (option (option (set R)))).
+
 Definition RRet (T : nat) (A : Type) :=
-  option (A * option (option (option (set A)))).
+  RRet' T A A.
 
 Definition RPoss (T : nat) (A : Type) :=
   Name T -> RRet T A.
@@ -497,6 +500,8 @@ Variant SnapTran {T A} {i : Name T} : pdata T A -> pdata T A -> Prop :=
     (MkD s (λ σ, ∃ ρ, ρs ρ /\
       updt ρ σ i PIdle (PWait v)))
 | SnapReturn v vs s ρs :
+  (∃ ρ, ρs ρ /\
+    ρ i = PRetn v vs) ->
   SnapTran
     (MkD s ρs)
     (MkD s (λ σ, ∃ ρ, ρs ρ /\
@@ -641,32 +646,6 @@ Proof.
   { easy. }
 Qed.
 
-(*
-I think this works. The idea is that `vi` is the set of names that formed `collect s` at first write, and we know `vi` never changes because we prove `InvF` is stable. We then loop through all names `i`, and add the corresponding value to `new`. If `i` is in `vi`, then it will be ⊆ to the `new ∪ {v}` of course, and if `i` is not in `vi` then that is trivial.
-
-`vi` is the state projected to the vals at the initial write.
-*)
-Record InvF {T A}
-  {i : Name T}
-  {vi : Name T -> option A} {v : A}
-  {new : set A} {n : nat}
-  {d : pdata T A}
-:= {
-  inter_ex :
-    ∀ ρ,
-      d.(poss_set) ρ ->
-      ρ i = PCall v \/
-      ∃ vs,
-        (λ v, ∃ i, vi i = Some v) ⊆ vs /\
-        vs ⊆ collect d.(und_vals) /\
-        ρ i = PRetn v (Some vs);
-  new_sup :
-    (λ v, ∃ i, `i ≥ n /\ vi i = Some v) ⊆ new;
-  vi_sub :
-    ∀ i v, vi i = Some v -> (d.(und_vals) i).(val) = Some v
-}.
-Arguments InvF {T A} i vi v new n d.
-
 Definition Lift {T A} (P : pdata T A -> Prop) : Prec T A :=
   λ s ρs, ∃ d, Inv d s ρs /\ P d.
 
@@ -702,125 +681,19 @@ Proof.
   apply H in H0. now right.
 Qed.
 
-Lemma InvF_stable {T A} :
-  ∀ i vi v new n d d',
-    @InvF T A i vi v new n d ->
-    OtherSnapTrans i d d' ->
-    InvF i vi v new n d'.
+Lemma updt_triv {A B} :
+  ∀ (m : A -> B) (i : A) (v1 v2 : B),
+    m i = v1 ->
+    updt m (updf m i v2) i v1 v2.
 Proof.
   intros.
-  induction H0. easy.
-  apply IHclos_refl_trans_1n.
-  clear IHclos_refl_trans_1n H1.
-  psimpl. destruct H1.
-  {
-    destruct H. constructor;
-    auto; simpl in *. intros.
-    psimpl. apply inter_ex0 in H.
-    destruct H2. destruct H.
-    { left. now rewrite m_diff0. }
-    {
-      right. psimpl.
-      exists x1.
-      split. easy.
-      split. easy.
-      now rewrite m_diff0.
-    }
-  }
-  {
-    destruct H. constructor;
-    auto; simpl in *. intros.
-    psimpl. apply inter_ex0 in H.
-    destruct H1. destruct H.
-    { left. now rewrite m_diff0. }
-    {
-      right. psimpl.
-      exists x1.
-      split. easy.
-      split. easy.
-      now rewrite m_diff0.
-    }
-  }
+  constructor.
   { easy. }
   {
-    destruct H. constructor;
-    auto; simpl in *. intros.
-    psimpl. apply inter_ex0 in H.
-    destruct H1. destruct H.
-    { left. now rewrite m_diff0. }
-    {
-      right. psimpl.
-      exists x1.
-      split. easy.
-      split. easy.
-      now rewrite m_diff0.
-    }
+    unfold updf.
+    now rewrite eqb_id.
   }
-  {
-    destruct H. constructor;
-    auto; simpl in *.
-    {
-      intros; psimpl.
-      apply inter_ex0 in H.
-      specialize (H2 i).
-      destruct H; psimpl.
-      {
-        rewrite H in H2.
-        destruct H2; auto.
-        right. rewrite H2.
-        exists (insert v0 (collect s0)).
-        split.
-        {
-          intros ??. destruct H3.
-          apply vi_sub0 in H3.
-          right. now exists x1.
-        }
-        split.
-        {
-          intros ??.
-          unfold updf.
-          destruct H3.
-          {
-            subst. exists x0.
-            now rewrite eqb_id.
-          }
-          {
-            psimpl.
-            exists x1.
-            dec_eq_nats x0 x1.
-            { now rewrite H1 in H3. }
-            now rewrite eqb_nid.
-          }
-        }
-        { easy. }
-      }
-      {
-        rewrite H4 in H2.
-        right. exists x1.
-        split.
-        { easy. }
-        split.
-        {
-          intros ??.
-          apply H3 in H5.
-          destruct H5. exists x2.
-          unfold updf. dec_eq_nats x0 x2.
-          { now rewrite H1 in H5. }
-          now rewrite eqb_nid.
-        }
-        { easy. }
-      }
-    }
-    {
-      intros. unfold updf.
-      dec_eq_nats x0 i0.
-      {
-        apply vi_sub0 in H.
-        now rewrite H1 in H.
-      }
-      rewrite eqb_nid; auto.
-    }
-  }
+  { apply differ_pointwise_trivial. }
 Qed.
 
 Lemma map_ret_triv {T F R} {VF : Spec T F} :
@@ -946,22 +819,92 @@ Proof.
   }
 Qed.
 
+Variant PossDef {T A} {st : Name T -> reg_st A} :
+  RRet' T A (Name T) -> RRet' T A A -> Prop :=
+| PDIdle :
+  PossDef None None
+| PDWait v :
+  PossDef (Some (v, None)) (Some (v, None))
+| PDCall v :
+  PossDef (Some (v, Some None)) (Some (v, Some None))
+| PDRetnNone v :
+  PossDef (Some (v, Some (Some None))) (Some (v, Some (Some None)))
+| PDRetnSomeRetn v vi vs :
+  (λ v, ∃ i, vi i /\ (st i).(val) = Some v) ⊆ vs ->
+  vs ⊆ (λ v, ∃ i, (st i).(val) = Some v) ->
+  PossDef (Some (v, Some (Some (Some vi)))) (Some (v, Some (Some (Some vs))))
+| PDRetnSomeCall v vi :
+  PossDef (Some (v, Some (Some (Some vi)))) (Some (v, Some None)).
+Arguments PossDef {T A} st _ _.
+
+Record InvG {T A}
+  {ls : Name T -> option (A * option (option (option (set (Name T)))))}
+  {d : pdata T A}
+:= {
+  poss_def :
+    d.(poss_set) = (λ ρ,
+      ∀ i, PossDef d.(und_vals) (ls i) (ρ i))
+}.
+Arguments InvG {T A} ls d.
+
+Lemma InvG_stable {T A} :
+  ∀ (i : Name T) (d d' : pdata T A),
+    OtherSnapTrans i d d' ->
+    ∀ ls,
+      InvG ls d ->
+      ∃ ls',
+        InvG ls' d' /\
+        ls i = ls' i.
+Proof.
+  intros i d d' H.
+  induction H; intros.
+  { now exists ls. }
+  {
+    cut (∃ ls', InvG ls' y /\ ls i = ls' i).
+    {
+      intros. psimpl.
+      apply IHclos_refl_trans_1n in H2.
+      psimpl. exists x2. split. easy.
+      congruence.
+    }
+    psimpl. clear - H2 H1 H.
+    destruct H2.
+    {
+      admit.
+    }
+    {
+      admit.
+    }
+    { now exists ls. }
+    {
+      admit.
+    }
+    {
+      admit.
+    }
+  }
+Admitted.
+
 Lemma return_step {T A} :
   ∀ (i : Name T) (v : A) (r : option (set A)),
     ReturnStep i (Guar i)
       (λ s ρs,
-        ∃ d, Inv d s ρs /\
-        (
-          r = None /\
-          (∃ ρ, d.(poss_set) ρ) /\
-          ∀ ρ, d.(poss_set) ρ ->
-            ρ i = PRetn v r
-        ) \/
-        (
-          ∃ vi new,
-            r = Some new /\
-            InvF i vi v new 0 d
-        ))
+        ∃ d ls,
+          Inv d s ρs /\
+          InvG ls d /\
+          (
+            r = None /\
+            (∃ ρ, d.(poss_set) ρ) /\
+            ∀ ρ, d.(poss_set) ρ ->
+              ρ i = PRetn v r
+          ) \/
+          (
+            ∃ vi new,
+              r = Some new /\
+              (λ v, ∃ i, vi i /\ (d.(und_vals) i).(val) = Some v) ⊆ new /\
+              new ⊆ (λ v, ∃ i, (d.(und_vals) i).(val) = Some v) /\
+              ls i = Some (v, Some (Some (Some vi)))
+          ))
       (WriteSnap v) r
       (λ _ _ s ρs,
         ∃ d, Inv d s ρs).
@@ -1174,8 +1117,15 @@ Proof.
     }
   }
   {
+    rename x0 into vi.
+    rename x1 into new.
+    rename x into d.
     destruct H0.
-    exists
+    exists (λ σ, ρs σ /\ Done i (WriteSnap v) (Some new) σ).
+    split.
+    {
+
+    }
   }
 Admitted.
 
