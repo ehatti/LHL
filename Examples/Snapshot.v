@@ -643,10 +643,12 @@ Qed.
 
 (*
 I think this works. The idea is that `vi` is the set of names that formed `collect s` at first write, and we know `vi` never changes because we prove `InvF` is stable. We then loop through all names `i`, and add the corresponding value to `new`. If `i` is in `vi`, then it will be ⊆ to the `new ∪ {v}` of course, and if `i` is not in `vi` then that is trivial.
+
+`vi` is the state projected to the vals at the initial write.
 *)
 Record InvF {T A}
   {i : Name T}
-  {vi : set A} {v : A}
+  {vi : Name T -> option A} {v : A}
   {new : set A} {n : nat}
   {d : pdata T A}
 := {
@@ -655,14 +657,13 @@ Record InvF {T A}
       d.(poss_set) ρ ->
       ρ i = PCall v \/
       ∃ vs,
-        vi ⊆ vs /\
+        (λ v, ∃ i, vi i = Some v) ⊆ vs /\
         vs ⊆ collect d.(und_vals) /\
         ρ i = PRetn v (Some vs);
   new_sup :
-    (λ v, v ∈ vi /\ ∃ j, `j ≥ n /\ (d.(und_vals) j).(val) = Some v) ⊆ new;
+    (λ v, ∃ i, `i ≥ n /\ vi i = Some v) ⊆ new;
   vi_sub :
-    vi ⊆ collect d.(und_vals);
-  all_set : ∀ i, `i ≥ n -> (d.(und_vals) i).(val) ≠ None
+    ∀ i v, vi i = Some v -> (d.(und_vals) i).(val) = Some v
 }.
 Arguments InvF {T A} i vi v new n d.
 
@@ -769,7 +770,11 @@ Proof.
         right. rewrite H2.
         exists (insert v0 (collect s0)).
         split.
-        { now apply sub_ins. }
+        {
+          intros ??. destruct H3.
+          apply vi_sub0 in H3.
+          right. now exists x1.
+        }
         split.
         {
           intros ??.
@@ -807,37 +812,13 @@ Proof.
       }
     }
     {
-      intros ? ?.
-      destruct H, H2, H2.
-      unfold updf in H3.
-      dec_eq_nats x0 x.
-      {
-        rewrite eqb_id in *.
-        simpl in *. ddestruct H3.
-        exfalso. apply (all_set0 x).
-        { easy. }
-        { now rewrite H1. }
-      }
-      {
-        rewrite eqb_nid in H3; auto.
-        apply new_sup0.
-        split. easy.
-        now exists x.
-      }
-    }
-    {
-      intros ??.
-      apply vi_sub0 in H.
-      destruct H. exists x.
-      unfold updf. dec_eq_nats x0 x.
-      { now rewrite H1 in H. }
-      now rewrite eqb_nid.
-    }
-    {
-      unfold updf. intros.
+      intros. unfold updf.
       dec_eq_nats x0 i0.
-      { now rewrite eqb_id. }
-      { rewrite eqb_nid; auto. }
+      {
+        apply vi_sub0 in H.
+        now rewrite H1 in H.
+      }
+      rewrite eqb_nid; auto.
     }
   }
 Qed.
@@ -1016,7 +997,87 @@ Proof.
         (λ σ, ∃ ρ, x.(poss_set) ρ /\
           updt ρ σ i (PRetn v None) None)
       ).
-      admit.
+      destruct H.
+      constructor; simpl; auto.
+      set_ext ρ. unfold mapRetPoss.
+      split; intro; psimpl.
+      {
+        psimpl.
+        exists (λ j,
+          if i =? j then
+            None
+          else
+            x2 j).
+        split.
+        {
+          exists x2.
+          split. easy.
+          constructor.
+          { now apply H2. }
+          { now rewrite eqb_id. }
+          { apply differ_pointwise_trivial. }
+        }
+        {
+          unfold conPoss in *.
+          destruct ρ. simpl in *.
+          subst. repeat f_equal.
+          {
+            extensionality j.
+            dec_eq_nats j i.
+            {
+              rewrite eqb_id.
+              destruct (x2 i).
+              {
+                destruct p, o.
+                { now destruct o. }
+                { easy. }
+              }
+              { easy. }
+            }
+            { now rewrite eqb_nid. }
+          }
+          {
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id. }
+            { now rewrite eqb_nid, H6. }
+          }
+          {
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id. }
+            { now rewrite eqb_nid, H7. }
+          }
+        }
+      }
+      {
+        unfold contains in H. psimpl.
+        exists (conPoss (und_vals x) x2).
+        split. { now exists x2. }
+        destruct H0.
+        rewrite m2_set0.
+        split. { easy. }
+        split. { simpl. now rewrite m1_set0. }
+        split. { easy. }
+        split. { simpl. now rewrite m1_set0. }
+        split.
+        {
+          unfold differ_pointwise.
+          simpl. intros. now rewrite m_diff0.
+        }
+        split.
+        {
+          unfold differ_pointwise.
+          simpl. intros. now rewrite m_diff0.
+        }
+        {
+          simpl. f_equal.
+          extensionality j.
+          dec_eq_nats j i.
+          { now rewrite m1_set0, m2_set0. }
+          { now rewrite m_diff0. }
+        }
+      }
     }
     {
       unfold Guar. intros.
@@ -1041,7 +1102,42 @@ Proof.
         simpl in *. remember (x0 i).
         destruct r as [[? [[?|]|]]|];
         try easy. ddestruct H4. clear x.
-        admit.
+        exists (λ j,
+          if i =? j then
+            None
+          else
+            x0 j).
+        split.
+        {
+          exists x0.
+          split. easy.
+          constructor.
+          { now apply H2. }
+          { now rewrite eqb_id. }
+          { apply differ_pointwise_trivial. }
+        }
+        {
+          destruct ρ. unfold conPoss.
+          simpl in *. subst. repeat f_equal.
+          {
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id, <- Heqr. }
+            { now rewrite eqb_nid; auto. }
+          }
+          {
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id. }
+            { now rewrite eqb_nid, H5. }
+          }
+          {
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id. }
+            { now rewrite eqb_nid, H6. }
+          }
+        }
       }
       {
         destruct H, H, H0.
@@ -1078,7 +1174,8 @@ Proof.
     }
   }
   {
-    admit.
+    destruct H0.
+    exists
   }
 Admitted.
 
