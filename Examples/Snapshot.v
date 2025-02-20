@@ -1259,261 +1259,59 @@ Proof.
   }
 Qed.
 
-Lemma switch_inv {T A} (i : Name T) (v : A) :
-  ∀ vs new,
-    Lift (InvF i vs v new 0) ==>
-    Lift (InvF i vs v new T).
-Proof.
-  unfold sub, subPrec, Lift.
-  intros. psimpl. destruct H0.
-  exists x. split. easy.
-  constructor; auto.
-  intros. destruct H0, H0.
-  clear - H0. destruct x0.
-  simpl in *. lia.
-Qed.
-
 Lemma write_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
     (λ _ _ s ρs,
       ∃ d,
         Inv d s ρs /\
-        (∀ ρ, d.(poss_set) ρ ->
-          ρ i = PWait v))
-    (call (At i (Write {| val := Some v; ran := true |})))
-    (λ 'tt _ _ s ρs, ∃ vs, Lift (InvF i vs v emp T) s ρs).
+        d.(rets_map) i = PWait v)
+    (call (At i (Write (MkReg (Some v) true))))
+    (λ 'tt _ _ s ρs,
+      ∃ d vi,
+        Inv d s ρs /\
+        d.(rets_map) i = PRetn v (Some vi)).
 Proof.
+Admitted.
 
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   VerifyProg i (Rely i) (Guar i)
-    (λ _ _ s ρs, ∃ vs, Lift (InvF i vs v x.(new) T) s ρs)
+    (λ _ _ s ρs,
+      ∃ d vi,
+        Inv d s ρs /\
+        d.(rets_map) i = PRetn v (Some vi))
     (fill_new T x)
-    (λ '(tt, y) _ _ s ρs, ∃ vs, Lift (InvF i vs v y.(new) 0) s ρs).
+    (λ '(tt, y) _ _ s ρs,
+      ∃ d vi,
+        Inv d s ρs /\
+        d.(rets_map) i = PRetn v (Some vi) /\
+        vi ⊆ x.(new) /\
+        x.(new) ⊆ collect d.(und_vals)).
 Proof.
   unfold fill_new, runStateM, bindM.
   simpl. eapply weakenPost.
-  apply lemRange with
-    (I:=λ n x _ _ s ρs,
-      ∃ vs, Lift (InvF i vs v x.(new) n) s ρs).
-  clear. 2: intros; now destruct v0, u.
-  intros n x Hlt.
-  unfold runStateM, bindM, lift.
-  simpl.
-  eapply lemBind with
-    (Q:=λ '(_, x'') _ _ s ρs,
-      ∃ vs, FillNewInv i v vs n x'' s ρs).
-  {
-    eapply lemBind.
-    {
-      apply (lemCall
-        (Q:=λ _ _ s ρs,
-          ∃ vs, FillNewInv i v vs (S n) x s ρs)
-        (S:=λ lsp _ _ s ρs,
-          ∃ vs, FillNewInv i v vs n x s ρs)).
-      {
-        unfold
-          Stable, stableRelt,
-          sub, subRelt.
-        intros. psimpl. exists x2.
-        apply fill_new_inv_stable.
-        psplit. exact H. easy.
-      }
-      {
-        unfold
-          Stable, stablePost, stableRelt,
-          sub, subRelt.
-        intros. psimpl. exists x2.
-        apply fill_new_inv_stable.
-        psplit. exact H. easy.
-      }
-      {
-        intros s ρs t Hinv Hdpt Hus Hss.
-        simpl in *. psimpl. ddestruct H.
-        cbn in *. ddestruct H3.
-        clear H H0 H1 H5.
-        2:{
-          cbv in H0.
-          now destruct m1.
-        }
-        assert (∀ j, (arrSt t j).(racy_val) = (arrSt s j).(racy_val)).
-        {
-          intros.
-          dec_eq_nats j (exist (λ i, i < T) n Hlt).
-          { now rewrite <- x1, <- x at 1. }
-          { now rewrite H2. }
-        }
-        assert (Inv t ρs).
-        {
-          destruct H4, fn_inv0.
-          constructor.
-          (* { now setoid_rewrite H. } *)
-          { now setoid_rewrite H. }
-          { easy. }
-          { easy. }
-        }
-        exists ρs.
-        split.
-        { apply H0. }
-        split.
-        {
-          intros. exists σ.
-          repeat (easy || constructor).
-        }
-        split.
-        {
-          exists x2.
-          destruct H4.
-          constructor; try easy.
-          (* {
-            intros ??.
-            apply pfx_subs0 in H1.
-            destruct H1. exists x3.
-            now rewrite H.
-          } *)
-        }
-        {
-          constructor.
-          { easy. }
-          { easy. }
-          { now setoid_rewrite H. }
-        }
-      }
-      intros [val ran].
-      {
-        intros s ρs t Hinv Hdpt Hus Hss.
-        destruct Hinv, H, H, H, H. clear H.
-        psimpl. psimpl. simpl in *.
-        ddestruct H0. simpl in *.
-        ddestruct H4; simpl in *.
-        2:{
-          exfalso.
-          eapply H.(fn_inv).(val_def).
-          now rewrite <- x1 at 1.
-        }
-        2:{
-          exfalso.
-          eapply H.(fn_inv).(val_def).
-          now rewrite <- x1 at 1.
-        }
-        ddestruct H1. clear - H H3 H6 x1 x.
-        destruct H, fn_inv0. psimpl.
-        exists (λ σ,
-          ∃ ρ, ρs ρ /\
-            Called i (WriteSnap v) ρ /\
-            (
-              σ = ρ \/
-              VisPossSteps ρ ((i, RetEv (WriteSnap v) (Some (snapSt ρ))) :: nil) σ
-            )
-        ).
-        assert (∀ j, (arrSt t j).(racy_val) = (arrSt s j).(racy_val)).
-        {
-          intros.
-          dec_eq_nats j (exist (λ i, i < T) n Hlt).
-          { now rewrite <- x1, <- x at 1. }
-          { now rewrite H3. }
-        }
-        split.
-        { admit. }
-        split.
-        {
-          intros. psimpl.
-          destruct H4; subst;
-          (exists x3;
-          split;[easy|idtac]).
-          { constructor. }
-          { eapply erase_vis. exact H4. }
-        }
-        split.
-        {
-          exists (snapSt x2).
-          constructor.
-          {
-            constructor.
-            { now setoid_rewrite H0. }
-            { admit. }
-            { admit. }
-          }
-          {
-            destruct val.
-            {
-              intros ??. right.
-              now apply old_subs0.
-            }
-            { easy. }
-          }
-          {
-            
-          }
-        }
-      }
-    }
-    {
-      intros [val ran].
-      eapply lemRet.
-      unfold sub, subRelt.
-      intros. psimpl.
-      now exists x4.
-    }
-  }
-  intros [[val ran] x'].
-  unfold get, put. simpl.
-  rewrite ret_lunit.
-  destruct val; simpl.
-  {
-    apply lemRet.
-    unfold sub, subRelt.
-    intros _ _ s ρs [vs H].
-    exists vs. destruct H.
-    constructor; try easy.
-    {
-      intros. simpl.
-      apply subs_new0 in H.
-      now right.
-    }
-  }
-  { now apply lemRet. }
 Admitted.
-
 
 Lemma ws_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
-    (prComp Inv (TInvoke (snapImpl T A) i _ (WriteSnap v)) ->> Rely i)
+    (prComp
+      (λ s ρs,
+        ∃ d, Inv d s ρs)
+      (TInvoke (snapImpl T A) i _ (WriteSnap v)) ->> Rely i)
     (write_snapshot v)
-    (λ r _ _, Posts i v r).
+    (λ r _ _ s ρs,
+      ∃ d, Inv d s ρs /\
+        ((
+          r = None /\
+          d.(rets_map) i = PRetn v None
+        ) \/
+        (
+          ∃ vi new,
+            r = Some new /\
+            d.(rets_map) i = PRetn v (Some vi) /\
+            vi ⊆ new /\
+            new ⊆ collect d.(und_vals)
+        ))).
 Proof.
   unfold write_snapshot.
-  apply lemBindSelf.
-  { admit. }
-  eapply lemBind.
-  {
-    admit.
-  }
-  intros i'.
-  eapply lemBind.
-  {
-    admit.
-  }
-  intros [val ran]. simpl.
-  destruct ran.
-  {
-    admit.
-  }
-  {
-    eapply lemBind with
-      (Q:=λ _ _ _ s ρs, ∃ vs, FillNewInv i v vs T (MkSt emp emp) s ρs).
-    {
-      admit.
-    }
-    intros []. clear val.
-    eapply lemBind.
-    {
-      unfold runStateM, bindM.
-      eapply lemBind.
-      { apply fill_new_correct. }
-      intros [[] [val ran]].
-      eapply lemBind.
-      {
+Admitted.
 
-      }
-    }
-  }
