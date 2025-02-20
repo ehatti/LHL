@@ -178,29 +178,42 @@ Context
 
 Lemma lemWhile {A} {i : Name T} :
   ∀ (b : A -> bool) (e : StateM E A unit)
-    (I : A -> Relt VE VF),
+    P (Q : A -> Relt VE VF),
     (* (∀ ths tht s x ρs,
       PointStep UnderThreadStep ths (i, None) tht ->
       I x (ths, s) ρs ()) *)
+    (∀ x, Q x ==> P) ->
     (∀ x,
       VerifyProg i R G
-        (λ s ρs t σs,
-          b x = true /\
-          I x s ρs t σs)
-        (runStateM x e)
-        (λ '(tt, y), I y)) ->
+        P
+        (e x)
+        (λ '(tt, y), Q y)) ->
     ∀ x,
       VerifyProg i R G
-        (I x)
-        (runStateM x (while b e))
-        (λ '(tt, y) s ρs t σs,
-          b y = false /\
-          I y s ρs t σs).
+        P
+        (while b e x)
+        (λ '(tt, y) s ρs t σs, Q y s ρs t σs).
 Proof.
-  intros b e I H x. unfold while.
+  (* intros b e P I H0 H1 H2 x. unfold while.
   unfold VerifyProg. rewrite paco_eqv.
   generalize dependent x. pcofix rec.
   intros x. pfold. unfold runStateM.
+  unfold runStateM in rec.
+  specialize (H2 x).
+  unfold runStateM in H2.
+  destruct (e x).
+  {
+    ddestruct H2.
+    rewrite frobProgId at 1.
+    cbn. econstructor.
+    { exact H. }
+    { exact H2. }
+    { easy. }
+    intros.
+    specialize (H4 v).
+    split.
+    { easy. }
+  } *)
 Admitted.
 
 Lemma lemRange {A} {i : Name T} :
@@ -229,6 +242,41 @@ Proof.
       intros [[] t]. simpl in *.
       apply IHN. intros. apply H.
     }
+  }
+Qed.
+
+Lemma lemCallWk {A} {P : Relt VE VF} {m : E A} :
+  ∀ (i : Name T) Q S,
+  Stable R Q ->
+  (∀ v, Stable R (S v)) ->
+  Commit i G P (CallEv m) (λ _ _, Q) ->
+  (forall v, Commit i G Q (RetEv m v) (λ _ _, S v)) ->
+  VerifyProg i R G P (call m) (λ v _ _, S v).
+Proof.
+  intros.
+  eapply weakenPost.
+  eapply (lemCall
+    (Q:=λ _ _, Q)
+    (S:=λ v _ _, S v)).
+  { easy. }
+  {
+    unfold
+      Stable, stablePost,
+      stableRelt, sub, subRelt.
+    intros. psimpl.
+    apply H0.
+    now exists x, x0.
+  }
+  { easy. }
+  {
+    unfold Commit.
+    intros. apply H2.
+    now psimpl.
+    all: easy.
+  }
+  {
+    intros ??????.
+    now psimpl.
   }
 Qed.
 
@@ -1149,6 +1197,19 @@ Proof.
   }
 Qed.
 
+Lemma Inv_pres_self {T A} :
+  ∀ (i : Name T) (d d' : pdata T A),
+    OtherSnapTrans i d d' ->
+    d.(rets_map) i = d'.(rets_map) i.
+Proof.
+  intros.
+  induction H. easy.
+  rewrite <- IHclos_refl_trans_1n.
+  clear IHclos_refl_trans_1n H0.
+  psimpl. destruct H0; psimpl;
+  unfold updf; now try rewrite eqb_nid.
+Qed.
+
 Lemma return_step {T A} :
   ∀ (i : Name T) (v : A) (r : option (set A)),
     ReturnStep i (Guar i)
@@ -1559,6 +1620,23 @@ Qed.
 Check @lemCall.
 Arguments lemCall {T i E F VE VF R G A} Q S.
 
+Lemma Inv_stable {T A} :
+  ∀ i c,
+    Stable (@Rely T A i) (λ s ρs,
+      ∃ d,
+        Inv d s ρs /\
+        d.(rets_map) i = c).
+Proof.
+  unfold
+    Stable, stablePrec,
+    sub, subPrec.
+  intros. psimpl.
+  apply H0 in H. psimpl.
+  exists x2. split. easy.
+  symmetry.
+  now apply Inv_pres_self.
+Qed.
+
 Lemma write_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
     (λ _ _ s ρs,
@@ -1571,9 +1649,41 @@ Lemma write_correct {T A} (i : Name T) (v : A) :
         Inv d s ρs /\
         d.(rets_map) i = PRetn v (Some vi)).
 Proof.
+  eapply weakenPost.
+  eapply lemCallWk with
+    (Q:=λ s ρs,
+      ∃ d,
+        Inv d s ρs /\
+        d.(rets_map) i = PWait v)
+    (S:=λ _ s ρs,
+      ∃ d vi,
+        Inv d s ρs /\
+        d.(rets_map) i = PRetn v (Some vi)).
+  { apply Inv_stable. }
+  {
+    unfold
+      Stable, stablePrec,
+      sub, subPrec.
+    intros. psimpl.
+    apply H0 in H. psimpl.
+    exists x3, x2.
+    split. easy.
+    apply Inv_pres_self in H.
+    congruence.
+  }
+  {
+    unfold Commit.
+    intros. do 2 psimpl.
+    admit.
+  }
+  {
+    admit.
+  }
+  { now intros []. }
 Admitted.
 
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
+  x.(new) = emp ->
   VerifyProg i (Rely i) (Guar i)
     (λ _ _ s ρs,
       ∃ d vi,
@@ -1584,12 +1694,67 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
       ∃ d vi,
         Inv d s ρs /\
         d.(rets_map) i = PRetn v (Some vi) /\
-        vi ⊆ x.(new) /\
-        x.(new) ⊆ collect d.(und_vals)).
+        vi ⊆ y.(new) /\
+        y.(new) ⊆ collect d.(und_vals)).
 Proof.
+  intros Heq.
   unfold fill_new, runStateM, bindM.
-  simpl. eapply weakenPost.
-Admitted.
+  simpl.
+  eapply weakenPost.
+  eapply weakenPrec.
+  apply lemRange with
+    (I:=λ n y _ _ s ρs,
+      ∃ d vi,
+        Inv d s ρs /\
+        d.(rets_map) i = PRetn v (Some vi) /\
+        (λ v, vi v /\ ∃ i, `i ≥ n /\ (d.(und_vals) i).(val) = Some v) ⊆ y.(new) /\
+        y.(new) ⊆ collect d.(und_vals)).
+  2:{
+    unfold sub, subRelt.
+    intros. psimpl.
+    exists x0, x1.
+    split. easy.
+    split. easy.
+    split.
+    {
+      intros ??.
+      destruct H1, H2, x2, H2.
+      psimpl. lia.
+    }
+    {
+      rewrite Heq.
+      now intros ??.
+    }
+  }
+  2:{
+    intros [[]].
+    unfold sub, subRelt.
+    intros. psimpl.
+    exists x0, x1.
+    split. easy.
+    split. easy.
+    split.
+    {
+      intros.
+      apply H1.
+      split. easy.
+      destruct H.
+      eapply vi_subs0 in H3.
+      2: exact H0.
+      destruct H3.
+      exists x2.
+      split. lia.
+      easy.
+    }
+    { easy. }
+  }
+  {
+    intros.
+    unfold runStateM.
+    eapply lemBind.
+    { admit. }
+    { admit. }
+  }
 
 Lemma ws_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
@@ -1612,7 +1777,7 @@ Lemma ws_correct {T A} (i : Name T) (v : A) :
             new ⊆ collect d.(und_vals)
         ))).
 Proof.
-  (* eapply weakenPrec with
+  eapply weakenPrec with
     (P:=λ _ _ s ρs,
       ∃ d,
         Inv d s ρs /\
@@ -1643,7 +1808,8 @@ Proof.
             PRets (conPoss d.(und_vals) x1) i = RetIdle
           ).
           {
-            admit.
+            apply H3.
+            now exists x1.
           }
           exists (updf x1 i (PWait v)).
           split.
@@ -1685,7 +1851,24 @@ Proof.
           }
         }
         {
-          exists (conPoss d.(und_vals) (updf x0 i (PWait v))).
+          assert (d.(rets_map) i = PIdle).
+          {
+            assert (
+              PCalls (conPoss d.(und_vals) d.(rets_map)) i = CallIdle /\
+              PRets (conPoss d.(und_vals) d.(rets_map)) i = RetIdle
+            ).
+            {
+              apply H3.
+              exists d.(rets_map).
+              split.
+              { intros. apply PS_refl, vi_subs0. }
+              { easy. }
+            }
+            clear - H4. psimpl.
+            gendep (rets_map d i). intros.
+            unfold RRet' in r. now dstr_rposs.
+          }
+          exists (conPoss d.(und_vals) (updf x0 i None)).
           split.
           {
             eexists.
@@ -1694,12 +1877,50 @@ Proof.
             unfold updf in *.
             dec_eq_nats i0 i.
             {
-              rewrite eqb_id in H2.
+              rewrite eqb_id in *.
+              rewrite H4. constructor.
             }
+            { rewrite eqb_nid in *; auto. }
           }
+          assert (x0 i = PWait v).
+          {
+            specialize (H2 i).
+            unfold updf in H2.
+            rewrite eqb_id in H2.
+            now ddestruct H2.
+          }
+          unfold conPoss, updf.
+          psimpl. rewrite H5.
+          split.
+          {
+            repeat f_equal.
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id, H5. }
+            { now rewrite eqb_nid. }
+          }
+          split. easy.
+          split. easy.
+          split; intros ??;
+          now rewrite eqb_nid.
+        }
+      }
+      {
+        unfold updf. intros.
+        dec_eq_nats i0 i.
+        { now rewrite eqb_id in H2. }
+        {
+          rewrite eqb_nid in H2; auto.
+          eapply vi_subs0. exact H2. easy.
         }
       }
     }
+    clear - H0 H2.
+    apply H0 in H2. psimpl.
+    exists x1. split. easy.
+    apply Inv_pres_self in H.
+    psimpl. unfold updf in H.
+    now rewrite eqb_id in H.
   }
   unfold write_snapshot.
   eapply lemBindSelf.
@@ -1708,9 +1929,146 @@ Proof.
   }
   eapply lemBind.
   {
-    eapply lemCall with
-      (Q:=).
-  } *)
+    eapply lemCallWk with
+      (Q:=λ s ρs,
+        ∃ d,
+          Inv d s ρs /\
+          d.(rets_map) i = PWait v)
+      (S:=λ _ s ρs,
+        ∃ d,
+          Inv d s ρs /\
+          d.(rets_map) i = PWait v).
+    { apply Inv_stable. }
+    { intros ?. apply Inv_stable. }
+    { admit. }
+    { admit. }
+  }
+  intros. psimpl.
+  eapply lemBind.
+  {
+    eapply lemCallWk with
+      (Q:=λ s ρs,
+        ∃ d,
+          Inv d s ρs /\
+          d.(rets_map) i = PWait v)
+      (S:=λ r s ρs,
+        ∃ d,
+          Inv d s ρs /\
+          d.(rets_map) i =
+            if r.(ran) then
+              PRetn v None
+            else
+              PWait v).
+    { apply Inv_stable. }
+    {
+      unfold
+        Stable, stablePrec,
+        sub, subPrec.
+      intros. psimpl.
+      destruct (ran v0).
+      {
+        apply Inv_stable.
+        exists x, x0.
+        split. 2: easy.
+        now exists x1.
+      }
+      {
+        apply Inv_stable.
+        exists x, x0.
+        split. 2: easy.
+        now exists x1.
+      }
+    }
+    { admit. }
+    { admit. }
+  }
+  intros [val0 [|]];
+  simpl in *.
+  {
+    apply lemRet.
+    intros ?????. psimpl.
+    exists x. split. easy.
+    now left.
+  }
+  {
+    eapply lemBind.
+    { apply write_correct. }
+    intros [].
+    eapply lemBind with
+      (Q:=λ v, _).
+    2:{
+      intros.
+      eapply lemRet.
+      unfold sub, subRelt.
+      intros.
+      change (
+        nameSpec ⊗
+        arraySpec T (
+          LiftSemiRacy RegCond
+            (regSpec (MkReg None false)))
+      ) with (
+        VE T A
+      ) in s, t.
+      exact H.
+    }
+    psimpl.
+    {
+      eapply lemBind.
+      { apply fill_new_correct. }
+      intros [[]].
+      eapply weakenPrec with
+        (P:=λ _ _ s ρs,
+          ∃ d vi,
+            Inv d s ρs /\
+            d.(rets_map) i = PRetn v (Some vi)).
+      eapply lemBind.
+      {
+        simpl.
+        eapply lemWhile with
+          (Q:=λ y _ _ s ρs,
+            ∃ d vi,
+              Inv d s ρs /\
+              d.(rets_map) i = PRetn v (Some vi) /\
+              vi ⊆ y.(new) /\
+              y.(new) ⊆ collect d.(und_vals)).
+        2:{
+          intros.
+          unfold bindM, get, put.
+          do 2 rewrite ret_lunit.
+          simpl.
+          eapply weakenPrec.
+          apply fill_new_correct.
+          {
+            unfold sub, subRelt.
+            intros. psimpl.
+            exists x0, x1.
+            split. easy.
+            exact H0.
+          }
+        }
+        {
+          unfold sub, subRelt.
+          intros. psimpl.
+          now exists x0, x1.
+        }
+      }
+      {
+        intros [[]].
+        unfold bindM, get.
+        rewrite ret_lunit.
+        simpl. apply lemRet.
+        unfold sub, subRelt.
+        intros. psimpl. exists x.
+        split. easy. right.
+        now exists x0, l0.(new).
+      }
+      {
+        unfold sub, subRelt.
+        intros. psimpl.
+        now exists x, x0.
+      }
+    }
+  }
 Admitted.
 
 Check ReturnStep.
