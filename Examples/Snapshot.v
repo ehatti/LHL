@@ -875,7 +875,193 @@ Proof.
   intros i v r s ρs H _.
   psimpl. destruct H0; psimpl.
   {
-    admit.
+    rename x into d.
+    exists (λ σ, ρs σ /\
+      Done i (WriteSnap v) None σ).
+    split.
+    {
+      destruct d, H. psimpl.
+      pose (σ j :=
+        if i =? j then
+          PRetn v None
+        else
+          rets_map0 j).
+      exists (conPoss und_vals0 σ).
+      split.
+      {
+        eexists.
+        split. 2: easy.
+        intros. subst σ.
+        simpl. dec_eq_nats i0 i.
+        {
+          rewrite H1, eqb_id.
+          now constructor.
+        }
+        {
+          rewrite eqb_nid; auto.
+          apply PS_refl, vi_subs0.
+        }
+      }
+      {
+        subst σ. unfold conPoss.
+        constructor; simpl;
+        now rewrite eqb_id.
+      }
+    }
+    split.
+    {
+      intros. psimpl. exists σ.
+      split. easy. constructor.
+    }
+    split.
+    {
+      intros. psimpl.
+      now destruct H2.
+    }
+    destruct d.
+    assert (
+      Inv
+        (MkD
+          und_vals0
+          (updf rets_map0 i None))
+        (λ j, if i =? j then Idle else fst s j, snd s)
+        (λ τ,
+          ∃ σ,
+          (ρs σ ∧ Done i (WriteSnap v) None σ) /\
+          mapRetPoss i (WriteSnap v) None σ τ)
+    ).
+    {
+      destruct H. psimpl.
+      constructor; simpl; auto.
+      {
+        set_ext σ. unfold mapRetPoss.
+        split; intros; psimpl.
+        {
+          exists (λ j,
+            if i =? j then
+              None
+            else
+              x0 j).
+          split.
+          {
+            intros. unfold updf.
+            dec_eq_nats i0 i.
+            {
+              rewrite eqb_id.
+              constructor.
+            }
+            { rewrite eqb_nid; auto. }
+          }
+          {
+            destruct H8.
+            unfold conPoss in *.
+            destruct σ. psimpl.
+            repeat f_equal.
+            {
+              extensionality j.
+              dec_eq_nats j i.
+              {
+                rewrite eqb_id.
+                destruct (x0 i).
+                2: easy.
+                destruct p, o.
+                2: easy.
+                now destruct o.
+              }
+              { now rewrite eqb_nid. }
+            }
+            {
+              extensionality j.
+              dec_eq_nats j i.
+              { now rewrite eqb_id. }
+              { now rewrite eqb_nid, H5. }
+            }
+            {
+              extensionality j.
+              dec_eq_nats j i.
+              { now rewrite eqb_id. }
+              { now rewrite eqb_nid, H6. }
+            }
+          }
+        }
+        {
+          exists (conPoss und_vals0 (updf x i (PRetn v None))).
+          split.
+          {
+            split.
+            {
+              eexists.
+              split. 2: easy.
+              unfold updf in *.
+              intros. specialize (H i0).
+              dec_eq_nats i0 i.
+              {
+                rewrite eqb_id in *.
+                rewrite H1. now constructor.
+              }
+              { rewrite eqb_nid in *; auto. }
+            }
+            {
+              unfold conPoss, updf.
+              constructor; simpl;
+              now rewrite eqb_id.
+            }
+          }
+          assert (x i = None).
+          {
+            specialize (H i).
+            unfold updf in H.
+            rewrite eqb_id in H.
+            now ddestruct H.
+          }
+          unfold updf. simpl.
+          rewrite eqb_id, H0.
+          split. easy.
+          split. easy.
+          split. easy.
+          split. easy.
+          split.
+          {
+            intros ??.
+            now rewrite eqb_nid.
+          }
+          split.
+          {
+            intros ??.
+            now rewrite eqb_nid.
+          }
+          {
+            repeat f_equal.
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id, H0. }
+            { rewrite eqb_nid; auto. }
+          }
+        }
+      }
+      {
+        unfold updf.
+        intros. dec_eq_nats i0 i.
+        { now rewrite eqb_id in H. }
+        {
+          rewrite eqb_nid in H; auto.
+          eapply vi_subs0. exact H. easy.
+        }
+      }
+    }
+    split.
+    { eexists. exact H0. }
+    {
+      intros ??.
+      eapply Inv_eqv in H2.
+      2: exact H. psimpl.
+      eexists. split.
+      {
+        now apply SnapReturn with
+          (v:=v) (vi:=None).
+      }
+      { easy. }
+    }
   }
   {
     rename x into d.
@@ -924,144 +1110,154 @@ Proof.
       intros. psimpl.
       now destruct H4.
     }
-    split.
+    destruct d.
+    assert (
+      Inv
+        {| und_vals := und_vals0; rets_map := updf rets_map0 i None |}
+        (λ j, if i =? j then Idle else fst s j, snd s)
+        (λ τ,
+          ∃ σ,
+            (ρs σ ∧ Done i (WriteSnap v) (Some new) σ) /\
+            mapRetPoss i (WriteSnap v) (Some new) σ τ)
+    ).
     {
-      admit.
-    }
-    {
-      intros ??.
-      assert (d0 = d).
+      destruct H. psimpl.
+      constructor; simpl; auto.
       {
-        eapply Inv_eqv.
-        exact H0. easy.
-      }
-      psimpl. destruct d.
-      eexists. simpl in *. split.
-      apply SnapReturn with
-        (v:=v) (vi:= Some vi).
-      { easy. }
-      {
-        destruct H. psimpl.
-        constructor; simpl; auto.
+        set_ext σ. unfold mapRetPoss.
+        split; intros; psimpl.
         {
-          set_ext σ. unfold mapRetPoss.
-          split; intros; psimpl.
+          exists (λ j,
+            if i =? j then
+              None
+            else
+              x0 j).
+          split.
           {
-            exists (λ j,
-              if i =? j then
-                None
-              else
-                x0 j).
-            split.
+            intros. unfold updf.
+            dec_eq_nats i0 i.
             {
-              intros. unfold updf.
-              dec_eq_nats i0 i.
-              {
-                rewrite eqb_id.
-                constructor.
-              }
-              { rewrite eqb_nid; auto. }
+              rewrite eqb_id.
+              constructor.
             }
-            {
-              destruct H10.
-              unfold conPoss in *.
-              destruct σ. psimpl.
-              repeat f_equal.
-              {
-                extensionality j.
-                dec_eq_nats j i.
-                {
-                  rewrite eqb_id.
-                  destruct (x0 i).
-                  2: easy.
-                  destruct p, o.
-                  2: easy.
-                  now destruct o.
-                }
-                { now rewrite eqb_nid. }
-              }
-              {
-                extensionality j.
-                dec_eq_nats j i.
-                { now rewrite eqb_id. }
-                { now rewrite eqb_nid, H7. }
-              }
-              {
-                extensionality j.
-                dec_eq_nats j i.
-                { now rewrite eqb_id. }
-                { now rewrite eqb_nid, H8. }
-              }
-            }
+            { rewrite eqb_nid; auto. }
           }
           {
-            exists (conPoss und_vals0 (updf x i (PRetn v (Some new)))).
-            split.
+            destruct H10.
+            unfold conPoss in *.
+            destruct σ. psimpl.
+            repeat f_equal.
             {
-              split.
-              {
-                eexists.
-                split. 2: easy.
-                unfold updf in *.
-                intros. specialize (H i0).
-                dec_eq_nats i0 i.
-                {
-                  rewrite eqb_id in *.
-                  rewrite H1. now constructor.
-                }
-                { rewrite eqb_nid in *; auto. }
-              }
-              {
-                unfold conPoss, updf.
-                constructor; simpl;
-                now rewrite eqb_id.
-              }
-            }
-            assert (x i = None).
-            {
-              specialize (H i).
-              unfold updf in H.
-              rewrite eqb_id in H.
-              now ddestruct H.
-            }
-            unfold updf. simpl.
-            rewrite eqb_id, H0.
-            split. easy.
-            split. easy.
-            split. easy.
-            split. easy.
-            split.
-            {
-              intros ??.
-              now rewrite eqb_nid.
-            }
-            split.
-            {
-              intros ??.
-              now rewrite eqb_nid.
-            }
-            {
-              repeat f_equal.
               extensionality j.
               dec_eq_nats j i.
-              { now rewrite eqb_id, H0. }
-              { rewrite eqb_nid; auto. }
+              {
+                rewrite eqb_id.
+                destruct (x0 i).
+                2: easy.
+                destruct p, o.
+                2: easy.
+                now destruct o.
+              }
+              { now rewrite eqb_nid. }
+            }
+            {
+              extensionality j.
+              dec_eq_nats j i.
+              { now rewrite eqb_id. }
+              { now rewrite eqb_nid, H7. }
+            }
+            {
+              extensionality j.
+              dec_eq_nats j i.
+              { now rewrite eqb_id. }
+              { now rewrite eqb_nid, H8. }
             }
           }
         }
         {
-          unfold updf.
-          intros. dec_eq_nats i0 i.
-          { now rewrite eqb_id in H. }
+          exists (conPoss und_vals0 (updf x i (PRetn v (Some new)))).
+          split.
           {
-            rewrite eqb_nid in H; auto.
-            eapply vi_subs0. exact H. easy.
+            split.
+            {
+              eexists.
+              split. 2: easy.
+              unfold updf in *.
+              intros. specialize (H i0).
+              dec_eq_nats i0 i.
+              {
+                rewrite eqb_id in *.
+                rewrite H1. now constructor.
+              }
+              { rewrite eqb_nid in *; auto. }
+            }
+            {
+              unfold conPoss, updf.
+              constructor; simpl;
+              now rewrite eqb_id.
+            }
+          }
+          assert (x i = None).
+          {
+            specialize (H i).
+            unfold updf in H.
+            rewrite eqb_id in H.
+            now ddestruct H.
+          }
+          unfold updf. simpl.
+          rewrite eqb_id, H0.
+          split. easy.
+          split. easy.
+          split. easy.
+          split. easy.
+          split.
+          {
+            intros ??.
+            now rewrite eqb_nid.
+          }
+          split.
+          {
+            intros ??.
+            now rewrite eqb_nid.
+          }
+          {
+            repeat f_equal.
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id, H0. }
+            { rewrite eqb_nid; auto. }
           }
         }
       }
+      {
+        unfold updf.
+        intros. dec_eq_nats i0 i.
+        { now rewrite eqb_id in H. }
+        {
+          rewrite eqb_nid in H; auto.
+          eapply vi_subs0. exact H. easy.
+        }
+      }
+    }
+    split.
+    { eexists. exact H0. }
+    {
+      intros ??.
+      eassert (_ = d).
+      {
+        eapply Inv_eqv.
+        exact H. easy.
+      }
+      psimpl. eexists.
+      split.
+      {
+        now apply SnapReturn with
+          (v:=v) (vi:= Some vi).
+      }
+      { easy. }
     }
   }
-Admitted.
+Qed.
 
 Lemma switch_inv {T A} (i : Name T) (v : A) :
   ∀ vs new,
