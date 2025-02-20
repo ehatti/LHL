@@ -517,7 +517,7 @@ Variant SnapTran {T A} {i : Name T} : pdata T A -> pdata T A -> Prop :=
 | SnapNoOp d :
   SnapTran d d
 | SnapFail s v x :
-  x i = PCall v ->
+  x i = PWait v ->
   SnapTran
     (MkD s x)
     (MkD s (updf x i (PRetn v None)))
@@ -1210,6 +1210,19 @@ Proof.
   unfold updf; now try rewrite eqb_nid.
 Qed.
 
+Lemma Inv_pres_und {T A} :
+  ∀ (i : Name T) (d d' : pdata T A),
+    OtherSnapTrans i d d' ->
+    d.(und_vals) i = d'.(und_vals) i.
+Proof.
+  intros.
+  induction H. easy.
+  rewrite <- IHclos_refl_trans_1n.
+  clear IHclos_refl_trans_1n H0.
+  psimpl. destruct H0; psimpl;
+  unfold updf; now try rewrite eqb_nid.
+Qed.
+
 Lemma return_step {T A} :
   ∀ (i : Name T) (v : A) (r : option (set A)),
     ReturnStep i (Guar i)
@@ -1642,7 +1655,8 @@ Lemma write_correct {T A} (i : Name T) (v : A) :
     (λ _ _ s ρs,
       ∃ d,
         Inv d s ρs /\
-        d.(rets_map) i = PWait v)
+        d.(rets_map) i = PWait v /\
+        (d.(und_vals) i).(ran) = false)
     (call (At i (Write (MkReg (Some v) true))))
     (λ 'tt _ _ s ρs,
       ∃ d vi,
@@ -1674,7 +1688,31 @@ Proof.
   {
     unfold Commit.
     intros. do 2 psimpl.
-    admit.
+    exists ρs.
+    split.
+    {
+      clear - H. destruct H. psimpl.
+      exists (conPoss x1.(und_vals) x1.(rets_map)), x1.(rets_map).
+      split. 2: easy. intros. apply PS_refl, vi_subs0.
+    }
+    split.
+    {
+      intros. exists σ.
+      split. easy. constructor.
+    }
+    assert (Inv x1 t ρs).
+    {
+      admit.
+    }
+    split.
+    { now exists x1. }
+    {
+      intros ??.
+      eapply Inv_eqv in H10.
+      2: exact H. psimpl.
+      exists d. split.
+      constructor. easy.
+    }
   }
   {
     admit.
@@ -1752,9 +1790,52 @@ Proof.
     intros.
     unfold runStateM.
     eapply lemBind.
-    { admit. }
-    { admit. }
+    {
+      unfold lift.
+      eapply lemBind.
+      {
+        eapply lemCallWk.
+        { admit. }
+        { admit. }
+        { admit. }
+        { admit. }
+      }
+      {
+        admit.
+      }
+    }
+    {
+      intros. unfold get.
+      rewrite ret_lunit.
+      destruct v0, r. simpl.
+      destruct val0; simpl.
+      {
+        apply lemRet.
+        admit.
+      }
+      {
+        apply lemRet.
+        admit.
+      }
+    }
   }
+Admitted.
+
+Lemma ws_wf {T A} {v : A} :
+selfProgWF
+(λ i' : Name T,
+st <- call (At i' Read);
+(if ran st
+then ret None
+else
+call (At i' (Write {| val := Some v; ran := true |}));;
+res <-
+runStateM {| old := emp; new := emp |}
+(fill_new T;;'
+while (λ s : loop_st A, negb (new s =? old s))
+(s <- get;' put {| old := new s; new := emp |};;' fill_new T);;'
+s <- get;' retM (Some (new s))); ret (fst res))).
+Admitted.
 
 Lemma ws_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
@@ -1924,9 +2005,7 @@ Proof.
   }
   unfold write_snapshot.
   eapply lemBindSelf.
-  {
-    admit.
-  }
+  { apply ws_wf. }
   eapply lemBind.
   {
     eapply lemCallWk with
@@ -1940,8 +2019,78 @@ Proof.
           d.(rets_map) i = PWait v).
     { apply Inv_stable. }
     { intros ?. apply Inv_stable. }
-    { admit. }
-    { admit. }
+    {
+      unfold Commit.
+      intros. do 2 psimpl.
+      exists ρs.
+      split.
+      {
+        destruct H. psimpl.
+        exists (conPoss x1.(und_vals) x1.(rets_map)).
+        exists x1.(rets_map). split. 2: easy.
+        intros. apply PS_refl, vi_subs0.
+      }
+      split.
+      {
+        intros. exists σ.
+        split. easy. constructor.
+      }
+      assert (Inv x1 t ρs).
+      {
+        clear - H H7.
+        destruct H. psimpl.
+        constructor; simpl.
+        { now setoid_rewrite <- H7. }
+        { easy. }
+        { easy. }
+      }
+      split.
+      { now exists x1. }
+      {
+        intros ??.
+        eapply Inv_eqv in H9.
+        2: exact H. psimpl.
+        exists d. split.
+        { constructor. }
+        { easy. }
+      }
+    }
+    {
+      unfold Commit.
+      intros. do 2 psimpl.
+      exists ρs.
+      split.
+      {
+        destruct H. psimpl.
+        exists (conPoss x.(und_vals) x.(rets_map)).
+        exists x.(rets_map). split. 2: easy.
+        intros. apply PS_refl, vi_subs0.
+      }
+      split.
+      {
+        intros. exists σ.
+        split. easy. constructor.
+      }
+      assert (Inv x t ρs).
+      {
+        clear - H H7.
+        destruct H. psimpl.
+        constructor; simpl.
+        { now setoid_rewrite <- H7. }
+        { easy. }
+        { easy. }
+      }
+      split.
+      { now exists x. }
+      {
+        intros ??.
+        eapply Inv_eqv in H9.
+        2: exact H. psimpl.
+        exists d. split.
+        { constructor. }
+        { easy. }
+      }
+    }
   }
   intros. psimpl.
   eapply lemBind.
@@ -1954,11 +2103,11 @@ Proof.
       (S:=λ r s ρs,
         ∃ d,
           Inv d s ρs /\
-          d.(rets_map) i =
-            if r.(ran) then
-              PRetn v None
-            else
-              PWait v).
+          if r.(ran) then
+            d.(rets_map) i =PRetn v None
+          else
+            d.(rets_map) i = PWait v /\
+            (d.(und_vals) i).(ran) = false).
     { apply Inv_stable. }
     {
       unfold
@@ -1973,14 +2122,544 @@ Proof.
         now exists x1.
       }
       {
-        apply Inv_stable.
-        exists x, x0.
-        split. 2: easy.
-        now exists x1.
+        psimpl.
+        apply H0 in H. psimpl.
+        assert (H' := H).
+        apply Inv_pres_self in H.
+        apply Inv_pres_und in H'.
+        exists x2. now rewrite <-H', <-H.
       }
     }
-    { admit. }
-    { admit. }
+    {
+      unfold Commit.
+      intros. do 2 psimpl.
+      exists ρs.
+      split.
+      {
+        destruct H. psimpl.
+        exists (conPoss x1.(und_vals) x1.(rets_map)).
+        exists x1.(rets_map). split. 2: easy.
+        intros. apply PS_refl, vi_subs0.
+      }
+      split.
+      {
+        intros. exists σ.
+        split. easy. constructor.
+      }
+      assert (Inv x1 t ρs).
+      {
+        clear - H H2.
+        destruct H. psimpl.
+        ddestruct H2. simpl in *.
+        ddestruct H3. simpl in *.
+        constructor.
+        {
+          intros.
+          specialize (und_def0 i0).
+          rewrite <-und_def0.
+          dec_eq_nats i0 i.
+          { now rewrite <-x0, <-x at 1. }
+          { now rewrite H2. }
+        }
+        { easy. }
+        { easy. }
+        {
+          unfold RegCond in H0.
+          psimpl. now destruct m1.
+        }
+      }
+      split.
+      { now exists x1. }
+      {
+        intros ??.
+        eapply Inv_eqv in H9.
+        2: exact H. psimpl.
+        exists d. split.
+        { constructor. }
+        { easy. }
+      }
+    }
+    {
+      intros [].
+      simpl in *.
+      {
+        unfold Commit.
+        intros. do 2 psimpl.
+        ddestruct H2; simpl in *.
+        ddestruct H7; simpl in *.
+        2:{
+          clear - H x1. exfalso.
+          destruct H. psimpl.
+          specialize (und_def0 i).
+          now rewrite <-x1 in und_def0.
+        }
+        ddestruct H4.
+        2:{
+          clear - H x1. exfalso.
+          destruct H. psimpl.
+          specialize (und_def0 i).
+          now rewrite <-x1 in und_def0.
+        }
+        destruct ran0.
+        {
+          exists (λ σ,
+            ∃ ρ, ρs ρ /\
+              VisPossSteps ρ (
+                ((i, CallEv (WriteSnap v)) :: nil) ++
+                ((i, RetEv (WriteSnap v) None) :: nil)
+              ) σ
+          ).
+          split.
+          {
+            clear - x1 H H3.
+            destruct H. psimpl.
+            pose (ρ := conPoss x0.(und_vals) x0.(rets_map)).
+            remember ρ. destruct p, PState.
+            exists (
+              comRetPoss i
+                (comInvPoss i
+                  ρ
+                  (WriteSnap v)
+                  (SnapDef vs (updf m i (Some v)) c)
+                )
+                (WriteSnap v)
+                (SnapDef vs m c)
+                None
+            ).
+            exists ρ.
+            split.
+            {
+              subst ρ. eexists.
+              split. 2: easy. intros.
+              apply PS_refl, vi_subs0.
+            }
+            {
+              change (
+                (i, CallEv (WriteSnap v)) ::
+                (i, RetEv (WriteSnap v) None) ::
+                nil
+              ) with (
+                ((i, CallEv (WriteSnap v)) :: nil) ++
+                ((i, RetEv (WriteSnap v) None) ::
+                nil)
+              ).
+              apply retStep.
+              change (
+                (i, CallEv (WriteSnap v)) :: nil
+              ) with (
+                nil ++ (i, CallEv (WriteSnap v)) :: nil
+              ).
+              apply callStep.
+              constructor.
+              {
+                subst ρ. psimpl.
+                rewrite H3.
+                split. easy.
+                split. easy.
+                replace c with (λ i, (x0.(und_vals) i).(ran)).
+                2:{
+                  clear - Heqp.
+                  unfold conPoss in Heqp.
+                  now ddestruct Heqp.
+                }
+                replace vs with (collect x0.(und_vals)).
+                2:{
+                  clear - Heqp.
+                  unfold conPoss in Heqp.
+                  now ddestruct Heqp.
+                }
+                constructor.
+                {
+                  specialize (und_def0 i).
+                  rewrite <-x1 in und_def0.
+                  simpl in *. ddestruct und_def0.
+                  now rewrite <-x.
+                }
+                { now rewrite H3. }
+                { unfold updf. now rewrite eqb_id. }
+                {
+                  clear - Heqp.
+                  intros ??.
+                  unfold conPoss in Heqp.
+                  ddestruct Heqp. unfold updf.
+                  now rewrite eqb_nid.
+                }
+              }
+              {
+                psimpl.
+                rewrite eqb_id, H3.
+                split. easy.
+                split. easy.
+                constructor.
+                replace c with (λ i, (x0.(und_vals) i).(ran)).
+                2:{
+                  clear - Heqp.
+                  unfold conPoss in Heqp.
+                  now ddestruct Heqp.
+                }
+                replace vs with (collect x0.(und_vals)).
+                2:{
+                  clear - Heqp.
+                  unfold conPoss in Heqp.
+                  now ddestruct Heqp.
+                }
+                {
+                  specialize (und_def0 i).
+                  rewrite <-x1 in und_def0.
+                  simpl in *. ddestruct und_def0.
+                  now rewrite <-x.
+                }
+                {
+                  unfold updf.
+                  now rewrite eqb_id.
+                }
+                {
+                  subst ρ.
+                  unfold conPoss in Heqp.
+                  ddestruct Heqp. now rewrite H3.
+                }
+                {
+                  unfold updf. intros ??.
+                  now rewrite eqb_nid.
+                }
+              }
+            }
+          }
+          split.
+          {
+            intros. psimpl.
+            exists x2.
+            split. easy.
+            eapply erase_vis.
+            exact H10.
+          }
+          destruct x0. psimpl.
+          assert (
+            Inv (MkD und_vals0 (updf rets_map0 i (PRetn v None))) t
+              (λ σ,
+                ∃ ρ, ρs ρ /\
+                VisPossSteps
+                  ρ
+                  (((i, CallEv (WriteSnap v)) :: nil) ++ (i, RetEv (WriteSnap v) None) :: nil)
+                  σ)
+          ).
+          {
+            psimpl.
+            destruct H. psimpl.
+            constructor; simpl.
+            {
+              intros. rewrite <-und_def0.
+              dec_eq_nats i0 i.
+              { now rewrite <-x1, <-x at 1. }
+              { now rewrite H6. }
+            }
+            {
+              set_ext σ.
+              split; intros; psimpl.
+              {
+                ddestruct H4. ddestruct H12.
+                ddestruct H15. ddestruct H4.
+                ddestruct H16. psimpl.
+                ddestruct H4.
+                {
+                  clear - H4 und_def0 x1 x0.
+                  specialize (und_def0 i).
+                  rewrite <-x1 in und_def0.
+                  simpl in *. ddestruct und_def0.
+                  now rewrite <-x in H4.
+                }
+                ddestruct H19.
+                exists (updf x2 i (PRetn v None)).
+                split.
+                {
+                  unfold updf. intros.
+                  dec_eq_nats i0 i.
+                  {
+                    rewrite eqb_id.
+                    constructor.
+                  }
+                  { rewrite eqb_nid; auto. }
+                }
+                {
+                  unfold conPoss, updf in *.
+                  destruct σ. psimpl.
+                  repeat f_equal.
+                  {
+                    rewrite <-x3 in x4.
+                    now ddestruct x4.
+                  }
+                  {
+                    extensionality j.
+                    dec_eq_nats j i.
+                    { now rewrite eqb_id, H21. }
+                    {
+                      rewrite <-x3 in x4. ddestruct x4.
+                      now rewrite eqb_nid, H22, H12.
+                    }
+                  }
+                  { rewrite <-x3 in x4. now ddestruct x4. }
+                  {
+                    rewrite <-x3 in x4.
+                    ddestruct x4.
+                    extensionality j.
+                    dec_eq_nats j i.
+                    { now rewrite eqb_id. }
+                    { now rewrite eqb_nid, H25, H17. }
+                  }
+                  {
+                    rewrite <-x3 in x4.
+                    ddestruct x4.
+                    extensionality j.
+                    dec_eq_nats j i.
+                    { now rewrite eqb_id. }
+                    { now rewrite eqb_nid, H26, H18. }
+                  }
+                }
+              }
+              {
+                exists (conPoss und_vals0 (updf x0 i (PWait v))).
+                split.
+                {
+                  eexists.
+                  split. 2: easy.
+                  intros. specialize (H i0).
+                  unfold updf in *. dec_eq_nats i0 i.
+                  {
+                    rewrite eqb_id, H3.
+                    constructor.
+                  }
+                  { now rewrite eqb_nid in *. }
+                }
+                {
+                  remember (conPoss und_vals0 (updf x0 i (PWait v))).
+                  destruct p, PState.
+                  assert (
+                    conPoss und_vals0 x0 =
+                    comRetPoss i
+                      (comInvPoss i
+                        (conPoss und_vals0 (updf x0 i (PWait v)))
+                        (WriteSnap v)
+                        (SnapDef vs (updf m i (Some v)) c)
+                      )
+                      (WriteSnap v)
+                      (SnapDef vs m c)
+                      None
+                  ).
+                  {
+                    assert (x0 i = PRetn v None).
+                    {
+                      specialize (H i).
+                      unfold updf in H.
+                      rewrite eqb_id in H.
+                      now ddestruct H.
+                    }
+                    unfold conPoss, comRetPoss, comInvPoss in *.
+                    clear - Heqp H4. psimpl. ddestruct Heqp.
+                    repeat f_equal.
+                    {
+                      extensionality j.
+                      unfold updf. dec_eq_nats j i.
+                      { now rewrite eqb_id, H4. }
+                      { now rewrite eqb_nid. }
+                    }
+                    {
+                      extensionality j.
+                      dec_eq_nats j i.
+                      { now rewrite eqb_id, H4. }
+                      {
+                        unfold updf.
+                        now repeat rewrite eqb_nid.
+                      }
+                    }
+                    {
+                      extensionality j.
+                      dec_eq_nats j i.
+                      { now rewrite eqb_id, H4. }
+                      {
+                        unfold updf.
+                        now repeat rewrite eqb_nid.
+                      }
+                    }
+                  }
+                  rewrite H4.
+                  change (
+                    (i, CallEv (WriteSnap v)) ::
+                    (i, RetEv (WriteSnap v) None) ::
+                    nil
+                  ) with (
+                    ((i, CallEv (WriteSnap v)) :: nil) ++
+                    ((i, RetEv (WriteSnap v) None) ::
+                    nil)
+                  ).
+                  apply retStep.
+                  change (
+                    (i, CallEv (WriteSnap v)) :: nil
+                  ) with (
+                    nil ++ (i, CallEv (WriteSnap v)) :: nil
+                  ).
+                  apply callStep.
+                  {
+                    rewrite Heqp.
+                    constructor.
+                  }
+                  {
+                    unfold updf. psimpl.
+                    rewrite eqb_id.
+                    split. easy.
+                    split. easy.
+                    replace c with (λ i, (und_vals0 i).(ran)).
+                    2:{
+                      clear - Heqp.
+                      unfold conPoss in Heqp.
+                      now ddestruct Heqp.
+                    }
+                    replace vs with (collect und_vals0).
+                    2:{
+                      clear - Heqp.
+                      unfold conPoss in Heqp.
+                      now ddestruct Heqp.
+                    }
+                    constructor.
+                    {
+                      specialize (und_def0 i).
+                      rewrite <-x1 in und_def0.
+                      simpl in *. ddestruct und_def0.
+                      now rewrite <-x.
+                    }
+                    { now rewrite eqb_id. }
+                    { unfold updf. now rewrite eqb_id. }
+                    {
+                      clear - Heqp.
+                      intros ??.
+                      unfold conPoss in Heqp.
+                      ddestruct Heqp. unfold updf.
+                      now rewrite eqb_nid.
+                    }
+                  }
+                  {
+                    unfold updf. psimpl.
+                    repeat rewrite eqb_id.
+                    split. easy.
+                    split. easy.
+                    constructor.
+                    replace c with (λ i, (und_vals0 i).(ran)).
+                    2:{
+                      clear - Heqp.
+                      unfold conPoss in Heqp.
+                      now ddestruct Heqp.
+                    }
+                    replace vs with (collect und_vals0).
+                    2:{
+                      clear - Heqp.
+                      unfold conPoss in Heqp.
+                      now ddestruct Heqp.
+                    }
+                    {
+                      specialize (und_def0 i).
+                      rewrite <-x1 in und_def0.
+                      simpl in *. ddestruct und_def0.
+                      now rewrite <-x.
+                    }
+                    {
+                      unfold updf.
+                      now rewrite eqb_id.
+                    }
+                    {
+                      unfold conPoss in Heqp.
+                      ddestruct Heqp. unfold updf.
+                      now rewrite eqb_id.
+                    }
+                    {
+                      unfold updf. intros ??.
+                      now rewrite eqb_nid.
+                    }
+                  }
+                }
+              }
+            }
+            {
+              unfold updf. intros.
+              dec_eq_nats i0 i.
+              { now rewrite eqb_id in H. }
+              {
+                rewrite eqb_nid in H; auto.
+                eapply vi_subs0. exact H. easy.
+              }
+            }
+          }
+          split.
+          {
+            eexists.
+            split. exact H4.
+            clear. simpl.
+            unfold updf.
+            now rewrite eqb_id.
+          }
+          {
+            intros ??.
+            eapply Inv_eqv in H10.
+            2: exact H. psimpl.
+            eexists. split.
+            {
+              apply SnapFail.
+              exact H3.
+            }
+            { easy. }
+          }
+        }
+        {
+          exists ρs.
+          split.
+          {
+            clear - H.
+            destruct H. psimpl.
+            exists (conPoss x0.(und_vals) x0.(rets_map)).
+            exists x0.(rets_map).
+            split. 2: easy. intros.
+            apply PS_refl, vi_subs0.
+          }
+          split.
+          {
+            intros. exists σ.
+            split. easy. constructor.
+          }
+          assert (Inv x0 t ρs).
+          {
+            clear - H x x1 H6.
+            destruct H. psimpl.
+            constructor; simpl.
+            {
+              intros.
+              dec_eq_nats i0 i.
+              { now rewrite <-und_def0, <-x1, <-x at 1. }
+              { now rewrite H6. }
+            }
+            { easy. }
+            { easy. }
+          }
+          split.
+          {
+            exists x0.
+            split. easy.
+            split. easy.
+            clear - H x1.
+            destruct H. psimpl.
+            specialize (und_def0 i).
+            rewrite <-x1 in und_def0.
+            simpl in *. ddestruct und_def0.
+            now rewrite <-x.
+          }
+          {
+            intros ??.
+            eapply Inv_eqv in H10.
+            2: exact H. psimpl.
+            exists d. split.
+            { constructor. }
+            { easy. }
+          }
+        }
+      }
+    }
   }
   intros [val0 [|]];
   simpl in *.
@@ -2014,7 +2693,7 @@ Proof.
     psimpl.
     {
       eapply lemBind.
-      { apply fill_new_correct. }
+      { now apply fill_new_correct. }
       intros [[]].
       eapply weakenPrec with
         (P:=λ _ _ s ρs,
@@ -2038,6 +2717,7 @@ Proof.
           simpl.
           eapply weakenPrec.
           apply fill_new_correct.
+          { easy. }
           {
             unfold sub, subRelt.
             intros. psimpl.
@@ -2069,7 +2749,7 @@ Proof.
       }
     }
   }
-Admitted.
+Qed.
 
 Check ReturnStep.
 
