@@ -30,7 +30,8 @@ From Coq Require Import
   Logic.FunctionalExtensionality
   Relations.Relation_Operators
   Relations.Operators_Properties
-  Unicode.Utf8.
+  Unicode.Utf8
+  Classical.
 
 Record reg_st {A} := MkReg {
   val : option A;
@@ -236,31 +237,6 @@ End control_lemmas.
 Program Definition zeroIx {N} : Index (S N) := 0.
 Next Obligation. lia. Qed.
 
-Lemma mret_lid {E A} :
-  ∀ e : StateM E A unit,
-    (retM tt;;' e) = e.
-Proof.
-Admitted.
-
-Lemma mret_rid {E A} :
-  ∀ e : StateM E A unit,
-    (e;;' retM tt) = e.
-Proof.
-Admitted.
-
-Lemma range_unfold {E A n} {e : Index (S n) -> StateM E A unit} :
-  range (S n) e = (range n (λ i, e (wkIx i)) ;;' e zeroIx).
-induction n; cbn in *.
-{
-  rewrite mret_lid, mret_rid.
-  unfold zeroIx. do 2 f_equal.
-  apply proof_irrelevance.
-}
-{
-  admit.
-}
-Admitted.
-
 Lemma ret_lunit {E A B} :
   ∀ (v : A) (k : A -> Prog E B),
     (x <- ret v; k x) = k v.
@@ -269,41 +245,6 @@ Proof.
   rewrite frobProgId at 1.
   simpl. now destruct (k v).
 Qed.
-
-CoInductive coeq {A} (x : A) : A -> Prop :=
-| coeq_refl : coeq x x.
-
-Lemma coeq_eq {A} :
-  ∀ x y : A,
-    coeq x y <-> eq x y.
-Proof.
-  intros x y.
-  split; now intros [].
-Qed.
-
-Lemma ret_runit {E A} :
-  ∀ e : Prog E A,
-    bindProg e ret = e.
-Proof.
-  (* assert (∀ e : Prog E A, coeq (bindProg e ret) e).
-  {
-    cofix rec. intros e.
-    rewrite frobProgId at 1.
-    destruct e; simpl.
-    {
-      rewrite coeq_eq. f_equal.
-      extensionality x.
-      rewrite <- coeq_eq.
-      apply rec.
-    }
-    { constructor. }
-    {
-      rewrite coeq_eq. f_equal.
-      rewrite <- coeq_eq. apply rec.
-    }
-  }
-  now setoid_rewrite <- coeq_eq. *)
-Admitted.
 
 Definition prop (P : Prop) : bool :=
   if classicT P then true else false.
@@ -428,9 +369,9 @@ Definition RRet (T : nat) (A : Type) :=
 
 Definition RPoss (T : nat) (A : Type) :=
   Name T -> RRet T A.
-Notation PIdle := (None : RRet _ _).
-Notation PWait v := (Some (v, None) : RRet _ _).
-Notation PCall v := (Some (v, Some None) : RRet _ _).
+Notation PIdle := (None : RRet' _ _ _).
+Notation PWait v := (Some (v, None) : RRet' _ _ _).
+Notation PCall v := (Some (v, Some None) : RRet' _ _ _).
 Notation PRetn v vs := (Some (v, Some (Some vs))).
 
 Definition RPossSet (T : nat) (A : Type) :=
@@ -438,8 +379,7 @@ Definition RPossSet (T : nat) (A : Type) :=
 
 Record pdata {T A} := MkD {
   und_vals : Index T -> reg_st A;
-  rets_map : Name T -> RRet' T A (Name T);
-  poss_set : RPossSet T A
+  rets_map : Name T -> RRet' T A A
 }.
 Arguments pdata : clear implicits.
 Arguments MkD {T A}.
@@ -469,7 +409,7 @@ Definition conPoss {T A} d (ρ : RPoss T A) : Poss (VF T A) :=
       end).
 
 Variant PossDef {T A} {st : Name T -> reg_st A} :
-  RRet' T A (Name T) -> RRet' T A A -> Prop :=
+  RRet' T A A -> RRet' T A A -> Prop :=
 | PDIdle :
   PossDef None None
 | PDWait v :
@@ -479,8 +419,8 @@ Variant PossDef {T A} {st : Name T -> reg_st A} :
 | PDRetnNone v :
   PossDef (Some (v, Some (Some None))) (Some (v, Some (Some None)))
 | PDRetnSomeRetn v vi vs :
-  (λ v, ∃ i, vi i /\ (st i).(val) = Some v) ⊆ vs ->
-  vs ⊆ (λ v, ∃ i, (st i).(val) = Some v) ->
+  vi ⊆ vs ->
+  vs ⊆ collect st ->
   PossDef (Some (v, Some (Some (Some vi)))) (Some (v, Some (Some (Some vs))))
 | PDRetnSomeCall v vi :
   PossDef (Some (v, Some (Some (Some vi)))) (Some (v, Some None)).
@@ -495,12 +435,14 @@ Record Inv {T A}
     ∀ i, (arrSt s i).(racy_val) = Some (d.(und_vals) i);
   ovr_def :
     ρs = (λ ρ,
-      ∃ dρ, dρ ∈ d.(poss_set) /\
+      ∃ dρ,
+        (∀ i, PossDef d.(und_vals) (d.(rets_map) i) (dρ i)) /\
         ρ = conPoss d.(und_vals) dρ
     );
-  set_def :
-    d.(poss_set) = (λ ρ,
-      ∀ i, PossDef d.(und_vals) (d.(rets_map) i) (ρ i))
+  vi_subs :
+    ∀ i v vs,
+      d.(rets_map) i = PRetn v (Some vs) ->
+      vs ⊆ collect d.(und_vals)
 }.
 Arguments Inv {T A} d s ρs.
 
@@ -514,50 +456,31 @@ Record updt {A B} (m1 m2 : A -> B) (i : A) (v1 v2 : B) : Prop := {
 }.
 
 Variant SnapTran {T A} {i : Name T} : pdata T A -> pdata T A -> Prop :=
-| SnapInvoke v s (ρs : RPossSet T A) rs :
-  (∀ ρ, ρs ρ ->
-    ρ i = PIdle) ->
+| SnapInvoke v s x :
+  x i = PIdle ->
   SnapTran
-    (MkD s ρs rs)
-    (MkD s (λ σ, ∃ ρ, ρs ρ /\
-      updt ρ σ i PIdle (PWait v))).
-| SnapReturn v vs s ρs :
-  (∃ ρ, ρs ρ /\
-    ρ i = PRetn v vs) ->
+    (MkD s x)
+    (MkD s (updf x i (PWait v)))
+| SnapReturn v vi s (x : Name T -> RRet' T A A) :
+  x i = PRetn v vi ->
   SnapTran
-    (MkD s ρs)
-    (MkD s (λ σ, ∃ ρ, ρs ρ /\
-      updt ρ σ i (PRetn v vs) None))
+    (MkD s x)
+    (MkD s (updf x i PIdle))
 | SnapNoOp d :
   SnapTran d d
-| SnapFail s v ρs :
+| SnapFail s v x :
+  x i = PCall v ->
   SnapTran
-    (MkD s ρs)
-    (MkD s (λ σ, ∃ ρ, ρs ρ /\
-      updt ρ σ i (PCall v) (PRetn v None)))
-| SnapWrite (s : Index T -> reg_st A) v s ρs :
+    (MkD s x)
+    (MkD s (updf x i (PRetn v None)))
+| SnapWrite v s x :
   s i = MkReg None false ->
+  x i = PCall v ->
   SnapTran
-    (MkD s ρs)
+    (MkD s x)
     (MkD
       (updf s i (MkReg (Some v) true))
-      (λ σ, ∃ ρ, ρs ρ /\
-        ∀ i,
-          match ρ i with
-          | None =>
-            (* PIdle -> PIdle *)
-            σ i = None
-          | Some (w, None) =>
-            (* PWait -> PWait *)
-            σ i = Some (w, None)
-          | Some (w, Some None) =>
-            (* PCall -> PCall \/ PRetn *)
-            σ i = PCall w \/
-            σ i = PRetn w (Some (insert v (collect s)))
-          | Some (w, Some (Some ws)) =>
-            (* PRetn -> PRetn *)
-            σ i = PRetn w ws
-          end)).
+      (updf x i (PRetn v (Some (collect s))))).
 Arguments SnapTran {T A} i.
 
 Definition Guar {T A} (i : Name T) : Relt T A :=
@@ -796,6 +719,108 @@ Proof.
   }
 Qed.
 
+Lemma ex_eq :
+  ∀ A B (f : A -> B) (x : A) (P : A -> Prop),
+    (∀ x y, f x = f y -> x = y) ->
+    (∃ y, P y /\ f x = f y) = P x.
+Proof.
+  intros.
+  apply propositional_extensionality.
+  split; intros; psimpl.
+  {
+    apply H in H1.
+    now subst.
+  }
+  { now exists x. }
+Qed.
+
+Lemma set_eq {A} :
+  ∀ P Q : A -> Prop,
+    (P = Q) = (∀ x, P x <-> Q x).
+Proof.
+  intros.
+  apply propositional_extensionality.
+  split; intros.
+  { now subst. }
+  { now set_ext x. }
+Qed.
+
+Lemma PS_refl {T A} :
+  ∀ (s : Name T -> reg_st A) ls,
+  (∀ v vs, ls = PRetn v (Some vs) -> vs ⊆ collect s) ->
+  PossDef s ls ls.
+Proof.
+  intros.
+  repeat match goal with
+  | x : option _ |- _ => destruct x
+  | x : prod _ _ |- _ => destruct x
+  end;
+  constructor; auto.
+  now eapply H.
+Qed.
+
+Lemma rets_map_uniq {T A} :
+  ∀ (d : pdata T A) s ρs,
+    Inv d s ρs ->
+    ∀ ls,
+      Inv (MkD d.(und_vals) ls) s ρs ->
+      d.(rets_map) = ls.
+Proof.
+  intros.
+  destruct H, H0, d. psimpl.
+  rename rets_map0 into ls'.
+  assert (
+    (λ ρ, ∀ i, PossDef und_vals0 (ls' i) (ρ i)) =
+    (λ ρ, ∀ i, PossDef und_vals0 (ls i) (ρ i))
+  ).
+  {
+    set_ext ρ.
+    apply equal_f with
+      (x:= conPoss und_vals0 ρ)
+      in ovr_def1.
+    do 2 rewrite ex_eq in ovr_def1.
+    all: try (
+      intros;
+      now apply conPoss_inj
+        with (u:=und_vals0)
+    ).
+    now rewrite ovr_def1.
+  }
+  clear - H vi_subs0 vi_subs1.
+  rewrite set_eq in H.
+  assert (H' := H).
+  specialize (H ls).
+  specialize (H' ls').
+  assert (∀ i, PossDef und_vals0 (ls i) (ls i)).
+  {
+    intros.
+    apply PS_refl.
+    apply vi_subs1.
+  }
+  assert (∀ i, PossDef und_vals0 (ls' i) (ls' i)).
+  {
+    intros.
+    apply PS_refl.
+    apply vi_subs0.
+  }
+  destruct H, H'.
+  extensionality i.
+  apply H2 with (i:=i) in H0.
+  apply H3 with (i:=i) in H1.
+  generalize dependent (ls' i).
+  generalize dependent (ls i).
+  intros. clear - H0 H1.
+  destruct H0; ddestruct H1; try easy.
+  assert (vs = vi).
+  {
+    set_ext y.
+    split; intros.
+    { now apply H1. }
+    { now apply H. }
+  }
+  now subst.
+Qed.
+
 Lemma Inv_eqv {T A} :
   ∀ (d1 d2 : pdata T A) s ρs,
     Inv d1 s ρs ->
@@ -816,88 +841,16 @@ Proof.
     now ddestruct und_def1.
   }
   subst. f_equal.
-  subst. simpl in *.
-  extensionality ρ.
-  eapply equal_f with
-    (x:= conPoss und_vals0 ρ)
-    in ovr_def1.
-  apply propositional_extensionality.
-  split; intros.
+  eapply rets_map_uniq with
+    (d:= MkD _ _).
   {
-    assert (
-      ∃ dρ, dρ ∈ poss_set0 /\
-        conPoss und_vals0 ρ = conPoss und_vals0 dρ
-    ) by now exists ρ.
-    rewrite ovr_def1 in H0. psimpl.
-    apply conPoss_inj in H1. now subst.
+    constructor.
+    { exact und_def0. }
+    { easy. }
+    { easy. }
   }
-  {
-    assert (
-      ∃ dρ, dρ ∈ poss_set1 /\
-        conPoss und_vals0 ρ = conPoss und_vals0 dρ
-    ) by now exists ρ.
-    rewrite <-ovr_def1 in H0. psimpl.
-    apply conPoss_inj in H1. now subst.
-  }
+  { now constructor. }
 Qed.
-
-Lemma InvG_stable {T A} :
-  ∀ (d d' : pdata T A),
-    SnapTrans d d' ->
-    ∀ ls,
-      InvG ls d ->
-      ∃ ls',
-        InvG ls' d'.
-Proof.
-  intros d d' H.
-  induction H; intros.
-  { now exists ls. }
-  {
-    cut (∃ ls', InvG ls' y).
-    {
-      intros. psimpl.
-      apply IHclos_refl_trans_1n in H2.
-      psimpl. now exists x2.
-    }
-    psimpl. clear - H H1.
-    rename x0 into i.
-    destruct H.
-    {
-      destruct H1. psimpl.
-      cut (
-        ∃ ls',
-          (λ σ,
-            ∃ ρ,
-              (∀ i, PossDef s (ls i) (ρ i)) /\
-              updt ρ σ i None (Some (v, None))) =
-          (λ σ,
-            ∀ i, PossDef s (ls' i) (σ i))
-      ).
-      {
-        intros. psimpl.
-        exists x. now constructor.
-      }
-      exists ls. set_ext σ.
-      split; intros; psimpl.
-      {
-        admit.
-      }
-      {
-
-      }
-    }
-    {
-      admit.
-    }
-    { now exists ls. }
-    {
-      admit.
-    }
-    {
-      admit.
-    }
-  }
-Admitted.
 
 Lemma return_step {T A} :
   ∀ (i : Name T) (v : A) (r : option (set A)),
