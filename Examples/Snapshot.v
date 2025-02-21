@@ -1730,7 +1730,8 @@ Lemma write_correct {T A} (i : Name T) (v : A) :
     (λ 'tt _ _ s ρs,
       ∃ d vi,
         Inv d s ρs /\
-        d.(rets_map) i = PRetn v (Some vi)).
+        (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
+        d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v))).
 Proof.
   eapply weakenPost.
   eapply lemCallWk with
@@ -1743,7 +1744,8 @@ Proof.
     (S:=λ _ s ρs,
       ∃ d vi,
         Inv d s ρs /\
-        d.(rets_map) i = PRetn v (Some vi)).
+        (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
+        d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v))).
   {
     unfold
       Stable, stablePrec,
@@ -1765,8 +1767,40 @@ Proof.
     apply H0 in H. psimpl.
     exists x3, x2.
     split. easy.
+    assert (H' := H).
     apply Inv_pres_self in H.
-    congruence.
+    assert (∀ i, x2 i -> (und_vals x3 i).(val) = (und_vals x1 i).(val)).
+    {
+      intros. apply H1 in H4.
+      remember (und_vals x1 i0).
+      destruct r, val0; try easy. simpl in *.
+      eapply forget_othr, one_shot in H'.
+      2: now rewrite <-Heqr.
+      now rewrite <-H', <-Heqr.
+    }
+    split.
+    {
+      intros.
+      eassert _.
+      { apply H4 in H5. exact H5. }
+      apply H1 in H5.
+      now rewrite X.
+    }
+    {
+      assert (
+        (λ v, ∃ i, x2 i /\ val (und_vals x1 i) = Some v) =
+        (λ v, ∃ i, x2 i /\ val (und_vals x3 i) = Some v)
+      ).
+      {
+        set_ext y.
+        split; intros; psimpl.
+        exists x4. split. easy.
+        apply H4 in H5. congruence.
+        exists x4. split. easy.
+        apply H4 in H5. congruence.
+      }
+      now rewrite <-H5, <-H.
+    }
   }
   {
     unfold Commit.
@@ -1986,7 +2020,9 @@ Proof.
           ∃ dσ,
           (∀ i0, PossDef und_vals1 (rets_map1 i0) (dσ i0)) /\
           σ = conPoss und_vals1 dσ) /\
-      rets_map1 i = PRetn v (Some (insert v (collect und_vals0)))
+      rets_map1 i = PRetn v (Some (insert v (collect und_vals0))) /\
+      (∀ i0 : Index T, val (und_vals1 i0) ≠ None → val (und_vals1 i0) ≠ None) /\
+      rets_map1 i = PRetn v (Some (λ v0, ∃ i0, val (und_vals1 i0) ≠ None ∧ val (und_vals1 i0) = Some v0))
     ).
     {
       split.
@@ -2045,16 +2081,44 @@ Proof.
           { rewrite eqb_nid in *; auto. }
         }
       }
+      split.
       {
         subst rets_map1. unfold updf.
         now rewrite eqb_id.
       }
+      split.
+      { easy. }
+      {
+        subst rets_map1 und_vals1.
+        unfold updf. rewrite eqb_id.
+        repeat f_equal. set_ext y.
+        split; intros; psimpl.
+        {
+          destruct H; psimpl.
+          { exists i. now rewrite eqb_id. }
+          {
+            exists x0.
+            dec_eq_nats x0 i.
+            { now rewrite H5 in H. }
+            { now rewrite eqb_nid, H. }
+          }
+        }
+        {
+          dec_eq_nats x0 i.
+          {
+            rewrite eqb_id in *.
+            simpl in *. ddestruct H0.
+            now left.
+          }
+          {
+            rewrite eqb_nid in *; auto.
+            right. now exists x0.
+          }
+        }
+      }
     }
     split.
-    {
-      eexists _, _.
-      exact H.
-    }
+    { now exists (MkD und_vals1 rets_map1), (λ i, val (und_vals1 i) ≠ None). }
     {
       intros ??.
       eapply Inv_eqv in H0.
@@ -2080,13 +2144,15 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
     (λ _ _ s ρs,
       ∃ d vi,
         Inv d s ρs /\
-        d.(rets_map) i = PRetn v (Some vi))
+        (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
+        d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)))
     (fill_new T x)
     (λ '(tt, y) _ _ s ρs,
       ∃ d vi,
         Inv d s ρs /\
-        d.(rets_map) i = PRetn v (Some vi) /\
-        vi ⊆ y.(new) /\
+        (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
+        d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
+        (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v) ⊆ y.(new) /\
         y.(new) ⊆ collect d.(und_vals)).
 Proof.
   intros Heq.
@@ -2098,20 +2164,23 @@ Proof.
     (I:=λ n y _ _ s ρs,
       ∃ d vi,
         Inv d s ρs /\
-        d.(rets_map) i = PRetn v (Some vi) /\
-        (λ v, vi v /\ ∃ i, `i ≥ n /\ (d.(und_vals) i).(val) = Some v) ⊆ y.(new) /\
-        y.(new) ⊆ collect d.(und_vals)).
+        (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
+        rets_map d i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
+        (λ v1, ∃ i0, vi i0 /\ `i0 ≥ n ∧ val (und_vals d i0) = Some v1) ⊆ new y /\
+        new y ⊆ collect (und_vals d)).
   2:{
     unfold sub, subRelt.
     intros. psimpl.
     exists x0, x1.
     split. easy.
     split. easy.
+    split. easy.
     split.
     {
       intros ??.
-      destruct H1, H2, x2, H2.
-      psimpl. lia.
+      destruct H2, H2, H3.
+      destruct x2. psimpl.
+      lia.
     }
     {
       rewrite Heq.
@@ -2125,18 +2194,13 @@ Proof.
     exists x0, x1.
     split. easy.
     split. easy.
+    split. easy.
     split.
     {
-      intros.
-      apply H1.
-      split. easy.
-      destruct H.
-      eapply vi_subs0 in H3.
-      2: exact H0.
-      destruct H3.
-      exists x2.
-      split. lia.
-      easy.
+      intros ??.
+      destruct H4, H4.
+      apply H2. exists x2.
+      repeat split; (easy || lia).
     }
     { easy. }
   }
@@ -2440,6 +2504,8 @@ Proof.
           eapply vi_subs0. exact H2. easy.
         }
       }
+      { now setoid_rewrite <-H1. }
+      { easy. }
     }
     clear - H0 H2.
     apply H0 in H2. psimpl.
@@ -2488,6 +2554,8 @@ Proof.
         { now setoid_rewrite <- H7. }
         { easy. }
         { easy. }
+        { now setoid_rewrite <-H7. }
+        { easy. }
       }
       split.
       { now exists x1. }
@@ -2523,6 +2591,8 @@ Proof.
         constructor; simpl.
         { now setoid_rewrite <- H7. }
         { easy. }
+        { easy. }
+        { now setoid_rewrite <-H7. }
         { easy. }
       }
       split.
@@ -2607,6 +2677,21 @@ Proof.
           { now rewrite H2. }
         }
         { easy. }
+        { easy. }
+        {
+          intros ??. psimpl.
+          dec_eq_nats i0 i.
+          {
+            rewrite <-x in H1 at 1.
+            simpl in *. destruct H1.
+            now ddestruct H1. easy.
+          }
+          {
+            apply (resp_own0 i0).
+            exists x2, x3.
+            now rewrite <-H2.
+          }
+        }
         { easy. }
         {
           unfold RegCond in H0.
@@ -3031,6 +3116,17 @@ Proof.
                 eapply vi_subs0. exact H. easy.
               }
             }
+            {
+              intros ??. psimpl.
+              dec_eq_nats i0 i.
+              { now rewrite <-x in H4 at 1. }
+              {
+                rewrite H6 in H4; auto.
+                apply (resp_own0 i0).
+                now exists x0, x2.
+              }
+            }
+            { easy. }
           }
           split.
           {
@@ -3080,6 +3176,17 @@ Proof.
               { now rewrite H6. }
             }
             { easy. }
+            { easy. }
+            {
+              intros ??. psimpl.
+              dec_eq_nats i0 i.
+              { now rewrite <-x in H0 at 1. }
+              {
+                rewrite H6 in H0; auto.
+                apply (resp_own0 i0).
+                now exists x2, x3.
+              }
+            }
             { easy. }
           }
           split.
@@ -3144,7 +3251,8 @@ Proof.
         (P:=λ _ _ s ρs,
           ∃ d vi,
             Inv d s ρs /\
-            d.(rets_map) i = PRetn v (Some vi)).
+            (∀ i, vi i -> val (d.(und_vals) i) ≠ None) /\
+            d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v))).
       eapply lemBind.
       {
         simpl.
@@ -3152,8 +3260,9 @@ Proof.
           (Q:=λ y _ _ s ρs,
             ∃ d vi,
               Inv d s ρs /\
-              d.(rets_map) i = PRetn v (Some vi) /\
-              vi ⊆ y.(new) /\
+              (∀ i, vi i -> val (d.(und_vals) i) ≠ None) /\
+              d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v)) /\
+              (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v) ⊆ y.(new) /\
               y.(new) ⊆ collect d.(und_vals)).
         2:{
           intros.
@@ -3161,14 +3270,20 @@ Proof.
           do 2 rewrite ret_lunit.
           simpl.
           eapply weakenPrec.
+          eapply weakenPost.
           apply fill_new_correct.
           { easy. }
           {
-            unfold sub, subRelt.
-            intros. psimpl.
+            intros [[]] ?????. psimpl.
             exists x0, x1.
             split. easy.
-            exact H0.
+            split. exact H0.
+            split. exact H1.
+            easy.
+          }
+          {
+            intros ?????. psimpl.
+            now exists x0, x1.
           }
         }
         {
@@ -3185,7 +3300,7 @@ Proof.
         unfold sub, subRelt.
         intros. psimpl. exists x.
         split. easy. right.
-        now exists x0, l0.(new).
+        now exists (λ v, ∃ i, x0 i /\ val (und_vals x i) = Some v), l0.(new).
       }
       {
         unfold sub, subRelt.
