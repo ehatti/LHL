@@ -2520,7 +2520,75 @@ Proof.
             now rewrite <-x2 in und_def0 at 1.
           }
           ddestruct H1.
-          admit.
+          exists ρs.
+          split.
+          {
+            destruct H. psimpl.
+            exists (conPoss x1.(und_vals) x1.(rets_map)).
+            exists x1.(rets_map). split. 2: easy.
+            intros. apply PS_refl, vi_subs0.
+          }
+          split.
+          {
+            intros. exists σ.
+            split. easy. constructor.
+          }
+          assert (Inv x1 t ρs).
+          {
+            destruct H.
+            constructor; psimpl; auto.
+            {
+              intros.
+              specialize (und_def0 i0).
+              dec_eq_nats i0 (exist (λ i, i < T) n p).
+              { now rewrite <-x, <-und_def0, <-x2 at 1. }
+              { now rewrite H7. }
+            }
+            {
+              intros ??. psimpl.
+              dec_eq_nats i0 (exist (λ i, i < T) n p).
+              {
+                rewrite <-x in H1 at 1.
+                psimpl. destruct H1.
+              }
+              {
+                apply (resp_own0 i0).
+                exists x3, x4.
+                now rewrite <-H7.
+              }
+            }
+          }
+          split.
+          {
+            exists x1, x0.
+            split. easy.
+            split. easy.
+            split. easy.
+            split. easy.
+            split. easy.
+            destruct t0, val0; psimpl.
+            {
+              destruct H.
+              specialize (und_def0 (exist _ n p)).
+              rewrite <-x2 in und_def0 at 1. psimpl.
+              ddestruct und_def0. now rewrite <-x.
+            }
+            {
+              intros ?.
+              apply H3 in H2.
+              destruct H.
+              specialize (und_def0 (exist _ n p)).
+              rewrite <-x2 in und_def0 at 1. psimpl.
+              ddestruct und_def0. now rewrite <-x in H2.
+            }
+          }
+          {
+            intros ??.
+            eapply Inv_eqv in H2.
+            2: exact H. psimpl.
+            exists d. split.
+            constructor. easy.
+          }
         }
       }
       { intros. now apply lemRet. }
@@ -2603,7 +2671,7 @@ Proof.
       }
     }
   }
-Admitted.
+Qed.
 
 Lemma ws_wf {T A} {v : A} :
 selfProgWF
