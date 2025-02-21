@@ -183,6 +183,10 @@ Lemma lemWhile {A} {i : Name T} :
     (* (∀ ths tht s x ρs,
       PointStep UnderThreadStep ths (i, None) tht ->
       I x (ths, s) ρs ()) *)
+    (Stable R Q) -> 
+    (* (∀ x, SilentStep i G P (Q x)) -> *)
+    (forall x ths tht s ps, Q x (ths, s) ps (tht, s) ps) ->
+    (forall ths tht s ps, G (ths, s) ps (tht, s) ps) ->
     (∀ x, Q x ==> P) ->
     (∀ x,
       VerifyProg i R G
@@ -195,30 +199,80 @@ Lemma lemWhile {A} {i : Name T} :
         (while b e x)
         (λ '(tt, y) s ρs t σs, Q y s ρs t σs).
 Proof.
-  (* intros b e P Q H0 H1 x. unfold while.
-  unfold VerifyProg. rewrite paco_eqv.
-  generalize dependent x. pcofix rec.
-  intros x. unfold runStateM.
-  unfold runStateM in rec.
-  specialize (H1 x).
-  generalize dependent (e x).
+  intros b e P Q HQS HQT HGT H0 H1 x.
+  unfold VerifyProg in *.
+  rewrite paco_eqv.
   generalize dependent x.
   generalize dependent P.
+  pcofix rec.
+
+  intros.
+  unfold while.
+
+  pose proof H1 as Hbody.
+
+  remember e as e'.
+  rewrite Heqe' in rec.
+  rewrite Heqe' in Hbody.
+  rewrite Heqe' at 1.
+  clear Heqe'.
+
+  remember P as P'.
+  rewrite HeqP' in H0.
+  rewrite HeqP' in Hbody.
+  clear HeqP'.
+
+  specialize (H1 x).
+  generalize dependent (e' x).
+  revert x.
+  generalize dependent P'.
+  generalize dependent e'.
   pcofix rec'. intros; pfold.
-  rewrite frobProgId at 1.
-  destruct p; cbn.
+  rewrite frobProgId.
+  destruct p; cbn; auto.
   {
     ddestruct H1.
-    econstructor.
-    { exact H. }
-    { exact H1. }
-    { easy. }
+    econstructor;
+    [exact H|exact H1|easy|].
     intros.
     specialize (H3 v).
-    psimpl. split. easy.
-    right.
-    eapply rec'.
-  } *)
+    psimpl. split; auto.
+  }
+  {
+    ddestruct H1.
+    destruct p, u.
+    simpl.
+    destruct (b a).
+    - econstructor.
+      + apply HQS.
+      + constructor; auto.
+      + right.
+        fold (@whileAux E A b e (e a)).
+        eapply rec; auto.
+        * admit.
+        * 
+        eapply weakenPrec with (P:=P);
+        unfold VerifyProg; auto.
+        unfold sub, subRelt in *. intros.
+        psimpl.
+        apply H2 in H3. destruct H3.
+        repeat eexists. exact H3. easy.
+      
+      econstructor.
+      econstructor.
+      econstructor.
+      eapply rec'.
+      
+      unfold while in rec.
+        eapply rec.
+      
+      eapply rec. fold (@whileAux E).
+        
+
+    eapply SafeReturn.
+    paco_safeF
+    econstructor.
+  }
 Admitted.
 
 Lemma lemRange {A} {i : Name T} :
