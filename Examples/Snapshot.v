@@ -3409,6 +3409,7 @@ Proof.
       }
     }
     { easy. }
+    { intros ??. now psimpl. }
   }
   {
     unfold
