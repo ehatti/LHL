@@ -2674,20 +2674,61 @@ Proof.
 Qed.
 
 Lemma ws_wf {T A} {v : A} :
-selfProgWF
-(λ i' : Name T,
-st <- call (At i' Read);
-(if ran st
-then ret None
-else
-call (At i' (Write {| val := Some v; ran := true |}));;
-res <-
-runStateM {| old := emp; new := emp |}
-(fill_new T;;'
-while (λ s : loop_st A, negb (new s =? old s))
-(s <- get;' put {| old := new s; new := emp |};;' fill_new T);;'
-s <- get;' retM (Some (new s))); ret (fst res))).
-Admitted.
+  selfProgWF
+    (λ i' : Name T,
+      st <- call (At i' Read);
+      if ran st then
+        ret None
+      else
+        call (At i' (Write {| val := Some v; ran := true |}));;
+        res <- runStateM {| old := emp; new := emp |} (
+          fill_new T;;'
+          while (λ s : loop_st A, negb (new s =? old s)) (
+            s <- get;'
+            put {| old := new s; new := emp |};;'
+            fill_new T
+          );;'
+          s <- get;'
+          retM (Some (new s))
+        );
+        ret (fst res)).
+Proof.
+  constructor;
+  setoid_rewrite frobProgId at 1;
+  try easy; cbn; intros;
+  ddestruct H.
+  eexists (λ _, _), (λ _, _).
+  split.
+  { now rewrite frobProgId at 1. }
+  split.
+  { easy. }
+  split.
+  {
+    extensionality x0.
+    now fold (@bindProg (E T A)).
+  }
+  {
+    intros.
+    fold (@bindProg (E T A)).
+    constructor;
+    setoid_rewrite ret_lunit;
+    destruct z, ran0; simpl;
+    setoid_rewrite frobProgId at 1;
+    try easy; cbn; intros; ddestruct H.
+    { now exists None. }
+    {
+      eexists (λ _, _), (λ _, _).
+      split.
+      { now rewrite frobProgId at 1. }
+      fold (@bindProg (E T A)).
+      split. easy.
+      split. easy.
+      intros [].
+      unfold runStateM, bindM.
+      constructor;
+      setoid_rewrite ret_lunit.
+    }
+  }
 
 Lemma ws_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
