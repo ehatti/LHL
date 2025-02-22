@@ -16,26 +16,26 @@ Variant SnapState {T A} :=
 Arguments SnapState : clear implicits.
 
 Variant SnapStep {T A} : SnapState T A -> ThreadEvent T (SnapSig A) -> SnapState T A -> Prop :=
-| SnapCallPass i v vs m m' c :
+| SnapCallPass i v vs m m' c c' :
     c i = false ->
+    c' i = true ->
+    differ_pointwise c c' i ->
     m i = None ->
     m' i = Some v ->
     differ_pointwise m m' i ->
     SnapStep
       (SnapDef vs m c)
       (i, CallEv (WriteSnap v))
-      (SnapDef (insert v vs) m' c)
-| SnapRetPass i v vs m m' c c' :
-    c i = false ->
-    c' i = true ->
-    differ_pointwise c c' i ->
+      (SnapDef (insert v vs) m' c')
+| SnapRetPass i v vs m m' c :
+    c i = true ->
     m i = Some v ->
     m' i = None ->
     differ_pointwise m m' i ->
     SnapStep
       (SnapDef vs m c)
       (i, RetEv (WriteSnap v) (Some vs))
-      (SnapDef vs m' c')
+      (SnapDef vs m' c)
 | SnapCallFail i v vs m m' c :
     c i = true ->
     m i = None ->
@@ -95,23 +95,6 @@ Proof.
       (a':= f m').
     {
       subst f. simpl.
-      now rewrite H0.
-    }
-    {
-      subst f. simpl.
-      now rewrite H1.
-    }
-    { now apply diff. }
-    {
-      eapply IHp.
-      exact H3.
-    }
-  }
-  {
-    eapply SCRet with
-      (a':= f m').
-    {
-      subst f. simpl.
       now rewrite H2.
     }
     {
@@ -122,6 +105,23 @@ Proof.
     {
       eapply IHp.
       exact H5.
+    }
+  }
+  {
+    eapply SCRet with
+      (a':= f m').
+    {
+      subst f. simpl.
+      now rewrite H0.
+    }
+    {
+      subst f. simpl.
+      now rewrite H1.
+    }
+    { now apply diff. }
+    {
+      eapply IHp.
+      exact H3.
     }
   }
   {
