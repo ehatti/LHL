@@ -4158,17 +4158,81 @@ Proof.
               (∀ i, vi i -> val (d.(und_vals) i) ≠ None) /\
               d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v)) /\
               (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v) ⊆ y.(new) /\
-              y.(new) ⊆ collect d.(und_vals)).
+              y.(new) ⊆ collect d.(und_vals))
+          (S:=λ _ _ s ρs,
+            ∃ d vi,
+              Inv d s ρs /\
+              (∀ i, vi i -> val (d.(und_vals) i) ≠ None) /\
+              d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v))).
         {
-          admit.
+          unfold
+            Stable, stableRelt,
+            sub, subRelt.
+          intros. psimpl.
+          apply H0 in H. psimpl.
+          exists x3, x2.
+          split. easy.
+          split.
+          {
+            intros.
+            apply H1 in H4.
+            remember (und_vals x1 i0).
+            destruct r, val1. 2: easy.
+            eapply forget_othr, Inv_mono'' in H.
+            2:{ symmetry. now rewrite <-Heqr. }
+            now rewrite <-H, <-Heqr.
+          }
+          {
+            assert (∀ i, x2 i -> (und_vals x3 i).(val) = (und_vals x1 i).(val)).
+            {
+              intros. apply H1 in H4.
+              remember (und_vals x1 i0).
+              destruct r, val1; try easy. simpl in *.
+              eapply forget_othr, one_shot in H.
+              2: now rewrite <-Heqr.
+              now rewrite <-H, <-Heqr.
+            }
+            assert (
+              (λ v, ∃ i, x2 i /\ val (und_vals x1 i) = Some v) =
+              (λ v, ∃ i, x2 i /\ val (und_vals x3 i) = Some v)
+            ).
+            {
+              set_ext y.
+              split; intros; psimpl.
+              exists x4. split. easy.
+              apply H4 in H5. congruence.
+              exists x4. split. easy.
+              apply H4 in H5. congruence.
+            }
+            erewrite <-Inv_pres_self.
+            2: exact H. rewrite H2.
+            now rewrite H5.
+          }
         }
         {
-          admit.
+          unfold SilentStep.
+          intros. psimpl.
+          assert (Inv x2 (tht, s) ρs).
+          {
+            destruct H.
+            now constructor.
+          }
+          split.
+          { now exists x2, x3. }
+          {
+            intros ??.
+            eapply Inv_eqv in H7.
+            2: exact H. subst.
+            exists d. split.
+            constructor. easy.
+          }
         }
         {
-          admit.
+          unfold sub, subRelt.
+          intros. psimpl.
+          now exists x2, x3.
         }
-        2:{
+        {
           intros.
           unfold bindM, get, put.
           do 2 rewrite ret_lunit.
@@ -4190,11 +4254,6 @@ Proof.
             now exists x0, x1.
           }
         }
-        {
-          unfold sub, subRelt.
-          intros. psimpl.
-          now exists x0, x1.
-        }
       }
       {
         intros [[]].
@@ -4213,7 +4272,7 @@ Proof.
       }
     }
   }
-Admitted.
+Qed.
 
 Lemma wk_return_step {T E F} {VE : Spec T E} {VF : Spec T F} :
   ∀ (P P' : Logic.Prec VE VF)
