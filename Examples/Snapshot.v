@@ -179,15 +179,10 @@ Context
 
 Lemma lemWhile {A} {i : Name T} :
   ∀ (b : A -> bool) (e : StateM E A unit)
-    P (Q : A -> Relt VE VF),
-    (* (∀ ths tht s x ρs,
-      PointStep UnderThreadStep ths (i, None) tht ->
-      I x (ths, s) ρs ()) *)
-    (Stable R Q) -> 
-    (* (∀ x, SilentStep i G P (Q x)) -> *)
-    (forall x ths tht s ps, Q x (ths, s) ps (tht, s) ps) ->
-    (forall ths tht s ps, G (ths, s) ps (tht, s) ps) ->
-    (∀ x, Q x ==> P) ->
+    (S : Relt VE VF) P (Q : A -> Relt VE VF),
+    Stable R S ->
+    (forall x, SilentStep i G (Q x) S) ->
+    (forall x, Q x ->> S ==> P) ->
     (∀ x,
       VerifyProg i R G
         P
@@ -199,17 +194,39 @@ Lemma lemWhile {A} {i : Name T} :
         (while b e x)
         (λ '(tt, y) s ρs t σs, Q y s ρs t σs).
 Proof.
-  (* intros b e P Q HQS HQT HGT H0 H1 x.
+  intros b e S P Q.
+  intros S_stable.
+  intros S_silent.
+  intros S_compose.
+  intros.
+  
   unfold VerifyProg in *.
   rewrite paco_eqv.
   generalize dependent x.
   generalize dependent P.
+  cut (
+    ∀ P P'' : Relt VE VF,
+    P'' ==> P →
+    (∀ x : A, Q x ->> S ==> P)
+      → (∀ x : A, SafeProg i R G P (e x) (λ '(u, y), let 'tt := u in Q y))
+        → ∀ x : A,
+            paco_safe i R G P'' (while b e x)
+              (λ '(u, y),
+                let
+                'tt := u in
+                  λ (s : InterState F VE) (ρs : PossSet VF) (t : InterState F VE) 
+                    (σs : PossSet VF), Q y s ρs t σs)
+  ).
+  {
+    intros. eapply H with (P'':=P) (P:=P); auto.
+    unfold sub, subRelt. auto.
+  }
   pcofix rec.
 
   intros.
   unfold while.
 
-  pose proof H1 as Hbody.
+  pose proof H2 as Hbody.
 
   remember e as e'.
   rewrite Heqe' in rec.
@@ -218,62 +235,83 @@ Proof.
   clear Heqe'.
 
   remember P as P'.
-  rewrite HeqP' in H0.
+  (* rewrite HeqP' in H0. *)
   rewrite HeqP' in Hbody.
+  (* rewrite HeqP' in H0. *)
+  rewrite HeqP' in H1.
   clear HeqP'.
 
-  specialize (H1 x).
+  specialize (H2 x).
   generalize dependent (e' x).
   revert x.
   generalize dependent P'.
+  generalize dependent P''.
   generalize dependent e'.
   pcofix rec'. intros; pfold.
   rewrite frobProgId.
   destruct p; cbn; auto.
   {
-    ddestruct H1.
+    ddestruct H2.
     econstructor;
-    [exact H|exact H1|easy|].
+    [exact H|exact H2|
+      eapply weakenCommitPre; eauto
+    |].
     intros.
-    specialize (H3 v).
-    psimpl. split; auto.
+    specialize (H4 v).
+    psimpl. split.
+    - eapply weakenCommitPre; eauto.
+      clear - H0.
+      unfold sub, subRelt, ReltCompose in *.
+      intros. destruct_all.
+      eexists. eexists. eauto.
+    - right. eapply rec' with (P':=P0 ->> QI ->> QR v); auto.
+      unfold sub, subRelt, ReltCompose in *.
+      intros.
+      destruct H6 as [? [? [? [? [? [? ?]]]]]].
+      eexists. eexists. split; eauto.
   }
   {
-    ddestruct H1.
+    ddestruct H2.
     destruct p, u.
     simpl.
     destruct (b a).
-    - econstructor.
-      + apply HQS.
-      + constructor; auto.
+    - fold (@whileAux E A b e (e a)).
+      (* specialize (rec _ S_compose Inv Hbody). *)
+      econstructor.
+      + exact S_stable.
+      + unfold SilentStep in *. intros.
+        specialize (S_silent a).
+        apply S_silent; auto.
+        unfold ReltToPrec in *. destruct_all.
+        eexists. eexists. eauto.
       + right.
-        fold (@whileAux E A b e (e a)).
         eapply rec; auto.
-        * admit.
-        * 
-        eapply weakenPrec with (P:=P);
-        unfold VerifyProg; auto.
-        unfold sub, subRelt in *. intros.
-        psimpl.
-        apply H2 in H3. destruct H3.
-        repeat eexists. exact H3. easy.
-      
-      econstructor.
-      econstructor.
-      econstructor.
-      eapply rec'.
-      
-      unfold while in rec.
-        eapply rec.
-      
-      eapply rec. fold (@whileAux E).
-        
-
-    eapply SafeReturn.
-    paco_safeF
-    econstructor.
-  } *)
-Admitted.
+        unfold sub, subRelt, ReltCompose in *.
+        intros.
+        destruct H2 as [? [? [? ?]]].
+        eapply H1. eexists. eexists. eauto.
+    - econstructor.
+      unfold sub, subRelt, ReltCompose in *.
+      eauto.
+  }
+  {
+    ddestruct H2.
+    econstructor;
+    [exact H| |].
+    - clear - H0 H2.
+      unfold sub, subRelt, ReltCompose in *.
+      unfold SilentStep in *.
+      intros.
+      eapply H2; eauto.
+      unfold ReltToPrec in *. destruct_all.
+      eexists. eexists. eauto.
+    - right. eapply rec'; eauto.
+      clear - H0.
+      unfold sub, subRelt, ReltCompose in *.
+      intros. destruct_all.
+      eexists. eexists. eauto.
+  }
+Qed.
 
 Lemma lemRange {A} {i : Name T} :
   ∀ (N : nat) (e : Index N -> StateM E A unit)
