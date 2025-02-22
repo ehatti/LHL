@@ -76,7 +76,7 @@ Notation valSt s i := (
 
 Notation oranSt ρ i := (
   match ρ.(PState) with
-  | SnapDef _ _ => i
+  | SnapDef _ _ _ => i
   end
 ).
 
@@ -86,13 +86,13 @@ Notation uranSt s i := (
 
 Notation snapSt x := (
   match PState x with
-  | SnapDef s _ => s
+  | SnapDef s _ _ => s
   end
 ).
 
 Notation pendSt x := (
   match PState x with
-  | SnapDef s _ => s
+  | SnapDef s _ _ => s
   end
 ).
 
@@ -539,7 +539,8 @@ Definition conPoss {T A} (d : Index T -> reg_st A) (ρ : RPoss T A) : Poss (VF T
         match ρ i with
         | Some (v, Some None) => Some v
         | _ => None
-        end))
+        end)
+      (λ i, (d i).(ran)))
     (λ i,
       match ρ i with
       | Some (v, None) => CallPoss (WriteSnap v)
@@ -2162,7 +2163,8 @@ Proof.
                 | Some (v0, Some None) => Some v0
                 | PRetn v0 _ | Some (v0, None) => None
                 | None => None
-                end))
+                end)
+                (λ i, ran (und_vals1 i)))
               =
               (SnapDef (insert v (collect und_vals0))
                 (λ i0 : Name T,
@@ -2182,11 +2184,12 @@ Proof.
                 | Some (v0, Some None) => Some v0
                 | PRetn v0 _ | Some (v0, None) => None
                 | None => None
-                end))
+                end)
+                (λ i, ran (und_vals1 i)))
             ).
             { now f_equal. }
             rewrite H0 at 1. clear H0.
-            eapply SnapCall.
+            eapply SnapCallPass.
             {
               subst und_vals1.
               unfold updf.
