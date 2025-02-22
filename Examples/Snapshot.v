@@ -808,6 +808,11 @@ Qed.
 Ltac specf H y := apply equal_f with (x:=y) in H.
 Ltac gendep H := generalize dependent H.
 
+Ltac case_match :=
+  match goal with
+  | |- context[classicT ?P] => destruct (classicT P)
+  end.
+
 Lemma conPoss_inj {T A} :
   ∀ (ρ σ : RPoss T A) u,
     conPoss u ρ = conPoss u σ ->
@@ -2011,6 +2016,32 @@ Proof.
       updf und_vals0 i (MkReg (Some v) true)).
     pose (rets_map1 :=
       updf rets_map0 i (PRetn v (Some (insert v (collect und_vals0))))).
+    assert (Heq : collect und_vals1 = insert v (collect und_vals0)).
+    {
+      subst und_vals1.
+      unfold updf. set_ext v0.
+      split; intros; psimpl.
+      {
+        dec_eq_nats x0 i.
+        {
+          rewrite eqb_id in H.
+          ddestruct H. now left.
+        }
+        {
+          rewrite eqb_nid in H; auto.
+          right. now exists x0.
+        }
+      }
+      {
+        destruct H; psimpl.
+        { exists i. now rewrite eqb_id. }
+        {
+          dec_eq_nats x0 i.
+          { now rewrite H5 in H. }
+          exists x0. now rewrite eqb_nid.
+        }
+      }
+    }
     exists (λ σ,
       ∃ dσ,
         (∀ i, PossDef und_vals1 (rets_map1 i) (dσ i)) /\
@@ -2058,72 +2089,407 @@ Proof.
         exists (conPoss und_vals0 x2).
         split. 2: easy. now exists x2.
       }
-      exists (updf x0 i (PWait v)).
+      exists (λ j,
+        if i =? j then
+          PWait v
+        else
+          match x0 j with
+          | PRetn w (Some ws) =>
+            if classicT (ws ⊆ collect und_vals0) then
+              PRetn w (Some ws)
+            else
+              PCall w
+          | r => r
+          end).
       split.
       {
-        clear - H H3 vi_subs0 resp_write0 H4.
-        intros. specialize (H i0).
-        subst rets_map1 und_vals1.
-        unfold updf in H at 2.
-        unfold updf. dec_eq_nats i0 i.
+        intros.
+        specialize (H i0). clear - H H3 vi_subs0.
+        subst und_vals1 rets_map1. unfold updf in *.
+        dec_eq_nats i0 i.
         {
           rewrite eqb_id, H3.
           constructor.
         }
         {
           rewrite eqb_nid in *; auto.
-          ddestruct H; rewrite <-x1, <-x at 1;
-          try now constructor.
-          constructor. easy.
-          assert (vi ⊆ collect und_vals0).
-          {
-            eapply vi_subs0.
-            symmetry. exact x1.
-          }
-          assert (
-            collect (updf und_vals0 i (MkReg (Some v) true)) =
-            insert v (collect und_vals0)
-          ).
-          {
-            set_ext y. unfold updf.
-            split; intros; psimpl.
-            {
-              dec_eq_nats x2 i.
-              {
-                rewrite eqb_id in H5.
-                simpl in *. ddestruct H5.
-                now left.
-              }
-              {
-                rewrite eqb_nid in H5; auto.
-                right. now exists x2.
-              }
-            }
-            {
-              destruct H5.
-              {
-                subst. exists i.
-                now rewrite eqb_id.
-              }
-              {
-                destruct H5.
-                exists x2.
-                dec_eq_nats x2 i.
-                {
-                  apply resp_write0 in H4.
-                  now rewrite H4 in H5.
-                }
-                { now rewrite eqb_nid. }
-              }
-            }
-          }
-          assert (vs ⊆ insert v (collect und_vals0)).
-          { now rewrite <-H5. } clear H5 H0.
-          admit.
+          clear - H H0 vi_subs0.
+          specialize (vi_subs0 i0).
+          gendep (rets_map0 i0).
+          unfold RRet'. intros. ddestruct H;
+          rewrite <-x; try now constructor.
+          match goal with
+          | |- context[classicT ?P] => destruct (classicT P)
+          end;
+          now constructor.
         }
       }
       {
-        admit.
+        eapply PossStepsStep with
+          (i:=i)
+          (σ:=conPoss und_vals1 (λ j,
+            if i =? j then
+              PCall v
+            else
+              match x0 j with
+              | PRetn w (Some ws) =>
+              if classicT (ws ⊆ collect und_vals0) then
+                PRetn w (Some ws)
+              else
+                PCall w
+              | r => r
+              end)).
+        {
+          apply PCommitCall with
+            (m:= WriteSnap v).
+          {
+            simpl.
+            assert (
+              (SnapDef (collect und_vals1)
+                (λ i0 : Name T,
+                match
+                  (if i =? i0 then
+                    PCall v
+                  else
+                    match x0 i0 return RRet' T A A with
+                    | PRetn w (Some ws) =>
+                      if classicT (ws ⊆ collect und_vals0) then
+                        PRetn w (Some ws)
+                      else
+                        PCall w
+                    | r => r
+                    end)
+                with
+                | Some (v0, Some None) => Some v0
+                | PRetn v0 _ | Some (v0, None) => None
+                | None => None
+                end) (λ i0, ran (und_vals1 i0)))
+              =
+              (SnapDef (insert v (collect und_vals0))
+                (λ i0 : Name T,
+                match
+                  (if i =? i0 then
+                    PCall v
+                  else
+                    match x0 i0 return RRet' T A A with
+                    | PRetn w (Some ws) =>
+                      if classicT (ws ⊆ collect und_vals0) then
+                        PRetn w (Some ws)
+                      else
+                        PCall w
+                    | r => r
+                    end)
+                with
+                | Some (v0, Some None) => Some v0
+                | PRetn v0 _ | Some (v0, None) => None
+                | None => None
+                end) (λ i0, ran (und_vals1 i0)))
+            ).
+            { now f_equal. }
+            rewrite H0 at 1. clear H0.
+            eapply SnapCallPass.
+            { easy. }
+            {
+              subst und_vals1.
+              unfold updf.
+              now rewrite eqb_id.
+            }
+            {
+              subst und_vals1. unfold updf.
+              intros ??. now rewrite eqb_nid.
+            }
+            { now rewrite eqb_id. }
+            { now rewrite eqb_id. }
+            {
+              subst und_vals1. unfold updf.
+              intros ??. now rewrite eqb_nid.
+            }
+          }
+          { simpl. now rewrite eqb_id. }
+          { simpl. now rewrite eqb_id. }
+          { simpl. now rewrite eqb_id. }
+          { simpl. now rewrite eqb_id. }
+        }
+        { intros. simpl. now rewrite eqb_nid. }
+        { intros. simpl. now rewrite eqb_nid. }
+        decide_prop (v ∈ collect und_vals0).
+        {
+          assert (collect und_vals0 = collect und_vals1).
+          {
+            rewrite Heq. set_ext y.
+            split; intros.
+            { now right. }
+            {
+              destruct H1; psimpl.
+              { easy. }
+              { now exists x2. }
+            }
+          }
+          assert (
+            x0 i = PRetn v (Some (collect und_vals0)) \/
+            x0 i = PCall v
+          ).
+          {
+            specialize (H i).
+            subst rets_map1.
+            unfold updf in H.
+            rewrite eqb_id in H.
+            ddestruct H.
+            {
+              left. rewrite <-x. repeat f_equal.
+              set_ext y. split; intros.
+              {
+                apply H0 in H6.
+                destruct H6.
+                unfold updf in H6.
+                dec_eq_nats x3 i.
+                {
+                  rewrite eqb_id in H6.
+                  now ddestruct H6.
+                }
+                {
+                  rewrite eqb_nid in H6;
+                  auto. now exists x3.
+                }
+              }
+              { apply H. now right. }
+            }
+            { now right. }
+          }
+          destruct H2.
+          {
+            eapply PossStepsStep with
+            (i:=i)
+            (σ:=conPoss und_vals1 (λ j,
+              if i =? j then
+                PRetn v (Some (collect und_vals1))
+              else
+                match x0 j with
+                | PRetn w (Some ws) =>
+                if classicT (ws ⊆ collect und_vals0) then
+                  PRetn w (Some ws)
+                else
+                  PCall w
+                | r => r
+                end)).
+            {
+              apply PCommitRet with
+                (m:= WriteSnap v)
+                (v:= Some (collect und_vals1)).
+              {
+                simpl.
+                apply SnapRetPass.
+                {
+                  subst und_vals1. unfold updf.
+                  now rewrite eqb_id.
+                }
+                { now rewrite eqb_id. }
+                { now rewrite eqb_id. }
+                { intros ??. now rewrite eqb_nid. }
+              }
+              { simpl. now rewrite eqb_id. }
+              { simpl. now rewrite eqb_id. }
+              { simpl. now rewrite eqb_id. }
+              { simpl. now rewrite eqb_id. }
+            }
+            { simpl. intros. now rewrite eqb_nid. }
+            { simpl. intros. now rewrite eqb_nid. }
+            assert (
+              (conPoss und_vals1
+                (λ j,
+                if i =? j then
+                  PRetn v (Some (collect und_vals1))
+                else
+                  match x0 j with
+                  | PRetn w (Some ws) =>
+                  if classicT (ws ⊆ collect und_vals0) then PRetn w (Some ws)
+                  else Some (w, Some None)
+                  | PRetn w None => PRetn w None
+                  | Some (w, Some None) => Some (w, Some None)
+                  | Some (w, None) => Some (w, None)
+                  | None => None
+                  end)) =
+              conPoss und_vals1 x0
+            ).
+            {
+              unfold conPoss.
+              repeat f_equal.
+              {
+                extensionality i0.
+                dec_eq_nats i0 i.
+                { now rewrite eqb_id, H2. }
+                {
+                  subst rets_map1.
+                  unfold updf in H. specialize (H i0).
+                  rewrite eqb_nid in *; auto.
+                  ddestruct H; rewrite <-x;
+                  try case_match; try easy.
+                  now rewrite H2 in n.
+                }
+              }
+              {
+                extensionality i0.
+                dec_eq_nats i0 i.
+                { now rewrite eqb_id, H2. }
+                {
+                  subst rets_map1.
+                  unfold updf in H. specialize (H i0).
+                  rewrite eqb_nid in *; auto.
+                  ddestruct H; rewrite <-x;
+                  try case_match; easy.
+                }
+              }
+              {
+                extensionality i0.
+                dec_eq_nats i0 i.
+                { now rewrite eqb_id, H2, H1. }
+                {
+                  subst rets_map1.
+                  unfold updf in H. specialize (H i0).
+                  rewrite eqb_nid in *; auto.
+                  ddestruct H; rewrite <-x;
+                  try case_match; try easy.
+                  now rewrite H2 in n.
+                }
+              }
+            }
+            rewrite H6.
+            constructor.
+          }
+          {
+            assert (
+              conPoss und_vals1
+                (λ j : Name T,
+                if i =? j
+                then Some (v, Some None)
+                else
+                match x0 j with
+                | PRetn w (Some ws) =>
+                if classicT (ws ⊆ collect und_vals0) then PRetn w (Some ws)
+                else Some (w, Some None)
+                | PRetn w None => PRetn w None
+                | Some (w, Some None) => Some (w, Some None)
+                | Some (w, None) => Some (w, None)
+                | None => None
+                end) =
+              conPoss und_vals1 x0
+            ).
+            {
+              unfold conPoss.
+              repeat f_equal.
+              {
+                extensionality i0.
+                dec_eq_nats i0 i.
+                { now rewrite eqb_id, H2. }
+                {
+                  subst rets_map1.
+                  specialize (H i0).
+                  unfold updf in H.
+                  rewrite eqb_nid in *; auto.
+                  ddestruct H; rewrite <-x;
+                  try case_match; try easy.
+                  rewrite H2 in n. exfalso.
+                  now apply n.
+                }
+              }
+              {
+                extensionality i0.
+                dec_eq_nats i0 i.
+                { now rewrite eqb_id, H2. }
+                {
+                  subst rets_map1.
+                  specialize (H i0).
+                  unfold updf in H.
+                  rewrite eqb_nid in *; auto.
+                  ddestruct H; rewrite <-x;
+                  try case_match; easy.
+                }
+              }
+              {
+                extensionality i0.
+                dec_eq_nats i0 i.
+                { now rewrite eqb_id, H2. }
+                {
+                  subst rets_map1.
+                  specialize (H i0).
+                  unfold updf in H.
+                  rewrite eqb_nid in *; auto.
+                  ddestruct H; rewrite <-x;
+                  try case_match; try easy.
+                  rewrite H2 in n. exfalso.
+                  now apply n.
+                }
+              }
+            }
+            rewrite H6.
+            constructor.
+          }
+        }
+        {
+          assert (
+            (λ j,
+              if i =? j then
+                PCall v : RRet T A
+              else
+                match x0 j return RRet T A with
+                | PRetn w (Some ws) =>
+                  if classicT (ws ⊆ collect und_vals0) then
+                    PRetn w (Some ws)
+                  else
+                    PCall w
+                | r => r
+                end) =
+            (λ j,
+              match x0 j return RRet T A with
+              | PRetn w (Some ws) =>
+                if classicT (ws ⊆ collect und_vals0) then
+                  PRetn w (Some ws)
+                else
+                  PCall w
+              | r => r
+              end)
+          ).
+          {
+            extensionality j.
+            dec_eq_nats j i.
+            {
+              clear - H H0 H3. subst rets_map1.
+              specialize (H i). unfold updf in *.
+              rewrite eqb_id in *. ddestruct H;
+              rewrite <-x.
+              {
+                case_match.
+                {
+                  exfalso.
+                  assert (vs = insert v (collect und_vals0)).
+                  {
+                    set_ext y.
+                    split; intros.
+                    {
+                      apply H0 in H2. destruct H2.
+                      dec_eq_nats x1 i.
+                      {
+                        rewrite eqb_id in H2.
+                        ddestruct H2. now left.
+                      }
+                      {
+                        rewrite eqb_nid in H2; auto.
+                        right. now exists x1.
+                      }
+                    }
+                    { now apply H. }
+                  }
+                  subst. apply H1.
+                  apply c. now left.
+                }
+                { easy. }
+              }
+              { easy. }
+            }
+            { now rewrite eqb_nid. }
+          }
+          rewrite H1. clear H1.
+        }
       }
     }
     assert (
@@ -2766,19 +3132,62 @@ Proof.
 Qed.
 
 Lemma ws_wf {T A} {v : A} :
-selfProgWF
-(λ i' : Name T,
-st <- call (At i' Read);
-(if ran st
-then ret None
-else
-call (At i' (Write {| val := Some v; ran := true |}));;
-res <-
-runStateM {| old := emp; new := emp |}
-(fill_new T;;'
-while (λ s : loop_st A, negb (new s =? old s))
-(s <- get;' put {| old := new s; new := emp |};;' fill_new T);;'
-s <- get;' retM (Some (new s))); ret (fst res))).
+  selfProgWF
+    (λ i' : Name T,
+      st <- call (At i' Read);
+      if ran st then
+        ret None
+      else
+        call (At i' (Write {| val := Some v; ran := true |}));;
+        res <- runStateM {| old := emp; new := emp |} (
+          fill_new T;;'
+          while (λ s : loop_st A, negb (new s =? old s)) (
+            s <- get;'
+            put {| old := new s; new := emp |};;'
+            fill_new T
+          );;'
+          s <- get;'
+          retM (Some (new s))
+        );
+        ret (fst res)).
+Proof.
+  constructor;
+  setoid_rewrite frobProgId at 1;
+  try easy; cbn; intros;
+  ddestruct H.
+  eexists (λ _, _), (λ _, _).
+  split.
+  { now rewrite frobProgId at 1. }
+  split.
+  { easy. }
+  split.
+  {
+    extensionality x0.
+    now fold (@bindProg (E T A)).
+  }
+  {
+    intros.
+    fold (@bindProg (E T A)).
+    constructor;
+    setoid_rewrite ret_lunit;
+    destruct z, ran0; simpl;
+    setoid_rewrite frobProgId at 1;
+    try easy; cbn; intros; ddestruct H.
+    { now exists None. }
+    {
+      eexists (λ _, _), (λ _, _).
+      split.
+      { now rewrite frobProgId at 1. }
+      fold (@bindProg (E T A)).
+      split. easy.
+      split. easy.
+      intros [].
+      unfold runStateM, bindM.
+      constructor;
+      setoid_rewrite ret_lunit;
+      admit.
+    }
+  }
 Admitted.
 
 Lemma ws_correct {T A} (i : Name T) (v : A) :
@@ -3699,6 +4108,15 @@ Proof.
               d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v)) /\
               (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v) ⊆ y.(new) /\
               y.(new) ⊆ collect d.(und_vals)).
+        {
+          admit.
+        }
+        {
+          admit.
+        }
+        {
+          admit.
+        }
         2:{
           intros.
           unfold bindM, get, put.
@@ -3744,7 +4162,7 @@ Proof.
       }
     }
   }
-Qed.
+Admitted.
 
 Lemma wk_return_step {T E F} {VE : Spec T E} {VF : Spec T F} :
   ∀ (P P' : Logic.Prec VE VF)
