@@ -76,7 +76,7 @@ Notation valSt s i := (
 
 Notation oranSt ρ i := (
   match ρ.(PState) with
-  | SnapDef _ _ c => c i
+  | SnapDef _ _ => i
   end
 ).
 
@@ -86,13 +86,13 @@ Notation uranSt s i := (
 
 Notation snapSt x := (
   match PState x with
-  | SnapDef s _ _ => s
+  | SnapDef s _ => s
   end
 ).
 
 Notation pendSt x := (
   match PState x with
-  | SnapDef s _ _ => s
+  | SnapDef s _ => s
   end
 ).
 
@@ -531,7 +531,7 @@ Arguments MkD {T A}.
 
 Notation collect s := (λ v, ∃ i, (s i).(val) = Some v).
 
-Definition conPoss {T A} d (ρ : RPoss T A) : Poss (VF T A) :=
+Definition conPoss {T A} (d : Index T -> reg_st A) (ρ : RPoss T A) : Poss (VF T A) :=
   MkPoss (VF:= VF T A)
     (SnapDef
       (collect d)
@@ -539,8 +539,7 @@ Definition conPoss {T A} d (ρ : RPoss T A) : Poss (VF T A) :=
         match ρ i with
         | Some (v, Some None) => Some v
         | _ => None
-        end)
-      (λ i, (d i).(ran)))
+        end))
     (λ i,
       match ρ i with
       | Some (v, None) => CallPoss (WriteSnap v)
@@ -2163,7 +2162,7 @@ Proof.
                 | Some (v0, Some None) => Some v0
                 | PRetn v0 _ | Some (v0, None) => None
                 | None => None
-                end) (λ i0, ran (und_vals1 i0)))
+                end))
               =
               (SnapDef (insert v (collect und_vals0))
                 (λ i0 : Name T,
@@ -2183,22 +2182,16 @@ Proof.
                 | Some (v0, Some None) => Some v0
                 | PRetn v0 _ | Some (v0, None) => None
                 | None => None
-                end) (λ i0, ran (und_vals1 i0)))
+                end))
             ).
             { now f_equal. }
             rewrite H0 at 1. clear H0.
-            eapply SnapCallPass.
-            { easy. }
+            eapply SnapCall.
             {
               subst und_vals1.
               unfold updf.
               now rewrite eqb_id.
             }
-            {
-              subst und_vals1. unfold updf.
-              intros ??. now rewrite eqb_nid.
-            }
-            { now rewrite eqb_id. }
             { now rewrite eqb_id. }
             {
               subst und_vals1. unfold updf.
@@ -2442,19 +2435,18 @@ Proof.
             (λ j,
               match x0 j return RRet T A with
               | PRetn w (Some ws) =>
-                if classicT (`j < 0) then
-                  PRetn w (Some ws)
-                else if classicT (ws ⊆ collect und_vals0) then
-                  PRetn w (Some ws)
+                if classicT (`j < T) then
+                  if classicT (ws ⊆ collect und_vals0) then
+                    PRetn w (Some ws)
+                  else
+                    PCall w
                 else
-                  PCall w
+                  PRetn w (Some ws)
               | r => r
               end)
           ).
           {
             extensionality j.
-            destruct (classicT (`j < 0)).
-            { destruct j. psimpl. lia. }
             dec_eq_nats j i.
             {
               clear - H H0 H3. subst rets_map1.
@@ -2462,6 +2454,8 @@ Proof.
               rewrite eqb_id in *. ddestruct H;
               rewrite <-x.
               {
+                case_match.
+                2:{ destruct i. psimpl. lia. }
                 case_match.
                 {
                   exfalso.
@@ -2490,10 +2484,172 @@ Proof.
               }
               { easy. }
             }
-            { now rewrite eqb_nid. }
+            {
+              rewrite eqb_nid; auto.
+              destruct (classicT (`j < T)).
+              { easy. }
+              { destruct j. psimpl. lia. }
+            }
           }
           rewrite H1. clear H1.
-          admit.
+          cut (
+            ∀ n,
+              (∀ m, n = S m -> m < T) ->
+              PossSteps
+                (conPoss und_vals1
+                  (λ j,
+                    match x0 j with
+                    | PRetn w (Some ws) =>
+                      if classicT (` j < n) then
+                        if classicT (ws ⊆ collect und_vals0) then
+                          PRetn w (Some ws)
+                        else
+                          Some (w, Some None)
+                      else
+                        PRetn w (Some ws)
+                    | r => r
+                    end))
+                  (conPoss und_vals1 x0)
+          ).
+          {
+            intros. apply H1.
+            intros. lia.
+          }
+          intros. induction n.
+          {
+            assert (
+              (λ j,
+                match x0 j with
+                | PRetn w (Some ws) =>
+                  if classicT (` j < 0) then
+                    if classicT (ws ⊆ collect und_vals0) then
+                      PRetn w (Some ws)
+                    else
+                      Some (w, Some None)
+                  else
+                    PRetn w (Some ws)
+                | r => r
+                end) =
+              x0
+            ).
+            {
+              clear. extensionality j.
+              gendep (x0 j). unfold RRet'.
+              intros. dstr_rposs; try easy.
+              case_match.
+              { destruct j. psimpl. lia. }
+              { easy. }
+            }
+            rewrite H2 at 1.
+            constructor.
+          }
+          {
+            specialize (H1 n eq_refl).
+            remember (x0 (exist _ n H1)).
+            unfold RRet' in r. dstr_rposs.
+            {
+              decide_prop (s1 ⊆ collect und_vals0).
+              {
+                assert(
+                  (λ j : Name T,
+                  match x0 j with
+                  | PRetn w (Some ws) =>
+                  if classicT (` j < S n)
+                  then
+                  if classicT (ws ⊆ collect und_vals0) then PRetn w (Some ws)
+                  else Some (w, Some None)
+                  else PRetn w (Some ws)
+                  | PRetn w None => PRetn w None
+                  | Some (w, Some None) => Some (w, Some None)
+                  | Some (w, None) => Some (w, None)
+                  | None => None
+                  end) =
+                  (λ j : Name T,
+                  match x0 j with
+                  | PRetn w (Some ws) =>
+                  if classicT (` j < n)
+                  then
+                  if classicT (ws ⊆ collect und_vals0) then PRetn w (Some ws)
+                  else Some (w, Some None)
+                  else PRetn w (Some ws)
+                  | PRetn w None => PRetn w None
+                  | Some (w, Some None) => Some (w, Some None)
+                  | Some (w, None) => Some (w, None)
+                  | None => None
+                  end)
+                ).
+                {
+                  extensionality j.
+                  remember (x0 j). unfold RRet' in r.
+                  intros. dstr_rposs; try easy.
+                  repeat case_match; try easy.
+                  {
+                    assert (`j = n).
+                    { lia. } subst.
+                    assert (s1 = s2).
+                    {
+                      destruct j. psimpl.
+                      assert (l0 = H1) by apply proof_irrelevance.
+                      subst. rewrite <-Heqr in Heqr0.
+                      now ddestruct Heqr0.
+                    }
+                    now subst.
+                  }
+                  { lia. }
+                }
+                rewrite H6 at 1. apply IHn.
+                intros. subst. lia.
+              }
+              decide_prop ((und_vals1 (exist _ n H1)).(ran) = true).
+              {
+                admit.
+              }
+              {
+                eapply PossStepsStep with
+                  (i:= exist _ n H1).
+                4:{
+                  apply IHn.
+                  intros. subst.
+                  lia.
+                }
+                2:{
+                  simpl. intros. clear - H7.
+                  gendep (x0 j). unfold RRet'.
+                  intros. dstr_rposs; try easy.
+                  destruct j. psimpl.
+                  assert (n ≠ x).
+                  {
+                    intros ?. subst.
+                    apply H7. f_equal.
+                    apply proof_irrelevance.
+                  }
+                  now repeat case_match.
+                }
+                2:{
+                  simpl. intros. clear - H7.
+                  gendep (x0 j). unfold RRet'.
+                  intros. dstr_rposs; try easy.
+                  destruct j. psimpl.
+                  assert (n ≠ x).
+                  {
+                    intros ?. subst.
+                    apply H7. f_equal.
+                    apply proof_irrelevance.
+                  }
+                  repeat case_match; (easy || lia).
+                }
+                {
+                  eapply PCommitRet with
+                    (m:= WriteSnap a)
+                    (v:= Some (collect und_vals1)).
+                  {
+                    simpl.
+                    apply SnapRetPass.
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

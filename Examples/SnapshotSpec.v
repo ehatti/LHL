@@ -24,14 +24,14 @@ Variant SnapStep {T A} : SnapState T A -> ThreadEvent T (SnapSig A) -> SnapState
       (SnapDef vs m)
       (i, CallEv (WriteSnap v))
       (SnapDef (insert v vs) m')
-| SnapCallFail i v vs m m' :
-    m i = None ->
-    m' i = Some v ->
-    differ_pointwise m m' i ->
-    SnapStep
-      (SnapDef vs m)
-      (i, CallEv (WriteSnap v))
-      (SnapDef vs m')
+| SnapRetPass i v vs m m' :
+  m i = Some v ->
+  m' i = None ->
+  differ_pointwise m m' i ->
+  SnapStep
+    (SnapDef vs m)
+    (i, RetEv (WriteSnap v) (Some vs))
+    (SnapDef vs m')
 | SnapRetFail i v vs m m' :
     m i = Some v ->
     m' i = None ->
@@ -94,7 +94,7 @@ Proof.
     }
   }
   {
-    eapply SCCall with
+    eapply SCRet with
       (a':= f m').
     {
       subst f. simpl.
