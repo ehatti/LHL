@@ -2127,52 +2127,89 @@ Proof.
     }
     split.
     {
-      clear H'.
       intros. psimpl.
+      rename x0 into σ.
       cut (
-        ∃ dρ,
-          (∀ i0 : Name T, PossDef und_vals0 (rets_map0 i0) (dρ i0)) /\
-          PossSteps (conPoss und_vals0 dρ) (conPoss und_vals1 x0)
+        ∃ ρ,
+          (∀ i, PossDef und_vals0 (rets_map0 i) (ρ i)) /\
+          PossSteps (conPoss und_vals0 ρ) (conPoss und_vals1 σ)
       ).
       {
         intros. psimpl.
-        exists (conPoss und_vals0 x2).
-        split. 2: easy. now exists x2.
+        eexists. split. 2: exact H1.
+        eexists. split. 2: easy.
+        easy.
       }
-      decide_prop (v ∈ collect und_vals0).
+      pose (rp j := match σ j with
+      | PRetn w (Some ws) => 
+        if classicT (PossDef und_vals0 (rets_map0 j) (PRetn w (Some ws))) then
+          PRetn w (Some ws)
+        else
+          PCall w : RRet T A
+      | r => r
+      end).
+      exists (updf rp i (Some (v, None))).
+      split.
       {
-        admit.
-      }
-      {
-        exists (λ j,
-          if i =? j then
-            PWait v
-          else
-            match classicT (
-              ∃ w ws,
-                x0 j = PRetn w (Some ws) /\
-                v ∈ ws
-            ) with
-            | left p =>
-              let '(exist _ )
-            end
-        ).
-        split.
+        intros. specialize (H i0).
+        subst rp rets_map1. simpl.
+        unfold updf in H. unfold updf.
+        dec_eq_nats i0 i.
         {
-          intros. specialize (H i0).
-          subst rets_map1. unfold updf in H.
-          dec_eq_nats i0 i.
+          rewrite eqb_id, H3.
+          constructor.
+        }
+        {
+          rewrite eqb_nid in *; auto.
+          ddestruct H; rewrite <-x2, <-x;
+          try now constructor.
+          case_match. easy.
+          constructor.
+        }
+      }
+      {
+        eapply PossStepsStep with
+          (i:=i)
+          (σ:= conPoss und_vals1 rp).
+        {
+          eapply PCommitCall with
+            (m:= WriteSnap v).
           {
-            rewrite eqb_id, H3.
-            constructor.
+            simpl. rewrite Heq.
+            apply SnapCallPass.
+            { easy. }
+            { subst und_vals1. unfold updf. now rewrite eqb_id. }
+            { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
+            { subst rp. unfold updf. now rewrite eqb_id. }
+            {
+              subst rp rets_map1. simpl in *.
+              specialize (H i). unfold updf in H.
+              rewrite eqb_id in H. ddestruct H;
+              rewrite <-x; try case_match; try easy.
+              now rewrite H3 in p.
+            }
+            { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
           }
+          { simpl. subst rp. unfold updf. now rewrite eqb_id. }
           {
-            rewrite eqb_nid in *; auto.
-            ddestruct H; rewrite <-x3, <-x;
-            try now constructor.
-
+            subst rp rets_map1. unfold updf in *.
+            specialize (H i). rewrite eqb_id in H.
+            ddestruct H; simpl; rewrite <-x;
+            now (easy || case_match).
+          }
+          { simpl. subst rp. unfold updf. now rewrite eqb_id. }
+          {
+            subst rp rets_map1. unfold updf in *.
+            specialize (H i). rewrite eqb_id in H.
+            ddestruct H; simpl; rewrite <-x;
+            try (easy || case_match).
+            now rewrite H3 in p.
+            easy.
           }
         }
+        { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
+        { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
+        admit.
       }
     }
     assert (
@@ -2242,6 +2279,17 @@ Proof.
           intros. dec_eq_nats i0 i.
           { now rewrite eqb_id in H. }
           { rewrite eqb_nid in *; auto. }
+        }
+        {
+          unfold updf.
+          intros ??. psimpl.
+          dec_eq_nats i0 i.
+          { now rewrite eqb_id in *. }
+          {
+            rewrite eqb_nid in *; auto.
+            eapply resp_ran0.
+            now exists x0, x2.
+          }
         }
       }
       split.
