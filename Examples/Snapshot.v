@@ -1884,6 +1884,9 @@ Proof.
   { easy. }
 Qed.
 
+Axiom idefn : ∀ {A} {P : A -> Prop}, ex P -> sig P.
+Axiom idefn_ex : ∀ {A} {P : A -> Prop} (x : A) p, @idefn A P (ex_intro _ x p) = exist _ x p.
+
 Lemma write_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
     (λ _ _ s ρs,
@@ -2136,249 +2139,39 @@ Proof.
         exists (conPoss und_vals0 x2).
         split. 2: easy. now exists x2.
       }
-      exists (λ j,
-        if i =? j then
-          PWait v
-        else
-          match x0 j with
-          | PRetn w (Some ws) =>
-            if classicT (ws v) then
-              PCall w
-            else
-              PRetn w (Some ws)
-          | r => r
-          end).
-      split.
+      decide_prop (v ∈ collect und_vals0).
       {
-        intros.
-        specialize (H i0). clear - H H3 vi_subs0.
-        subst und_vals1 rets_map1. unfold updf in *.
-        dec_eq_nats i0 i.
-        {
-          rewrite eqb_id, H3.
-          constructor.
-        }
-        {
-          rewrite eqb_nid in *; auto.
-          clear - H H0 vi_subs0.
-          specialize (vi_subs0 i0).
-          gendep (rets_map0 i0).
-          unfold RRet'. intros. ddestruct H;
-          rewrite <-x; try case_match;
-          try now constructor.
-          constructor.
-          { easy. }
-          {
-            intros.
-            assert (H2' := H2).
-            apply H1 in H2.
-            destruct H2.
-            dec_eq_nats x1 i.
-            {
-              rewrite eqb_id in H2.
-              now ddestruct H2.
-            }
-            {
-              rewrite eqb_nid in H2;
-              auto. now exists x1.
-            }
-          }
-        }
+        admit.
       }
       {
-        eapply PossStepsStep with
-          (i:=i)
-          (σ:=conPoss und_vals1 (λ j,
-            if i =? j then
-              PCall v
-            else
-              match x0 j with
-              | PRetn w (Some ws) =>
-                if classicT (ws v) then
-                  PCall w
-                else
-                  PRetn w (Some ws)
-              | r => r
-              end)).
-        {
-          apply PCommitCall with
-            (m:= WriteSnap v).
-          {
-            simpl.
-            assert (
-              (SnapDef (collect und_vals1)
-                (λ i0 : Name T,
-                match
-                  (if i =? i0 then
-                    PCall v
-                  else
-                    match x0 i0 return RRet' T A A with
-                    | PRetn w (Some ws) =>
-                      if classicT (ws v) then
-                        PCall w
-                      else
-                        PRetn w (Some ws)
-                    | r => r
-                    end)
-                with
-                | Some (v0, Some None) => Some v0
-                | PRetn v0 _ | Some (v0, None) => None
-                | None => None
-                end)
-                (λ i, ran (und_vals1 i)))
-              =
-              (SnapDef (insert v (collect und_vals0))
-                (λ i0 : Name T,
-                match
-                  (if i =? i0 then
-                    PCall v
-                  else
-                    match x0 i0 return RRet' T A A with
-                    | PRetn w (Some ws) =>
-                      if classicT (ws v) then
-                        PCall w
-                      else
-                      PRetn w (Some ws)
-                    | r => r
-                    end)
-                with
-                | Some (v0, Some None) => Some v0
-                | PRetn v0 _ | Some (v0, None) => None
-                | None => None
-                end)
-                (λ i, ran (und_vals1 i)))
-            ).
-            { now f_equal. }
-            rewrite H0 at 1. clear H0.
-            eapply SnapCallPass.
-            { easy. }
-            {
-              subst und_vals1.
-              unfold updf.
-              now rewrite eqb_id.
-            }
-            {
-              subst und_vals1. unfold updf.
-              intros ??. now rewrite eqb_nid.
-            }
-            {
-              subst und_vals1.
-              unfold updf.
-              now rewrite eqb_id.
-            }
-            { now rewrite eqb_id. }
-            {
-              subst und_vals1. unfold updf.
-              intros ??. now rewrite eqb_nid.
-            }
-          }
-          { simpl. now rewrite eqb_id. }
-          { simpl. now rewrite eqb_id. }
-          { simpl. now rewrite eqb_id. }
-          { simpl. now rewrite eqb_id. }
-        }
-        { intros. simpl. now rewrite eqb_nid. }
-        { intros. simpl. now rewrite eqb_nid. }
-        assert (
-          (λ j,
-            if i =? j then
-              PCall v : RRet T A
-            else
-              match x0 j return RRet T A with
-              | PRetn w (Some ws) =>
-                if classicT (ws v) then
-                  PCall w
-                else
-                  PRetn w (Some ws)
-              | r => r
-              end) =
-          (λ j,
-            match x0 j return RRet T A with
-            | PRetn w (Some ws) =>
-              if classicT (`j < T) then
-                if classicT (ws v) then
-                  PCall w
-                else
-                  PRetn w (Some ws)
-              else
-                PRetn w (Some ws)
-            | r => r
-            end)
+        exists (λ j,
+          if i =? j then
+            PWait v
+          else
+            match classicT (
+              ∃ w ws,
+                x0 j = PRetn w (Some ws) /\
+                v ∈ ws
+            ) with
+            | left p =>
+              let '(exist _ )
+            end
         ).
+        split.
         {
-          extensionality j.
-          dec_eq_nats j i.
+          intros. specialize (H i0).
+          subst rets_map1. unfold updf in H.
+          dec_eq_nats i0 i.
           {
-            rewrite eqb_id. specialize (H i).
-            subst rets_map1. unfold updf in H.
-            rewrite eqb_id in H. ddestruct H.
-            {
-              case_match.
-              2:{ destruct i. psimpl. lia. }
-              rewrite <-x. case_match. easy.
-              exfalso. apply n, H. now left.
-            }
-            { now rewrite <-x. }
+            rewrite eqb_id, H3.
+            constructor.
           }
           {
-            rewrite eqb_nid; auto.
-            repeat case_match; try easy.
-            destruct j. psimpl. lia.
+            rewrite eqb_nid in *; auto.
+            ddestruct H; rewrite <-x3, <-x;
+            try now constructor.
+
           }
-        }
-        rewrite H0. clear H0.
-        cut (
-          ∀ n,
-            (∀ m, n = S m -> m < T) ->
-            PossSteps
-              (conPoss und_vals1
-                (λ j : Name T,
-                match x0 j with
-                | PRetn w (Some ws) =>
-                  if classicT (` j < n) then
-                    if classicT (ws v) then
-                      Some (w, Some None)
-                    else
-                      PRetn w (Some ws)
-                  else
-                    PRetn w (Some ws)
-                | r => r
-                end))
-              (conPoss und_vals1 x0)
-        ).
-        {
-          intros. apply H0.
-          intros. subst. lia.
-        }
-        intros.
-        induction n.
-        {
-          assert (
-            (λ j : Name T,
-              match x0 j with
-              | PRetn w (Some ws) =>
-                if classicT (` j < 0) then
-                  if classicT (ws v) then
-                    Some (w, Some None)
-                  else
-                    PRetn w (Some ws)
-                else PRetn w (Some ws)
-              | r => r
-              end) = x0
-          ).
-          {
-            extensionality j. gendep (x0 j).
-            unfold RRet'. intros. dstr_rposs;
-            try easy; now repeat case_match.
-          }
-          rewrite H1 at 1.
-          constructor.
-        }
-        {
-          assert (n < T).
-          { now apply H0. }
-          specialize (H (exist _ n H1)).
-          ddestruct H; admit.
         }
       }
     }
