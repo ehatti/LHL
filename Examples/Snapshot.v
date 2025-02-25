@@ -2304,7 +2304,46 @@ Proof.
               intros. lia.
             }
             {
-              admit.
+              clear H1.
+              specialize (H nt).
+              rewrite <-Heqr in H.
+              ddestruct H.
+              assert (s1 = insert v (collect und_vals0)).
+              {
+                set_ext y.
+                split; intros.
+                {
+                  apply H0 in H7. destruct H7.
+                  unfold updf in H7. dec_eq_nats x2 i.
+                  {
+                    rewrite eqb_id in H7.
+                    ddestruct H7. now left.
+                  }
+                  {
+                    rewrite eqb_nid in H7;
+                    auto. right. now exists x2.
+                  }
+                }
+                {
+                  subst rets_map1.
+                  unfold updf in *.
+                  dec_eq_nats nt i.
+                  {
+                    rewrite eqb_id in *.
+                    ddestruct x.
+                    now apply H.
+                  }
+                  {
+                    rewrite eqb_nid in *; auto.
+                    assert (¬ s1 ⊆ collect und_vals0).
+                    {
+                      intros ?. apply H6.
+                      rewrite <-x. now constructor.
+                    }
+                    ld
+                  }
+                }
+              }
             }
           }
           {
