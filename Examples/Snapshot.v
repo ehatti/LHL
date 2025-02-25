@@ -2309,7 +2309,24 @@ Proof.
               rewrite <-Heqr in H.
               ddestruct H.
               assert (s1 = insert v (collect und_vals0)).
-              { admit. }
+              {
+                rewrite <-Heq at 1.
+                set_ext y. split.
+                { now apply H0. }
+                {
+                  subst rets_map1.
+                  unfold updf in x.
+                  dec_eq_nats nt i.
+                  {
+                    rewrite eqb_id in x. ddestruct x.
+                    intros. apply H. now rewrite <-Heq at 1.
+                  }
+                  {
+                    rewrite eqb_nid in *; auto.
+                    
+                  }
+                }
+              }
               subst.
               eapply PossStepsStep
                 with (i:=nt).
