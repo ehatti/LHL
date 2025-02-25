@@ -2309,39 +2309,76 @@ Proof.
               rewrite <-Heqr in H.
               ddestruct H.
               assert (s1 = insert v (collect und_vals0)).
-              {
-                set_ext y.
-                split; intros.
+              { admit. }
+              subst.
+              eapply PossStepsStep
+                with (i:=nt).
+              4:{
+                apply IHn.
+                intros. subst.
+                lia.
+              }
+              2:{
+                simpl. intros.
+                dec_eq_nats nt j.
                 {
-                  apply H0 in H7. destruct H7.
-                  unfold updf in H7. dec_eq_nats x2 i.
-                  {
-                    rewrite eqb_id in H7.
-                    ddestruct H7. now left.
-                  }
-                  {
-                    rewrite eqb_nid in H7;
-                    auto. right. now exists x2.
-                  }
+                  rewrite <-Heqr.
+                  now repeat case_match.
                 }
                 {
-                  subst rets_map1.
-                  unfold updf in *.
-                  dec_eq_nats nt i.
+                  gendep (σ j). unfold RRet'.
+                  intros. dstr_rposs;
+                  now repeat case_match.
+                }
+              }
+              2:{
+                simpl. intros.
+                repeat case_match; try (easy || lia).
+                destruct j. simpl in *. rename x2 into j.
+                assert (j = n) by lia. subst. subst nt.
+                exfalso. apply H7. repeat f_equal.
+                apply proof_irrelevance.
+              }
+              {
+                eapply PCommitRet with
+                  (m:= WriteSnap a)
+                  (v:= Some (collect und_vals1)).
+                {
+                  simpl.
+                  eapply SnapRetPass.
                   {
-                    rewrite eqb_id in *.
-                    ddestruct x.
-                    now apply H.
-                  }
-                  {
-                    rewrite eqb_nid in *; auto.
-                    assert (¬ s1 ⊆ collect und_vals0).
+                    subst rets_map1. unfold updf in *.
+                    dec_eq_nats nt i.
+                    { now rewrite eqb_id. }
                     {
-                      intros ?. apply H6.
-                      rewrite <-x. now constructor.
+                      rewrite eqb_nid in *; auto. apply resp_ran0.
+                      repeat eexists. now rewrite <-x at 1.
                     }
-                    ld
                   }
+                  {
+                    rewrite <-Heqr. repeat case_match;
+                    try easy. subst nt. simpl in *. lia.
+                  }
+                  {
+                    rewrite <-Heqr. repeat case_match;
+                    try easy. subst nt. simpl in *. lia.
+                  }
+                  {
+                    intros ??.
+                    assert (`j ≠ `nt) by now apply pr1_neq.
+                    repeat case_match; try easy; destruct j;
+                    subst nt; simpl in *; lia.
+                  }
+                }
+                { simpl. rewrite <-Heqr. now repeat case_match. }
+                { simpl. rewrite <-Heqr. now repeat case_match. }
+                {
+                  simpl. rewrite <-Heqr.
+                  repeat case_match; easy || lia.
+                }
+                {
+                  simpl. rewrite <-Heqr, Heq.
+                  repeat case_match; easy || lia.
                 }
               }
             }
