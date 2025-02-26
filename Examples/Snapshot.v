@@ -522,9 +522,12 @@ Notation PRetn v vs := (Some (v, Some (Some vs))).
 Definition RPossSet (T : nat) (A : Type) :=
   RPoss T A -> Prop.
 
+Definition OWr T := option (Name T).
+
 Record pdata {T A} := MkD {
   und_vals : Index T -> reg_st A;
-  rets_map : Name T -> RRet' T A A
+  rets_map : Name T -> RRet' T A A;
+  last_wrt : OWr T
 }.
 Arguments pdata : clear implicits.
 Arguments MkD {T A}.
@@ -581,9 +584,23 @@ Record Inv {T A}
   ovr_def :
     ρs = (λ ρ,
       ∃ dρ,
-        (∀ i, PossDef d.(und_vals) (d.(rets_map) i) (dρ i)) /\
+        ((∀ i,
+          PossDef d.(und_vals) (d.(rets_map) i) (dρ i)) /\
+        (∀ i v vs li l,
+          d.(last_wrt) = Some li ->
+          (d.(und_vals) li).(val) = Some l ->
+          dρ i = PRetn v (Some vs) ->
+          l ∈ vs ->
+          vs = collect d.(und_vals))) /\
         ρ = conPoss d.(und_vals) dρ
     );
+  wrt_def :
+    ∀ il,
+      d.(last_wrt) = Some il ->
+      (d.(und_vals) il).(val) ≠ None;
+  wrt_start :
+    d.(last_wrt) = None ->
+    collect d.(und_vals) = emp;
   vi_subs :
     ∀ i v vs,
       d.(rets_map) i = PRetn v (Some vs) ->
@@ -613,31 +630,32 @@ Record updt {A B} (m1 m2 : A -> B) (i : A) (v1 v2 : B) : Prop := {
 }.
 
 Variant SnapTran {T A} {i : Name T} : pdata T A -> pdata T A -> Prop :=
-| SnapInvoke v s x :
+| SnapInvoke v s x l :
   x i = PIdle ->
   SnapTran
-    (MkD s x)
-    (MkD s (updf x i (PWait v)))
-| SnapReturn v vi s (x : Name T -> RRet' T A A) :
+    (MkD s x l)
+    (MkD s (updf x i (PWait v)) l)
+| SnapReturn v vi s (x : Name T -> RRet' T A A) l :
   x i = PRetn v vi ->
   SnapTran
-    (MkD s x)
-    (MkD s (updf x i PIdle))
+    (MkD s x l)
+    (MkD s (updf x i PIdle) l)
 | SnapNoOp d :
   SnapTran d d
-| SnapFail s v x :
+| SnapFail s v x l :
   x i = PWait v ->
   SnapTran
-    (MkD s x)
-    (MkD s (updf x i (PRetn v None)))
-| SnapWrite v s x :
+    (MkD s x l)
+    (MkD s (updf x i (PRetn v None)) l)
+| SnapWrite v s x l :
   s i = MkReg None false ->
   x i = PWait v ->
   SnapTran
-    (MkD s x)
+    (MkD s x l)
     (MkD
       (updf s i (MkReg (Some v) true))
-      (updf x i (PRetn v (Some (insert v (collect s)))))).
+      (updf x i (PRetn v (Some (insert v (collect s)))))
+      (Some i)).
 Arguments SnapTran {T A} i.
 
 Definition Guar {T A} (i : Name T) : Relt T A :=
@@ -921,15 +939,41 @@ Lemma PS_refl {T A} :
 Proof.
   intros.
   dstr_rposs;
-  constructor; auto.
-  now eapply H.
+  constructor.
+  { easy. }
+  { now eapply H. }
 Qed.
+
+Lemma iff_and :
+  ∀ PL QL PR QR,
+    PL <-> QL ->
+    PR <-> QR ->
+    (PL /\ PR) <-> (QL /\ QR).
+Proof.
+  intros.
+  tauto.
+Qed.
+
+Lemma eq_iff :
+  ∀ P Q,
+    P = Q ->
+    P <-> Q.
+Proof.
+  intros.
+  now rewrite H.
+Qed.
+
+Lemma iff_str :
+  ∀ P Q R,
+    (P /\ R) <-> (Q /\ R) ->
+    R -> (P <-> Q).
+Proof. tauto. Qed.
 
 Lemma rets_map_uniq {T A} :
   ∀ (d : pdata T A) s ρs,
     Inv d s ρs ->
     ∀ ls,
-      Inv (MkD d.(und_vals) ls) s ρs ->
+      Inv (MkD d.(und_vals) ls d.(last_wrt)) s ρs ->
       d.(rets_map) = ls.
 Proof.
   intros.
@@ -950,7 +994,8 @@ Proof.
       now apply conPoss_inj
         with (u:=und_vals0)
     ).
-    now rewrite ovr_def1.
+    apply eq_iff in ovr_def1.
+    eapply iff_str. exact ovr_def1.
   }
   clear - H vi_subs0 vi_subs1.
   rewrite set_eq in H.
@@ -2351,7 +2396,7 @@ Proof.
                       }
                       decide_prop (v ∈ s1).
                       {
-                        
+                        admit.
                       }
                       {
                         exfalso.
