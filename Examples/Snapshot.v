@@ -526,8 +526,7 @@ Definition OWr T := option (Name T).
 
 Record pdata {T A} := MkD {
   und_vals : Index T -> reg_st A;
-  rets_map : Name T -> RRet' T A A;
-  last_wrt : OWr T
+  rets_map : Name T -> RRet' T A A
 }.
 Arguments pdata : clear implicits.
 Arguments MkD {T A}.
@@ -556,7 +555,16 @@ Definition conPoss {T A} (d : Index T -> reg_st A) (ρ : RPoss T A) : Poss (VF T
       | _ => RetIdle
       end).
 
-Variant PossDef {T A} {st : Name T -> reg_st A} :
+Record ObWr {T A}
+  (wr : OWr T) (st : Name T -> reg_st A)
+  (r : set A) (li : Name T) (lv : A)
+:= {
+  wr_some : wr = Some li;
+  val_some : (st li).(val) = Some lv;
+  ret_full : lv ∈ r -> r = collect st
+}.
+
+Variant PossDef {T A} {wr : OWr T} {st : Name T -> reg_st A} :
   RRet' T A A -> RRet' T A A -> Prop :=
 | PDIdle :
   PossDef None None
@@ -567,16 +575,21 @@ Variant PossDef {T A} {st : Name T -> reg_st A} :
 | PDRetnNone v :
   PossDef (Some (v, Some (Some None))) (Some (v, Some (Some None)))
 | PDRetnSomeRetn v vi vs :
+  (∀ li,
+    wr = Some li ->
+    ∃ lv,
+      (st li).(val) = Some lv /\
+      (lv ∈ vs -> vs = collect st)) ->
   vi ⊆ vs ->
   vs ⊆ collect st ->
   PossDef (Some (v, Some (Some (Some vi)))) (Some (v, Some (Some (Some vs))))
 | PDRetnSomeCall v vi :
   PossDef (Some (v, Some (Some (Some vi)))) (Some (v, Some None)).
-Arguments PossDef {T A} st _ _.
+Arguments PossDef {T A} wr st _ _.
 
 (* global invariant, should always hold *)
 Record Inv {T A}
-  {d : pdata T A}
+  {last_wrt : OWr T} {d : pdata T A}
   {s : InterState (F A) (VE T A)} {ρs : PossSet (VF T A)}
 : Prop := {
   und_def :
@@ -584,23 +597,9 @@ Record Inv {T A}
   ovr_def :
     ρs = (λ ρ,
       ∃ dρ,
-        ((∀ i,
-          PossDef d.(und_vals) (d.(rets_map) i) (dρ i)) /\
-        (∀ i v vs li l,
-          d.(last_wrt) = Some li ->
-          (d.(und_vals) li).(val) = Some l ->
-          dρ i = PRetn v (Some vs) ->
-          l ∈ vs ->
-          vs = collect d.(und_vals))) /\
+        (∀ i, PossDef last_wrt d.(und_vals) (d.(rets_map) i) (dρ i)) /\
         ρ = conPoss d.(und_vals) dρ
     );
-  wrt_def :
-    ∀ il,
-      d.(last_wrt) = Some il ->
-      (d.(und_vals) il).(val) ≠ None;
-  wrt_start :
-    d.(last_wrt) = None ->
-    collect d.(und_vals) = emp;
   vi_subs :
     ∀ i v vs,
       d.(rets_map) i = PRetn v (Some vs) ->
@@ -616,9 +615,21 @@ Record Inv {T A}
   resp_ran :
     ∀ i,
       (∃ v o, d.(rets_map) i = Some (v, Some o)) ->
-      (d.(und_vals) i).(ran) = true
+      (d.(und_vals) i).(ran) = true;
+  ob_write :
+    match last_wrt with
+    | None =>
+      collect d.(und_vals) = emp
+    | Some li =>
+      ∃ lv,
+        (d.(und_vals) li).(val) = Some lv /\
+        ∀ i v vs,
+          d.(rets_map) i = PRetn v (Some vs) ->
+          lv ∈ vs ->
+          vs = collect d.(und_vals)
+    end
 }.
-Arguments Inv {T A} d s ρs.
+Arguments Inv {T A} last_wrt d s ρs.
 
 Definition updf {A B} (m : A -> B) (i : A) (v : B) : A -> B :=
   λ j, if i =? j then v else m j.
@@ -630,41 +641,40 @@ Record updt {A B} (m1 m2 : A -> B) (i : A) (v1 v2 : B) : Prop := {
 }.
 
 Variant SnapTran {T A} {i : Name T} : pdata T A -> pdata T A -> Prop :=
-| SnapInvoke v s x l :
+| SnapInvoke v s x :
   x i = PIdle ->
   SnapTran
-    (MkD s x l)
-    (MkD s (updf x i (PWait v)) l)
-| SnapReturn v vi s (x : Name T -> RRet' T A A) l :
+    (MkD s x)
+    (MkD s (updf x i (PWait v)))
+| SnapReturn v vi s (x : Name T -> RRet' T A A) :
   x i = PRetn v vi ->
   SnapTran
-    (MkD s x l)
-    (MkD s (updf x i PIdle) l)
+    (MkD s x)
+    (MkD s (updf x i PIdle))
 | SnapNoOp d :
   SnapTran d d
-| SnapFail s v x l :
+| SnapFail s v x :
   x i = PWait v ->
   SnapTran
-    (MkD s x l)
-    (MkD s (updf x i (PRetn v None)) l)
-| SnapWrite v s x l :
+    (MkD s x)
+    (MkD s (updf x i (PRetn v None)))
+| SnapWrite v s x :
   s i = MkReg None false ->
   x i = PWait v ->
   SnapTran
-    (MkD s x l)
+    (MkD s x)
     (MkD
       (updf s i (MkReg (Some v) true))
-      (updf x i (PRetn v (Some (insert v (collect s)))))
-      (Some i)).
+      (updf x i (PRetn v (Some (insert v (collect s)))))).
 Arguments SnapTran {T A} i.
 
 Definition Guar {T A} (i : Name T) : Relt T A :=
   λ s ρs t σs,
-    ∀ d,
-      Inv d s ρs ->
-      ∃ d',
+    ∀ last_wrt d,
+      Inv last_wrt d s ρs ->
+      ∃ last_wrt' d',
         SnapTran i d d' /\
-        Inv d' t σs.
+        Inv last_wrt' d' t σs.
 
 Definition SnapTrans {T A} :=
   clos_refl_trans_1n (pdata T A) (λ d d', ∃ i, SnapTran i d d').
@@ -674,18 +684,18 @@ Definition OtherSnapTrans {T A} (i : Name T) :=
 
 Definition Rely {T A} (i : Name T) : Relt T A :=
   λ s ρs t σs,
-    ∀ d,
-      Inv d s ρs ->
-      ∃ d',
+    ∀ last_wrt d,
+      Inv last_wrt d s ρs ->
+      ∃ last_wrt' d',
         OtherSnapTrans i d d' /\
-        Inv d' t σs.
+        Inv last_wrt' d' t σs.
 
 Lemma rely_refl {T A} :
   ∀ (i : Name T) s ρs,
     Rely (A:=A) i s ρs s ρs.
 Proof.
   unfold Rely. intros.
-  exists d. split.
+  exists last_wrt, d. split.
   constructor. easy.
 Qed.
 
@@ -697,7 +707,7 @@ Proof.
   intros. psimpl.
   apply H in H0. psimpl.
   apply H1 in H2. psimpl.
-  exists x2. split. 2: easy.
+  exists x3, x4. split. 2: easy.
   eapply clos_rt_rt1n_iff.
   eapply rt_trans.
   {
@@ -753,7 +763,7 @@ Lemma guar_in_rely {T A} :
 Proof.
   unfold sub, subRelt, Guar, Rely.
   intros. apply H0 in H1. psimpl.
-  exists x. split.
+  exists x, x0. split.
   {
     econstructor.
     {
@@ -767,7 +777,7 @@ Proof.
 Qed.
 
 Definition Lift {T A} (P : pdata T A -> Prop) : Prec T A :=
-  λ s ρs, ∃ d, Inv d s ρs /\ P d.
+  λ s ρs, ∃ last_wrt d, Inv last_wrt d s ρs /\ P d.
 
 Lemma one_shot {T A} :
   ∀ d d',
@@ -933,15 +943,26 @@ Ltac dstr_rposs :=
   end.
 
 Lemma PS_refl {T A} :
-  ∀ (s : Name T -> reg_st A) ls,
-  (∀ v vs, ls = PRetn v (Some vs) -> vs ⊆ collect s) ->
-  PossDef s ls ls.
+  ∀ last_wrt (d : pdata T A) s ρs i,
+    Inv last_wrt d s ρs ->
+    PossDef last_wrt d.(und_vals) (d.(rets_map) i) (d.(rets_map) i).
 Proof.
-  intros.
-  dstr_rposs;
-  constructor.
+  intros. destruct H.
+  remember (rets_map d i).
+  unfold RRet' in r. dstr_rposs;
+  try constructor.
+  {
+    intros.
+    rewrite H in ob_write0.
+    psimpl. exists x.
+    split. easy. eapply H1.
+    symmetry. exact Heqr.
+  }
   { easy. }
-  { now eapply H. }
+  {
+    eapply vi_subs0.
+    symmetry. exact Heqr.
+  }
 Qed.
 
 Lemma iff_and :
@@ -969,73 +990,10 @@ Lemma iff_str :
     R -> (P <-> Q).
 Proof. tauto. Qed.
 
-Lemma rets_map_uniq {T A} :
-  ∀ (d : pdata T A) s ρs,
-    Inv d s ρs ->
-    ∀ ls,
-      Inv (MkD d.(und_vals) ls d.(last_wrt)) s ρs ->
-      d.(rets_map) = ls.
-Proof.
-  intros.
-  destruct H, H0, d. psimpl.
-  rename rets_map0 into ls'.
-  assert (
-    (λ ρ, ∀ i, PossDef und_vals0 (ls' i) (ρ i)) =
-    (λ ρ, ∀ i, PossDef und_vals0 (ls i) (ρ i))
-  ).
-  {
-    set_ext ρ.
-    apply equal_f with
-      (x:= conPoss und_vals0 ρ)
-      in ovr_def1.
-    do 2 rewrite ex_eq in ovr_def1.
-    all: try (
-      intros;
-      now apply conPoss_inj
-        with (u:=und_vals0)
-    ).
-    apply eq_iff in ovr_def1.
-    eapply iff_str. exact ovr_def1.
-  }
-  clear - H vi_subs0 vi_subs1.
-  rewrite set_eq in H.
-  assert (H' := H).
-  specialize (H ls).
-  specialize (H' ls').
-  assert (∀ i, PossDef und_vals0 (ls i) (ls i)).
-  {
-    intros.
-    apply PS_refl.
-    apply vi_subs1.
-  }
-  assert (∀ i, PossDef und_vals0 (ls' i) (ls' i)).
-  {
-    intros.
-    apply PS_refl.
-    apply vi_subs0.
-  }
-  destruct H, H'.
-  extensionality i.
-  apply H2 with (i:=i) in H0.
-  apply H3 with (i:=i) in H1.
-  generalize dependent (ls' i).
-  generalize dependent (ls i).
-  intros. clear - H0 H1.
-  destruct H0; ddestruct H1; try easy.
-  assert (vs = vi).
-  {
-    set_ext y.
-    split; intros.
-    { now apply H1. }
-    { now apply H. }
-  }
-  now subst.
-Qed.
-
 Lemma Inv_eqv {T A} :
-  ∀ (d1 d2 : pdata T A) s ρs,
-    Inv d1 s ρs ->
-    Inv d2 s ρs ->
+  ∀ l1 l2 (d1 d2 : pdata T A) s ρs,
+    Inv l1 d1 s ρs ->
+    Inv l2 d2 s ρs ->
     d1 = d2.
 Proof.
   intros.
@@ -1052,18 +1010,61 @@ Proof.
     now ddestruct und_def1.
   }
   subst. f_equal.
-  eapply rets_map_uniq with
-    (d:= MkD _ _).
+  rename l1 into l0.
+  rename l2 into l1.
+  assert (
+    (λ ρ, ∀ i, PossDef l0 und_vals0 (rets_map0 i) (ρ i)) =
+    (λ ρ, ∀ i, PossDef l1 und_vals0 (rets_map1 i) (ρ i))
+  ).
   {
-    constructor.
-    { exact und_def0. }
-    { easy. }
-    { easy. }
-    { easy. }
-    { easy. }
-    { easy. }
+    set_ext ρ.
+    apply equal_f with
+      (x:= conPoss und_vals0 ρ)
+      in ovr_def1.
+    do 2 rewrite ex_eq in ovr_def1.
+    all: try (
+      intros;
+      now apply conPoss_inj
+        with (u:=und_vals0)
+    ).
+    now rewrite ovr_def1.
   }
-  { now constructor. }
+  rewrite set_eq in H.
+  assert (H' := H).
+  specialize (H rets_map0).
+  specialize (H' rets_map1).
+  assert (∀ i, PossDef l0 und_vals0 (rets_map0 i) (rets_map0 i)).
+  {
+    intros.
+    eapply PS_refl with
+      (d:= MkD und_vals0 rets_map0)
+      (s:=s).
+    now constructor.
+  }
+  assert (∀ i, PossDef l1 und_vals0 (rets_map1 i) (rets_map1 i)).
+  {
+    intros.
+    eapply PS_refl with
+      (d:= MkD und_vals0 rets_map1)
+      (s:=s).
+    now constructor.
+  }
+  destruct H, H'.
+  extensionality i.
+  apply H with (i:=i) in H0.
+  apply H4 with (i:=i) in H1.
+  generalize dependent (rets_map0 i).
+  generalize dependent (rets_map1 i).
+  intros. clear - H0 H1.
+  destruct H0; ddestruct H1; try easy.
+  assert (vs = vi).
+  {
+    set_ext y.
+    split; intros.
+    { now apply H3. }
+    { now apply H0. }
+  }
+  now subst.
 Qed.
 
 Lemma invoke_in_rely {T A} :
