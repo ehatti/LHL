@@ -1076,7 +1076,8 @@ Proof.
     InvokeAny, TInvoke, TIdle,
     sub, subRelt, Rely.
   intros. psimpl. destruct d, x0.
-  exists (MkD und_vals0 (updf rets_map0 i (PWait v))).
+  assert (H1' := H1).
+  exists last_wrt, (MkD und_vals0 (updf rets_map0 i (PWait v))).
   destruct H1. psimpl.
   assert (rets_map0 i = PIdle).
   {
@@ -1086,7 +1087,8 @@ Proof.
       apply H5.
       exists rets_map0.
       split. 2: easy. intros.
-      apply PS_refl, vi_subs0.
+      eapply PS_refl with (d:=MkD _ _).
+      exact H1'.
     }
     clear - X.
     unfold conPoss in *. psimpl.
@@ -1206,11 +1208,33 @@ Proof.
       { psimpl. now rewrite eqb_id in H4. }
       { rewrite eqb_nid in H4; auto. }
     }
+    {
+      clear - ob_write0.
+      destruct last_wrt;
+      intros; psimpl.
+      {
+        exists x.
+        split. easy.
+        unfold updf. intros.
+        dec_eq_nats i0 i.
+        {
+          rewrite eqb_id in H1.
+          ddestruct H1.
+        }
+        {
+          rewrite eqb_nid in H1; auto.
+          eapply H0. exact H1. easy.
+        }
+      }
+      { easy. }
+    }
   }
 Qed.
 
 Axiom neg_all : ∀ A (P : A -> Prop), (¬(∀ x, P x)) -> ∃ x, ¬P x.
 Axiom neg_imp : ∀ (P Q : Prop), ¬(P -> Q) -> P /\ ¬Q.
+Axiom neg_som : ∀ A (P : A -> Prop), (¬(∃ x, P x)) -> ∀ x, ¬P x.
+Axiom neg_and : ∀ (P Q : Prop), ¬(P /\ Q) -> ¬P \/ ¬Q.
 
 Lemma return_in_rely {T A} :
   ∀ i j,
@@ -1222,7 +1246,8 @@ Proof.
     sub, subRelt, Rely,
     mapRetPoss, Returned.
   intros. psimpl. destruct d, x0.
-  exists (MkD und_vals0 (updf rets_map0 i PIdle)).
+  assert (H1' := H1).
+  exists last_wrt, (MkD und_vals0 (updf rets_map0 i PIdle)).
   destruct H1. psimpl. rename x1 into vi.
   ddestruct H2. psimpl. ddestruct H1.
   assert (rets_map0 i = PRetn v vi).
@@ -1234,7 +1259,8 @@ Proof.
       apply H0.
       exists rets_map0.
       split. 2: easy. intros.
-      apply PS_refl, vi_subs0.
+      eapply PS_refl with (d:=MkD _ _).
+      exact H1'.
     }
     clear - X.
     unfold conPoss in *. psimpl.
@@ -1319,6 +1345,11 @@ Proof.
           {
             rewrite eqb_id, H1.
             destruct vi; constructor.
+            {
+              intros. subst. psimpl.
+              exists x2. split. easy.
+              eapply H6. exact H1.
+            }
             { easy. }
             { eapply vi_subs0. exact H1. }
           }
@@ -1375,6 +1406,26 @@ Proof.
       dec_eq_nats i0 i.
       { psimpl. now rewrite eqb_id in H4. }
       { rewrite eqb_nid in H4; auto. }
+    }
+    {
+      clear - ob_write0.
+      destruct last_wrt;
+      intros; psimpl.
+      {
+        exists x.
+        split. easy.
+        unfold updf. intros.
+        dec_eq_nats i0 i.
+        {
+          rewrite eqb_id in H1.
+          ddestruct H1.
+        }
+        {
+          rewrite eqb_nid in H1; auto.
+          eapply H0. exact H1. easy.
+        }
+      }
+      { easy. }
     }
   }
 Qed.
@@ -1481,7 +1532,7 @@ Lemma return_step {T A} :
   ∀ (i : Name T) (v : A) (r : option (set A)),
     ReturnStep i (Guar i)
       (λ s ρs,
-        ∃ d, Inv d s ρs /\
+        ∃ last_wrt d, Inv last_wrt d s ρs /\
           ((
             r = None /\
             d.(rets_map) i = PRetn v None
@@ -1491,14 +1542,21 @@ Lemma return_step {T A} :
               r = Some new /\
               d.(rets_map) i = PRetn v (Some vi) /\
               vi ⊆ new /\
-              new ⊆ collect d.(und_vals)
+              new ⊆ collect d.(und_vals) /\
+              (∀ li,
+                last_wrt = Some li ->
+                ∃ lv,
+                  val (d.(und_vals) li) = Some lv /\
+                  (lv ∈ new → new = collect d.(und_vals)))
           )))
       (WriteSnap v) r
       (λ _ _ s ρs,
-        ∃ d, Inv d s ρs).
+        ∃ last_wrt d, Inv last_wrt d s ρs).
 Proof.
   intros i v r s ρs H _.
   psimpl. destruct H0; psimpl.
+  rename x into last_wrt.
+  rename x0 into x.
   {
     rename x into d.
     exists (λ σ, ρs σ /\
@@ -1524,7 +1582,8 @@ Proof.
         }
         {
           rewrite eqb_nid; auto.
-          apply PS_refl, vi_subs0.
+          eapply PS_refl with (d:=MkD _ _).
+          now constructor.
         }
       }
       {
@@ -1546,6 +1605,7 @@ Proof.
     destruct d.
     assert (
       Inv
+        last_wrt
         (MkD
           und_vals0
           (updf rets_map0 i None))
@@ -1679,25 +1739,41 @@ Proof.
         { psimpl. now rewrite eqb_id in H. }
         { rewrite eqb_nid in H; auto. }
       }
+      {
+        destruct last_wrt.
+        {
+          psimpl. exists x.
+          split. easy. unfold updf.
+          intros. dec_eq_nats i0 i.
+          { now rewrite eqb_id in H2. }
+          {
+            rewrite eqb_nid in H2; auto.
+            eapply H0. exact H2. easy.
+          }
+        }
+        { easy. }
+      }
     }
     split.
-    { eexists. exact H0. }
+    { eexists _, _. exact H0. }
     {
-      intros ??.
+      intros ???.
       eapply Inv_eqv in H2.
       2: exact H. psimpl.
-      eexists. split.
+      eexists _, _. split.
       {
         now apply SnapReturn with
           (v:=v) (vi:=None).
       }
-      { easy. }
+      { exact H0. }
     }
   }
   {
-    rename x into d.
-    rename x0 into vi.
-    rename x1 into new.
+    rename x into last_wrt.
+    rename x0 into d.
+    rename x1 into vi.
+    rename x2 into new.
+    rename H4 into rw_H.
     exists (λ σ, ρs σ /\
       Done i (WriteSnap v) (Some new) σ).
     split.
@@ -1721,7 +1797,8 @@ Proof.
         }
         {
           rewrite eqb_nid; auto.
-          apply PS_refl, vi_subs0.
+          eapply PS_refl with (d:= MkD _ _).
+          now constructor.
         }
       }
       {
@@ -1744,6 +1821,7 @@ Proof.
     destruct d.
     assert (
       Inv
+        last_wrt
         {| und_vals := und_vals0; rets_map := updf rets_map0 i None |}
         (λ j, if i =? j then Idle else fst s j, snd s)
         (λ τ,
@@ -1875,23 +1953,38 @@ Proof.
         { psimpl. now rewrite eqb_id in H. }
         { rewrite eqb_nid in H; auto. }
       }
+      {
+        clear - ob_write0.
+        destruct last_wrt.
+        {
+          psimpl. exists x.
+          split. easy. unfold updf.
+          intros. dec_eq_nats i0 i.
+          { now rewrite eqb_id in H1. }
+          {
+            rewrite eqb_nid in H1; auto.
+            eapply H0. exact H1. easy.
+          }
+        }
+        { easy. }
+      }
     }
     split.
-    { eexists. exact H0. }
+    { eexists _, _. exact H0. }
     {
-      intros ??.
+      intros ???.
       eassert (_ = d).
       {
         eapply Inv_eqv.
-        exact H. easy.
+        exact H. exact H4.
       }
-      psimpl. eexists.
+      psimpl. eexists _, _.
       split.
       {
         now apply SnapReturn with
           (v:=v) (vi:= Some vi).
       }
-      { easy. }
+      { exact H0. }
     }
   }
 Qed.
@@ -1902,8 +1995,8 @@ Arguments lemCall {T i E F VE VF R G A} Q S.
 Lemma Inv_stable {T A} :
   ∀ i c,
     Stable (@Rely T A i) (λ s ρs,
-      ∃ d,
-        Inv d s ρs /\
+      ∃ last_wrt d,
+        Inv last_wrt d s ρs /\
         d.(rets_map) i = c).
 Proof.
   unfold
@@ -1911,9 +2004,8 @@ Proof.
     sub, subPrec.
   intros. psimpl.
   apply H0 in H. psimpl.
-  exists x2. split. easy.
-  symmetry.
-  now apply Inv_pres_self.
+  exists x3, x4. split. easy.
+  symmetry. now apply Inv_pres_self.
 Qed.
 
 Lemma help {T} :
@@ -1966,31 +2058,45 @@ Proof.
   { easy. }
 Qed.
 
+Inductive Lock {P : Prop} :=
+| lock : P -> Lock.
+Arguments Lock : clear implicits.
+
+Lemma ins_lock {P} : P -> Lock P.
+Proof. now constructor. Qed.
+
+Ltac lock H := apply ins_lock in H.
+
+Lemma out_lock {P} : Lock P -> P.
+Proof. intros. now destruct H. Qed.
+
+Ltac unlock H := apply out_lock in H.
+
 Lemma write_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
     (λ _ _ s ρs,
-      ∃ d,
-        Inv d s ρs /\
+      ∃ last_wrt d,
+        Inv last_wrt d s ρs /\
         d.(rets_map) i = PWait v /\
         (d.(und_vals) i).(ran) = false)
     (call (At i (Write (MkReg (Some v) true))))
     (λ 'tt _ _ s ρs,
-      ∃ d vi,
-        Inv d s ρs /\
+      ∃ last_wrt d vi,
+        Inv last_wrt d s ρs /\
         (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
         d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v))).
 Proof.
   eapply weakenPost.
   eapply lemCallWk with
     (Q:=λ s ρs,
-      ∃ d,
-        Inv d s ρs /\
+      ∃ last_wrt d,
+        Inv last_wrt d s ρs /\
         d.(rets_map) i = PWait v /\
         (d.(und_vals) i).(ran) = false /\
         (d.(und_vals) i).(val) = None)
     (S:=λ _ s ρs,
-      ∃ d vi,
-        Inv d s ρs /\
+      ∃ last_wrt d vi,
+        Inv last_wrt d s ρs /\
         (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
         d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v))).
   {
@@ -1999,7 +2105,7 @@ Proof.
       sub, subPrec.
     intros. psimpl.
     apply H0 in H. psimpl.
-    exists x2. split. easy.
+    exists x3, x4. split. easy.
     assert (H' := H).
     apply Inv_pres_self in H.
     apply Inv_pres_und in H'.
@@ -2012,14 +2118,14 @@ Proof.
       sub, subPrec.
     intros. psimpl.
     apply H0 in H. psimpl.
-    exists x3, x2.
+    exists x4, x5, x3.
     split. easy.
     assert (H' := H).
     apply Inv_pres_self in H.
-    assert (∀ i, x2 i -> (und_vals x3 i).(val) = (und_vals x1 i).(val)).
+    assert (∀ i, x3 i -> (und_vals x5 i).(val) = (und_vals x2 i).(val)).
     {
       intros. apply H1 in H4.
-      remember (und_vals x1 i0).
+      remember (und_vals x2 i0).
       destruct r, val0; try easy. simpl in *.
       eapply forget_othr, one_shot in H'.
       2: now rewrite <-Heqr.
@@ -2035,15 +2141,15 @@ Proof.
     }
     {
       assert (
-        (λ v, ∃ i, x2 i /\ val (und_vals x1 i) = Some v) =
-        (λ v, ∃ i, x2 i /\ val (und_vals x3 i) = Some v)
+        (λ v, ∃ i, x3 i /\ val (und_vals x2 i) = Some v) =
+        (λ v, ∃ i, x3 i /\ val (und_vals x5 i) = Some v)
       ).
       {
         set_ext y.
         split; intros; psimpl.
-        exists x4. split. easy.
+        exists x6. split. easy.
         apply H4 in H5. congruence.
-        exists x4. split. easy.
+        exists x6. split. easy.
         apply H4 in H5. congruence.
       }
       now rewrite <-H5, <-H.
@@ -2052,19 +2158,23 @@ Proof.
   {
     unfold Commit.
     intros. do 2 psimpl.
+    rename x1 into last_wrt.
+    rename x2 into x1.
     exists ρs.
     split.
     {
       clear - H. destruct H. psimpl.
       exists (conPoss x1.(und_vals) x1.(rets_map)), x1.(rets_map).
-      split. 2: easy. intros. apply PS_refl, vi_subs0.
+      split. 2: easy. intros.
+      eapply PS_refl with (d:= MkD _ _).
+      now constructor.
     }
     split.
     {
       intros. exists σ.
       split. easy. constructor.
     }
-    assert (Inv x1 t ρs).
+    assert (Inv last_wrt x1 t ρs).
     {
       destruct H. psimpl.
       ddestruct H2. psimpl.
@@ -2101,10 +2211,11 @@ Proof.
       }
       { easy. }
       { easy. }
+      { easy. }
     }
     split.
     {
-      exists x1.
+      exists last_wrt, x1.
       split. easy.
       split. easy.
       split. easy.
@@ -2112,17 +2223,19 @@ Proof.
       now apply resp_write0.
     }
     {
-      intros ??.
+      intros ???.
       eapply Inv_eqv in H10.
       2: exact H. psimpl.
-      exists d. split.
-      constructor. easy.
+      exists last_wrt, d.
+      split. constructor. easy.
     }
   }
   intros [].
   {
     unfold Commit.
     intros. do 2 psimpl.
+    rename x into last_wrt.
+    rename x0 into x.
     ddestruct H2. psimpl.
     ddestruct H9; psimpl.
     2:{
@@ -2171,413 +2284,23 @@ Proof.
         }
       }
     }
-    exists (λ σ,
-      ∃ dσ,
-        (∀ i, PossDef und_vals1 (rets_map1 i) (dσ i)) /\
-        σ = conPoss und_vals1 dσ).
-    split.
+    decide_prop (v ∈ collect und_vals0).
     {
-      eexists _, _.
-      split. 2: easy. intros.
-      apply PS_refl. subst rets_map1 und_vals1.
-      unfold updf. intros. dec_eq_nats i0 i.
-      {
-        rewrite eqb_id in H.
-        ddestruct H. destruct H0.
-        {
-          subst. exists i.
-          now rewrite eqb_id.
-        }
-        {
-          destruct H. exists x0.
-          dec_eq_nats x0 i.
-          { now rewrite H5 in H. }
-          { now rewrite eqb_nid. }
-        }
-      }
-      {
-        rewrite eqb_nid in *; auto.
-        eapply vi_subs0 in H0. 2: exact H.
-        destruct H0. exists x0.
-        dec_eq_nats x0 i.
-        { now rewrite H5 in H0. }
-        { now rewrite eqb_nid. }
-      }
+      admit.
     }
-    split.
-    {
-      intros. psimpl.
-      decide_prop (v ∈ collect und_vals0).
-      {
-        admit.
-      }
-      {
-        rename H0 into v_nin.
-        rename x0 into σ.
-        cut (
-          ∃ ρ,
-            (∀ i, PossDef und_vals0 (rets_map0 i) (ρ i)) /\
-            PossSteps (conPoss und_vals0 ρ) (conPoss und_vals1 σ)
-        ).
-        {
-          intros. psimpl.
-          eexists. split. 2: exact H1.
-          eexists. split. 2: easy.
-          easy.
-        }
-        pose (rp j :=
-          match σ j with
-          | PRetn w (Some ws) => 
-            if classicT (PossDef und_vals0 (rets_map0 j) (PRetn w (Some ws))) then
-              PRetn w (Some ws)
-            else
-              PCall w : RRet T A
-          | r => r
-          end).
-        exists (updf rp i (Some (v, None))).
-        split.
-        {
-          intros. specialize (H i0).
-          subst rp rets_map1. simpl.
-          unfold updf in H. unfold updf.
-          dec_eq_nats i0 i.
-          {
-            rewrite eqb_id, H3.
-            constructor.
-          }
-          {
-            rewrite eqb_nid in *; auto.
-            ddestruct H; rewrite <-x2, <-x;
-            try now constructor.
-            case_match. easy.
-            constructor.
-          }
-        }
-        {
-          eapply PossStepsStep with
-            (i:=i)
-            (σ:= conPoss und_vals1 rp).
-          {
-            eapply PCommitCall with
-              (m:= WriteSnap v).
-            {
-              simpl. rewrite Heq.
-              apply SnapCallPass.
-              { easy. }
-              { subst und_vals1. unfold updf. now rewrite eqb_id. }
-              { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
-              { subst rp. unfold updf. now rewrite eqb_id. }
-              {
-                subst rp rets_map1. simpl in *.
-                specialize (H i). unfold updf in H.
-                rewrite eqb_id in H. ddestruct H;
-                rewrite <-x; try case_match; try easy.
-                now rewrite H3 in p.
-              }
-              { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
-            }
-            { simpl. subst rp. unfold updf. now rewrite eqb_id. }
-            {
-              subst rp rets_map1. unfold updf in *.
-              specialize (H i). rewrite eqb_id in H.
-              ddestruct H; simpl; rewrite <-x;
-              now (easy || case_match).
-            }
-            { simpl. subst rp. unfold updf. now rewrite eqb_id. }
-            {
-              subst rp rets_map1. unfold updf in *.
-              specialize (H i). rewrite eqb_id in H.
-              ddestruct H; simpl; rewrite <-x;
-              try (easy || case_match).
-              now rewrite H3 in p. easy.
-            }
-          }
-          { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
-          { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
-          pose (rp' n j :=
-            match σ j with
-            | PRetn w (Some ws) =>
-              if classicT (`j < n) then
-                if classicT (PossDef und_vals0 (rets_map0 j) (PRetn w (Some ws))) then
-                  PRetn w (Some ws)
-                else
-                  PCall w : RRet T A
-              else
-                PRetn w (Some ws)
-            | r => r
-            end).
-          assert (rp = rp' T).
-          {
-            clear. subst rp rp'.
-            extensionality j. gendep (σ j).
-            unfold RRet'. intro. dstr_rposs;
-            try easy; repeat case_match;
-            try easy. destruct j. psimpl. lia.
-          }
-          assert (rp' 0 = σ).
-          {
-            clear. subst rp'.
-            extensionality j. gendep (σ j).
-            unfold RRet'. intro. dstr_rposs;
-            try easy; now case_match.
-          }
-          rewrite H0. clear H0 rp.
-          cut (
-            ∀ n,
-              (∀ m, n = S m -> m < T) ->
-              PossSteps
-                (conPoss und_vals1 (rp' n))
-                (conPoss und_vals1 σ)
-          ).
-          {
-            intros. apply H0.
-            intros. rewrite H2.
-            lia.
-          }
-          intros.
-          induction n.
-          {
-            rewrite H1.
-            constructor.
-          }
-          {
-            assert (n < T)
-              by now apply H0.
-            pose (nt := exist (λ i, i < T) n H2).
-            remember (σ nt). unfold RRet' in r.
-            dstr_rposs.
-            {
-              decide_prop (PossDef und_vals0 (rets_map0 nt) (PRetn a (Some s1))).
-              {
-                assert (rp' (S n) = rp' n).
-                {
-                  subst rp'. simpl.
-                  extensionality j.
-                  dec_eq_nats nt j.
-                  {
-                    rewrite <-Heqr.
-                    repeat case_match;
-                    try easy; try lia.
-                  }
-                  {
-                    gendep (σ j). unfold RRet'.
-                    intros. dstr_rposs; try easy;
-                    repeat case_match; try (easy||lia).
-                    apply pr1_neq in H7. subst nt.
-                    destruct j. simpl in *. lia.
-                  }
-                }
-                rewrite H7. apply IHn.
-                intros. lia.
-              }
-              {
-                clear H1.
-                specialize (H nt).
-                rewrite <-Heqr in H.
-                ddestruct H.
-                assert (s1 = insert v (collect und_vals0)).
-                {
-                  rewrite <-Heq at 1.
-                  set_ext y. split.
-                  { now apply H0. }
-                  {
-                    subst rets_map1.
-                    unfold updf in x.
-                    dec_eq_nats nt i.
-                    {
-                      rewrite eqb_id in x. ddestruct x.
-                      intros. apply H. now rewrite <-Heq at 1.
-                    }
-                    {
-                      rewrite eqb_nid in *; auto.
-                      assert (¬ s1 ⊆ collect und_vals0).
-                      {
-                        intros ?. apply H6.
-                        rewrite <-x. now constructor.
-                      }
-                      decide_prop (v ∈ s1).
-                      {
-                        admit.
-                      }
-                      {
-                        exfalso.
-                        assert (s1 ⊆ insert v (collect und_vals0)).
-                        {
-                          now replace (insert v (collect und_vals0))
-                          with (collect und_vals1).
-                        }
-                        assert (s1 ⊆ collect und_vals0).
-                        {
-                          eapply red_sub.
-                          { exact v_nin. }
-                          { easy. }
-                          { easy. }
-                        }
-                        contradiction.
-                      }
-                    }
-                  }
-                }
-                subst.
-                eapply PossStepsStep
-                  with (i:=nt).
-                4:{
-                  apply IHn.
-                  intros. subst.
-                  lia.
-                }
-                2:{
-                  simpl. intros.
-                  dec_eq_nats nt j.
-                  {
-                    rewrite <-Heqr.
-                    now repeat case_match.
-                  }
-                  {
-                    gendep (σ j). unfold RRet'.
-                    intros. dstr_rposs;
-                    now repeat case_match.
-                  }
-                }
-                2:{
-                  simpl. intros.
-                  repeat case_match; try (easy || lia).
-                  destruct j. simpl in *. rename x2 into j.
-                  assert (j = n) by lia. subst. subst nt.
-                  exfalso. apply H7. repeat f_equal.
-                  apply proof_irrelevance.
-                }
-                {
-                  eapply PCommitRet with
-                    (m:= WriteSnap a)
-                    (v:= Some (collect und_vals1)).
-                  {
-                    simpl.
-                    eapply SnapRetPass.
-                    {
-                      subst rets_map1. unfold updf in *.
-                      dec_eq_nats nt i.
-                      { now rewrite eqb_id. }
-                      {
-                        rewrite eqb_nid in *; auto. apply resp_ran0.
-                        repeat eexists. now rewrite <-x at 1.
-                      }
-                    }
-                    {
-                      rewrite <-Heqr. repeat case_match;
-                      try easy. subst nt. simpl in *. lia.
-                    }
-                    {
-                      rewrite <-Heqr. repeat case_match;
-                      try easy. subst nt. simpl in *. lia.
-                    }
-                    {
-                      intros ??.
-                      assert (`j ≠ `nt) by now apply pr1_neq.
-                      repeat case_match; try easy; destruct j;
-                      subst nt; simpl in *; lia.
-                    }
-                  }
-                  { simpl. rewrite <-Heqr. now repeat case_match. }
-                  { simpl. rewrite <-Heqr. now repeat case_match. }
-                  {
-                    simpl. rewrite <-Heqr.
-                    repeat case_match; easy || lia.
-                  }
-                  {
-                    simpl. rewrite <-Heqr, Heq.
-                    repeat case_match; easy || lia.
-                  }
-                }
-              }
-            }
-            {
-              assert (rp' (S n) = rp' n).
-              {
-                clear - Heqr. subst rp'.
-                simpl. extensionality j.
-                dec_eq_nats nt j.
-                { now rewrite <-Heqr. }
-                {
-                  gendep (σ j). unfold RRet'.
-                  intros. dstr_rposs; try easy;
-                  repeat case_match; try easy;
-                  apply pr1_neq in H; subst nt;
-                  destruct j; psimpl; lia.
-                }
-              }
-              rewrite H6. apply IHn.
-              intros. lia.
-            }
-            {
-              assert (rp' (S n) = rp' n).
-              {
-                clear - Heqr. subst rp'.
-                simpl. extensionality j.
-                dec_eq_nats nt j.
-                { now rewrite <-Heqr. }
-                {
-                  gendep (σ j). unfold RRet'.
-                  intros. dstr_rposs; try easy;
-                  repeat case_match; try easy;
-                  apply pr1_neq in H; subst nt;
-                  destruct j; psimpl; lia.
-                }
-              }
-              rewrite H6. apply IHn.
-              intros. lia.
-            }
-            {
-              assert (rp' (S n) = rp' n).
-              {
-                clear - Heqr. subst rp'.
-                simpl. extensionality j.
-                dec_eq_nats nt j.
-                { now rewrite <-Heqr. }
-                {
-                  gendep (σ j). unfold RRet'.
-                  intros. dstr_rposs; try easy;
-                  repeat case_match; try easy;
-                  apply pr1_neq in H; subst nt;
-                  destruct j; psimpl; lia.
-                }
-              }
-              rewrite H6. apply IHn.
-              intros. lia.
-            }
-            {
-              assert (rp' (S n) = rp' n).
-              {
-                clear - Heqr. subst rp'.
-                simpl. extensionality j.
-                dec_eq_nats nt j.
-                { now rewrite <-Heqr. }
-                {
-                  gendep (σ j). unfold RRet'.
-                  intros. dstr_rposs; try easy;
-                  repeat case_match; try easy;
-                  apply pr1_neq in H; subst nt;
-                  destruct j; psimpl; lia.
-                }
-              }
-              rewrite H6. apply IHn.
-              intros. lia.
-            }
-          }
-        }
-      }
-    }
-    assert (
+    rename H into v_nin.
+    assert ( IH : 
       Inv
+        (Some i)
         (MkD und_vals1 rets_map1)
         t
         (λ σ,
           ∃ dσ,
-          (∀ i0, PossDef und_vals1 (rets_map1 i0) (dσ i0)) /\
+          (∀ i0, PossDef (Some i) und_vals1 (rets_map1 i0) (dσ i0)) /\
           σ = conPoss und_vals1 dσ) /\
-      rets_map1 i = PRetn v (Some (insert v (collect und_vals0))) /\
-      (∀ i0 : Index T, val (und_vals1 i0) ≠ None → val (und_vals1 i0) ≠ None) /\
-      rets_map1 i = PRetn v (Some (λ v0, ∃ i0, val (und_vals1 i0) ≠ None ∧ val (und_vals1 i0) = Some v0))
+        rets_map1 i = PRetn v (Some (insert v (collect und_vals0))) /\
+        (∀ i0, val (und_vals1 i0) ≠ None → val (und_vals1 i0) ≠ None) /\
+        rets_map1 i = PRetn v (Some (λ v0, ∃ i0, val (und_vals1 i0) ≠ None ∧ val (und_vals1 i0) = Some v0))
     ).
     {
       split.
@@ -2646,6 +2369,23 @@ Proof.
             now exists x0, x2.
           }
         }
+        {
+          exists v. split.
+          { unfold updf. now rewrite eqb_id. }
+          {
+            unfold updf. intros.
+            dec_eq_nats i0 i.
+            {
+              rewrite eqb_id in H.
+              ddestruct H. now rewrite <-Heq.
+            }
+            {
+              rewrite eqb_nid in H; auto.
+              eapply vi_subs0 in H.
+              2: exact H0. easy.
+            }
+          }
+        }
       }
       split.
       {
@@ -2679,6 +2419,347 @@ Proof.
           {
             rewrite eqb_nid in *; auto.
             right. now exists x0.
+          }
+        }
+      }
+    }
+    exists (λ σ,
+      ∃ dσ,
+        (∀ i0, PossDef (Some i) und_vals1 (rets_map1 i0) (dσ i0)) /\
+        σ = conPoss und_vals1 dσ).
+    split.
+    {
+      psimpl. eexists _, _.
+      split. 2: easy. intros.
+      eapply PS_refl with (d:= MkD und_vals1 rets_map1).
+      exact H.
+    }
+    split.
+    {
+      lock IH.
+      intros. psimpl.
+      rename x0 into σ.
+      cut (
+        ∃ ρ,
+          (∀ i0, PossDef last_wrt und_vals0 (rets_map0 i0) (ρ i0)) /\
+          PossSteps (conPoss und_vals0 ρ) (conPoss und_vals1 σ)
+      ).
+      {
+        intros. psimpl.
+        eexists. split. 2: exact H1.
+        eexists. split. 2: easy.
+        easy.
+      }
+      pose (rp j :=
+        match σ j with
+        | PRetn w (Some ws) => 
+          if classicT (PossDef last_wrt und_vals0 (rets_map0 j) (PRetn w (Some ws))) then
+            PRetn w (Some ws)
+          else
+            PCall w : RRet T A
+        | r => r
+        end).
+      exists (updf rp i (Some (v, None))).
+      split.
+      {
+        intros. specialize (H i0).
+        subst rp rets_map1. simpl.
+        unfold updf in H. unfold updf.
+        dec_eq_nats i0 i.
+        {
+          rewrite eqb_id, H3.
+          constructor.
+        }
+        {
+          rewrite eqb_nid in *; auto.
+          ddestruct H; rewrite <-x2, <-x;
+          try now constructor.
+          case_match. easy.
+          constructor.
+        }
+      }
+      {
+        eapply PossStepsStep with
+          (i:=i)
+          (σ:= conPoss und_vals1 rp).
+        {
+          eapply PCommitCall with
+            (m:= WriteSnap v).
+          {
+            simpl. rewrite Heq.
+            apply SnapCallPass.
+            { easy. }
+            { subst und_vals1. unfold updf. now rewrite eqb_id. }
+            { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
+            { subst rp. unfold updf. now rewrite eqb_id. }
+            {
+              subst rp rets_map1. simpl in *.
+              specialize (H i). unfold updf in H.
+              rewrite eqb_id in H. ddestruct H;
+              rewrite <-x; try case_match; try easy.
+              now rewrite H3 in p.
+            }
+            { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
+          }
+          { simpl. subst rp. unfold updf. now rewrite eqb_id. }
+          {
+            subst rp rets_map1. unfold updf in *.
+            specialize (H i). rewrite eqb_id in H.
+            ddestruct H; simpl; rewrite <-x;
+            now (easy || case_match).
+          }
+          { simpl. subst rp. unfold updf. now rewrite eqb_id. }
+          {
+            subst rp rets_map1. unfold updf in *.
+            specialize (H i). rewrite eqb_id in H.
+            ddestruct H; simpl; rewrite <-x;
+            try (easy || case_match).
+            now rewrite H3 in p. easy.
+          }
+        }
+        { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
+        { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
+        pose (rp' n j :=
+          match σ j with
+          | PRetn w (Some ws) =>
+            if classicT (`j < n) then
+              if classicT (PossDef last_wrt und_vals0 (rets_map0 j) (PRetn w (Some ws))) then
+                PRetn w (Some ws)
+              else
+                PCall w : RRet T A
+            else
+              PRetn w (Some ws)
+          | r => r
+          end).
+        assert (rp = rp' T).
+        {
+          clear. subst rp rp'.
+          extensionality j. gendep (σ j).
+          unfold RRet'. intro. dstr_rposs;
+          try easy; repeat case_match;
+          try easy. destruct j. psimpl. lia.
+        }
+        assert (rp' 0 = σ).
+        {
+          clear. subst rp'.
+          extensionality j. gendep (σ j).
+          unfold RRet'. intro. dstr_rposs;
+          try easy; now case_match.
+        }
+        rewrite H0. clear H0 rp.
+        cut (
+          ∀ n,
+            (∀ m, n = S m -> m < T) ->
+            PossSteps
+              (conPoss und_vals1 (rp' n))
+              (conPoss und_vals1 σ)
+        ).
+        {
+          intros. apply H0.
+          intros. rewrite H2.
+          lia.
+        }
+        intros.
+        induction n.
+        {
+          rewrite H1.
+          constructor.
+        }
+        {
+          assert (n < T)
+            by now apply H0.
+          pose (nt := exist (λ i, i < T) n H2).
+          remember (σ nt). unfold RRet' in r.
+          dstr_rposs.
+          {
+            decide_prop (PossDef last_wrt und_vals0 (rets_map0 nt) (PRetn a (Some s1))).
+            {
+              assert (rp' (S n) = rp' n).
+              {
+                subst rp'. simpl.
+                extensionality j.
+                dec_eq_nats nt j.
+                {
+                  rewrite <-Heqr.
+                  repeat case_match;
+                  try easy; try lia.
+                }
+                {
+                  gendep (σ j). unfold RRet'.
+                  intros. dstr_rposs; try easy;
+                  repeat case_match; try (easy||lia).
+                  apply pr1_neq in H7. subst nt.
+                  destruct j. simpl in *. lia.
+                }
+              }
+              rewrite H7. apply IHn.
+              intros. lia.
+            }
+            {
+              decide_prop (v ∈ s1).
+              {
+                rename H7 into v_in.
+                clear H1. specialize (H nt).
+                rewrite <-Heqr in H.
+                ddestruct H.
+                assert (s1 = insert v (collect und_vals0)).
+                {
+                  rewrite <-Heq.
+                  specialize (H i eq_refl). psimpl.
+                  unfold updf in H. rewrite eqb_id in H.
+                  ddestruct H. now apply H9.
+                }
+                subst.
+                eapply PossStepsStep
+                  with (i:=nt).
+                4:{
+                  apply IHn.
+                  intros. subst.
+                  lia.
+                }
+                2:{
+                  simpl. intros.
+                  dec_eq_nats nt j.
+                  {
+                    rewrite <-Heqr.
+                    now repeat case_match.
+                  }
+                  {
+                    gendep (σ j). unfold RRet'.
+                    intros. dstr_rposs;
+                    now repeat case_match.
+                  }
+                }
+                2:{
+                  simpl. intros.
+                  repeat case_match; try (easy || lia).
+                  destruct j. simpl in *. rename x2 into j.
+                  assert (j = n) by lia. subst. subst nt.
+                  exfalso. apply H9. repeat f_equal.
+                  apply proof_irrelevance.
+                }
+                {
+                  eapply PCommitRet with
+                    (m:= WriteSnap a)
+                    (v:= Some (collect und_vals1)).
+                  {
+                    simpl.
+                    eapply SnapRetPass.
+                    {
+                      subst rets_map1. unfold updf in *.
+                      dec_eq_nats nt i.
+                      { now rewrite eqb_id. }
+                      {
+                        assert (i ≠ nt) by easy.
+                        rewrite eqb_nid; auto.
+                        rewrite eqb_nid in x; auto.
+                        apply resp_ran0. repeat eexists.
+                        now rewrite x at 1.
+                      }
+                    }
+                    {
+                      rewrite <-Heqr. repeat case_match;
+                      try easy. subst nt. simpl in *. lia.
+                    }
+                    {
+                      rewrite <-Heqr. repeat case_match;
+                      try easy. subst nt. simpl in *. lia.
+                    }
+                    {
+                      intros ??.
+                      assert (`j ≠ `nt) by now apply pr1_neq.
+                      repeat case_match; try easy; destruct j;
+                      subst nt; simpl in *; lia.
+                    }
+                  }
+                  { simpl. rewrite <-Heqr. now repeat case_match. }
+                  { simpl. rewrite <-Heqr. now repeat case_match. }
+                  {
+                    simpl. rewrite <-Heqr.
+                    repeat case_match; easy || lia.
+                  }
+                  {
+                    simpl. rewrite <-Heqr, Heq.
+                    repeat case_match; easy || lia.
+                  }
+                }
+              }
+              {
+                
+              }
+            }
+          }
+          {
+            assert (rp' (S n) = rp' n).
+            {
+              clear - Heqr. subst rp'.
+              simpl. extensionality j.
+              dec_eq_nats nt j.
+              { now rewrite <-Heqr. }
+              {
+                gendep (σ j). unfold RRet'.
+                intros. dstr_rposs; try easy;
+                repeat case_match; try easy;
+                apply pr1_neq in H; subst nt;
+                destruct j; psimpl; lia.
+              }
+            }
+            rewrite H6. apply IHn.
+            intros. lia.
+          }
+          {
+            assert (rp' (S n) = rp' n).
+            {
+              clear - Heqr. subst rp'.
+              simpl. extensionality j.
+              dec_eq_nats nt j.
+              { now rewrite <-Heqr. }
+              {
+                gendep (σ j). unfold RRet'.
+                intros. dstr_rposs; try easy;
+                repeat case_match; try easy;
+                apply pr1_neq in H; subst nt;
+                destruct j; psimpl; lia.
+              }
+            }
+            rewrite H6. apply IHn.
+            intros. lia.
+          }
+          {
+            assert (rp' (S n) = rp' n).
+            {
+              clear - Heqr. subst rp'.
+              simpl. extensionality j.
+              dec_eq_nats nt j.
+              { now rewrite <-Heqr. }
+              {
+                gendep (σ j). unfold RRet'.
+                intros. dstr_rposs; try easy;
+                repeat case_match; try easy;
+                apply pr1_neq in H; subst nt;
+                destruct j; psimpl; lia.
+              }
+            }
+            rewrite H6. apply IHn.
+            intros. lia.
+          }
+          {
+            assert (rp' (S n) = rp' n).
+            {
+              clear - Heqr. subst rp'.
+              simpl. extensionality j.
+              dec_eq_nats nt j.
+              { now rewrite <-Heqr. }
+              {
+                gendep (σ j). unfold RRet'.
+                intros. dstr_rposs; try easy;
+                repeat case_match; try easy;
+                apply pr1_neq in H; subst nt;
+                destruct j; psimpl; lia.
+              }
+            }
+            rewrite H6. apply IHn.
+            intros. lia.
           }
         }
       }
