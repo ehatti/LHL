@@ -585,6 +585,12 @@ Variant PossDef {T A} {wr : OWr A} {st : Name T -> reg_st A} :
   PossDef (Some (v, Some (Some (Some vi)))) (Some (v, Some None)).
 Arguments PossDef {T A} wr st _ _.
 
+Record bisub {X} (A B : set X) := {
+  sub_fwd : A ⊆ B;
+  sub_bwd : B ⊆ A
+}.
+Infix "≡" := bisub (at level 40).
+
 (* global invariant, should always hold *)
 Record Inv {T A}
   {d : pdata T A}
@@ -615,7 +621,7 @@ Record Inv {T A}
       (∃ v o, d.(rets_map) i = Some (v, Some o)) ->
       (d.(und_vals) i).(ran) = true;
   ordn_val :
-    (λ v, List.In v d.(wrt_ordn)) ⊆ collect d.(und_vals)
+    (λ v, List.In v d.(wrt_ordn)) ≡ collect d.(und_vals)
 }.
 Arguments Inv {T A} d s ρs.
 
@@ -681,21 +687,21 @@ Definition Guar {T A} (i : Name T) : Relt T A :=
             updt m m' i (Some v) None /\
             updt c c' i false true
           end /\
-          ∀ i,
-            (
-              ρ.(PCalls) i = CallPoss (WriteSnap v) /\
-              ρ.(PRets) i = RetIdle /\
-              σ.(PCalls) i = CallDone (WriteSnap v) /\
+          Waiting i (WriteSnap v) ρ /\
+          Done i (WriteSnap v) (Some (snapSt σ)) σ /\
+          ∀ j, i ≠ j ->
+            (∃ w,
+              Called j (WriteSnap w) ρ /\
               (
-                σ.(PRets) i = RetIdle \/
-                σ.(PRets) i = RetPoss (WriteSnap v) (Some (snapSt σ))
+                Called j (WriteSnap w) σ \/
+                Done j (WriteSnap w) (Some (snapSt σ)) σ
               )
             ) \/
-            (
-              ρ.(PCalls) i ≠ CallPoss (WriteSnap v) /\
-              ρ.(PRets) i ≠ RetIdle /\
-              ρ.(PCalls) i = σ.(PCalls) i /\
-              ρ.(PRets) i = σ.(PRets) i
+            (∀ w,
+              ρ.(PCalls) j ≠ CallPoss (WriteSnap w) /\
+              ρ.(PRets) j ≠ RetIdle /\
+              ρ.(PCalls) j = σ.(PCalls) j /\
+              ρ.(PRets) j = σ.(PRets) j
             )
       )
     ).
@@ -866,7 +872,7 @@ Proof.
           ).
           {
             unfold updf.
-            intros. destruct H3.
+            intros. destruct H5.
             {
               subst. exists i.
               now rewrite eqb_id.
@@ -875,10 +881,10 @@ Proof.
               psimpl.
               dec_eq_nats x0 i.
               {
-                clear - und_def0 m1_set0 H3.
+                clear - und_def0 m1_set0 H5.
                 specialize (und_def0 i).
                 rewrite m1_set0 in und_def0 at 1.
-                ddestruct und_def0. now rewrite <-x in H3.
+                ddestruct und_def0. now rewrite <-x in H5.
               }
               { exists x0. now rewrite eqb_nid. }
             }
@@ -889,13 +895,13 @@ Proof.
           ).
           {
             unfold updf. intros.
-            destruct H3. dec_eq_nats x0 i.
+            destruct H5. dec_eq_nats x0 i.
             {
-              rewrite eqb_id in H3.
-              ddestruct H3. now left.
+              rewrite eqb_id in H5.
+              ddestruct H5. now left.
             }
             {
-              rewrite eqb_nid in H3;
+              rewrite eqb_nid in H5;
               auto. right. now exists x0.
             }
           }
@@ -904,116 +910,154 @@ Proof.
           {
             unfold updf. intros.
             specialize (H0 i0).
-            specialize (H2 i0).
-            destruct H2; psimpl.
+            dec_eq_nats i0 i.
             {
-              ddestruct H0;
-              rewrite <-x in *;
-              try easy.
-              dec_eq_nats i0 i.
+              rewrite eqb_id.
+              constructor.
               {
-                rewrite eqb_id.
-                constructor.
-                {
-                  eapply Build_ObWr with
-                    (pfx:= wrt_ordn0 ++ (x0 :: nil))
-                    (qfx:= nil).
-                  { now rewrite app_nil_r. }
-                  {
-                    intros. apply In_app in H0.
-                    simpl in *. destruct H0.
-                    { right. now apply ordn_val0. }
-                    { left. tauto. }
-                  }
-                  { easy. }
-                }
-                { easy. }
-                { easy. }
-              }
-              {
-                rewrite eqb_nid; auto.
-                rewrite <-x2. constructor.
-              }
-            }
-            {
-              assert (ObWr (insert x (collect und_vals0)) (x :: wrt_ordn0)).
-              {
-                apply Build_ObWr with
-                  (pfx:= x :: wrt_ordn0)
+                eapply Build_ObWr with
+                  (pfx:= wrt_ordn0 ++ (x :: nil))
                   (qfx:= nil).
                 { now rewrite app_nil_r. }
                 {
-                  intros. destruct H6.
-                  { subst. now left. }
+                  intros. apply In_app in H5.
+                  simpl in *. destruct H5.
                   { right. now apply ordn_val0. }
+                  { left. tauto. }
                 }
                 { easy. }
               }
-              ddestruct H0;
-              rewrite <-x in *;
-              try easy; dec_eq_nats i0 i;
-              (rewrite eqb_id || rewrite eqb_nid; auto);
-              try rewrite <-x2 in *; try now constructor.
+              { easy. }
+              { easy. }
+            }
+            {
+              assert (
+                ObWr (insert x (collect und_vals0)) (wrt_ordn0 ++ (x :: nil))
+              ).
               {
-                constructor; try easy.
                 apply Build_ObWr with
-                  (pfx:= wrt_ordn0 ++ (x0 :: nil))
-                  (qfx:= nil).
+                  (pfx:= wrt_ordn0 ++ x :: nil)
+                  (qfx := nil).
+                { now rewrite app_nil_r. }
+                {
+                  intros.
+                  apply In_app in H6. destruct H6.
+                  { right. now apply ordn_val0. }
+                  { psimpl. left. tauto. }
+                }
+                { easy. }
+              }
+              rewrite eqb_nid; auto.
+              ddestruct H0; rewrite <-x, <-x2;
+              try constructor.
+              {
+                destruct X. subst.
+                apply Build_ObWr with
+                  (pfx:= pfx0)
+                  (qfx:= qfx0 ++ x0 :: nil).
+                { now rewrite app_assoc. }
                 { easy. }
                 {
-                  intros. right.
-                  now apply ordn_val0.
+                  intros.
+                  apply In_app in H7.
+                  destruct H7.
+                  { now apply all_dups0. }
+                  {
+                    simpl in H7. destruct H7.
+                    2: easy. subst. assert (H8' := H8).
+                    apply H1, ordn_val0, In_app in H8.
+                    destruct H8. easy. auto.
+                  }
                 }
               }
+              { easy. }
+              { intros. now apply Hleft, or_intror, H1. }
             }
           }
           {
-            destruct σ. unfold conPoss.
-            psimpl. repeat f_equal.
+            unfold conPoss. destruct σ.
+            destruct PState. do 2 psimpl.
+            repeat f_equal.
             {
-              clear H2. destruct PState.
+              clear H4.
               psimpl. repeat f_equal.
-              {
-                set_ext y. split.
-                { now apply Hleft. }
-                { now apply Hright. }
-              }
-              {
-                unfold updf.
-                clear - H2. destruct H2.
-                extensionality j. dec_eq_nats j i.
-                { now rewrite m2_set0, eqb_id. }
-                { rewrite eqb_nid; auto. }
-              }
-              {
-                clear - H3. destruct H3.
-                extensionality j. dec_eq_nats j i.
-                { now rewrite m2_set0, eqb_id. }
-                { rewrite eqb_nid; auto. }
-              }
+              set_ext y. split.
+              { now apply Hleft. }
+              { now apply Hright. }
             }
             {
-              unfold updf. extensionality k.
-              specialize (H2 k). psimpl.
-              dec_eq_nats k i.
-              { now rewrite eqb_id. }
+              unfold updf. clear - H5. destruct H5.
+              extensionality j. dec_eq_nats j i.
+              { now rewrite eqb_id, m2_set0. }
+              { now rewrite eqb_nid, m_diff0. }
+            }
+            {
+              unfold updf. clear - H6. destruct H6.
+              extensionality j. dec_eq_nats j i.
+              { now rewrite eqb_id, m2_set0. }
+              { now rewrite eqb_nid, m_diff0. }
+            }
+            {
+              extensionality k.
+              unfold updf. dec_eq_nats k i.
+              {
+                clear H4. destruct H3. psimpl.
+                now rewrite eqb_id, call_done.
+              }
               {
                 rewrite eqb_nid; auto.
-                clear H1 Hleft Hright.
-                specialize (H0 k). gendep (x1 k).
-                unfold RRet'. intros. dstr_rposs;
-                ddestruct H0; try easy.
-                ddestruct H2.
+                specialize (H4 k ltac:(easy)).
+                destruct H4.
+                {
+                  psimpl.
+                  assert (PCalls k = CallDone (WriteSnap x0)).
+                  { clear - H7. now destruct H7, H. }
+                  rewrite H8. clear - H0 H4.
+                  specialize (H0 k). ddestruct H4. psimpl.
+                  ddestruct H0; now rewrite <-?x2, <-?x in *.
+                }
+                {
+                  clear - x H0 H4. specialize (H0 k).
+                  ddestruct H0;  rewrite <-x;
+                  setoid_rewrite <-x in H4;
+                  specialize (H4 x0); now psimpl.
+                }
               }
             }
             {
-              admit.
+              extensionality k.
+              unfold updf. dec_eq_nats k i.
+              {
+                clear H4. destruct H3. psimpl.
+                now rewrite eqb_id, ret_done.
+              }
+              {
+                rewrite eqb_nid; auto.
+                specialize (H4 k ltac:(easy)).
+                destruct H4.
+                {
+                  psimpl.
+                  specialize (H0 k). ddestruct H4. psimpl.
+                  ddestruct H0; rewrite <-?x2, <-?x in *;
+                  try easy.
+                  
+                }
+                {
+                  clear - x H0 H4. specialize (H0 k).
+                  ddestruct H0;  rewrite <-x;
+                  setoid_rewrite <-x in H4;
+                  specialize (H4 x0); now psimpl.
+                }
+              }
             }
           }
         }
         {
           admit.
         }
+      }
+      {
+        admit.
       }
       {
         admit.
