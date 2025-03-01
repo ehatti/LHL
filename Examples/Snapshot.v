@@ -31,6 +31,7 @@ From Coq Require Import
   Logic.ClassicalChoice
   Relations.Relation_Operators
   Relations.Operators_Properties
+  Lists.List
   Unicode.Utf8
   Classical.
 
@@ -522,11 +523,21 @@ Notation PRetn v vs := (Some (v, Some (Some vs))).
 Definition RPossSet (T : nat) (A : Type) :=
   RPoss T A -> Prop.
 
-Definition OWr T := option (Name T).
+Definition OWr A := list A.
+
+Record ObWr {A} (vs : set A) (wr : OWr A) := {
+  pfx : OWr A;
+  qfx : OWr A;
+  p_comb : wr = pfx ++ qfx;
+  all_in : ∀ v, List.In v pfx -> v ∈ vs;
+  all_dups : ∀ v, List.In v qfx -> v ∈ vs -> List.In v pfx
+}.
+Arguments ObWr {A} vs wr.
 
 Record pdata {T A} := MkD {
   und_vals : Index T -> reg_st A;
-  rets_map : Name T -> RRet' T A A
+  rets_map : Name T -> RRet' T A A;
+  wrt_ordn : OWr A
 }.
 Arguments pdata : clear implicits.
 Arguments MkD {T A}.
@@ -555,16 +566,7 @@ Definition conPoss {T A} (d : Index T -> reg_st A) (ρ : RPoss T A) : Poss (VF T
       | _ => RetIdle
       end).
 
-Record ObWr {T A}
-  (wr : OWr T) (st : Name T -> reg_st A)
-  (r : set A) (li : Name T) (lv : A)
-:= {
-  wr_some : wr = Some li;
-  val_some : (st li).(val) = Some lv;
-  ret_full : lv ∈ r -> r = collect st
-}.
-
-Variant PossDef {T A} {wr : OWr T} {st : Name T -> reg_st A} :
+Variant PossDef {T A} {wr : OWr A} {st : Name T -> reg_st A} :
   RRet' T A A -> RRet' T A A -> Prop :=
 | PDIdle :
   PossDef None None
@@ -575,11 +577,7 @@ Variant PossDef {T A} {wr : OWr T} {st : Name T -> reg_st A} :
 | PDRetnNone v :
   PossDef (Some (v, Some (Some None))) (Some (v, Some (Some None)))
 | PDRetnSomeRetn v vi vs :
-  (∀ li,
-    wr = Some li ->
-    ∃ lv,
-      (st li).(val) = Some lv /\
-      (lv ∈ vs -> vs = collect st)) ->
+  ObWr vs wr ->
   vi ⊆ vs ->
   vs ⊆ collect st ->
   PossDef (Some (v, Some (Some (Some vi)))) (Some (v, Some (Some (Some vs))))
@@ -589,7 +587,7 @@ Arguments PossDef {T A} wr st _ _.
 
 (* global invariant, should always hold *)
 Record Inv {T A}
-  {last_wrt : OWr T} {d : pdata T A}
+  {d : pdata T A}
   {s : InterState (F A) (VE T A)} {ρs : PossSet (VF T A)}
 : Prop := {
   und_def :
@@ -597,7 +595,7 @@ Record Inv {T A}
   ovr_def :
     ρs = (λ ρ,
       ∃ dρ,
-        (∀ i, PossDef last_wrt d.(und_vals) (d.(rets_map) i) (dρ i)) /\
+        (∀ i, PossDef d.(wrt_ordn) d.(und_vals) (d.(rets_map) i) (dρ i)) /\
         ρ = conPoss d.(und_vals) dρ
     );
   vi_subs :
@@ -616,20 +614,10 @@ Record Inv {T A}
     ∀ i,
       (∃ v o, d.(rets_map) i = Some (v, Some o)) ->
       (d.(und_vals) i).(ran) = true;
-  ob_write :
-    match last_wrt with
-    | None =>
-      collect d.(und_vals) = emp
-    | Some li =>
-      ∃ lv,
-        (d.(und_vals) li).(val) = Some lv /\
-        ∀ i v vs,
-          d.(rets_map) i = PRetn v (Some vs) ->
-          lv ∈ vs ->
-          vs = collect d.(und_vals)
-    end
+  ordn_val :
+    (λ v, List.In v d.(wrt_ordn)) ⊆ collect d.(und_vals)
 }.
-Arguments Inv {T A} last_wrt d s ρs.
+Arguments Inv {T A} d s ρs.
 
 Definition updf {A B} (m : A -> B) (i : A) (v : B) : A -> B :=
   λ j, if i =? j then v else m j.
@@ -641,40 +629,76 @@ Record updt {A B} (m1 m2 : A -> B) (i : A) (v1 v2 : B) : Prop := {
 }.
 
 Variant SnapTran {T A} {i : Name T} : pdata T A -> pdata T A -> Prop :=
-| SnapInvoke v s x :
+| SnapInvoke v s x o :
   x i = PIdle ->
   SnapTran
-    (MkD s x)
-    (MkD s (updf x i (PWait v)))
-| SnapReturn v vi s (x : Name T -> RRet' T A A) :
+    (MkD s x o)
+    (MkD s (updf x i (PWait v)) o)
+| SnapReturn v vi s (x : Name T -> RRet' T A A) o :
   x i = PRetn v vi ->
   SnapTran
-    (MkD s x)
-    (MkD s (updf x i PIdle))
+    (MkD s x o)
+    (MkD s (updf x i PIdle) o)
 | SnapNoOp d :
   SnapTran d d
-| SnapFail s v x :
+| SnapFail s v x o :
   x i = PWait v ->
   SnapTran
-    (MkD s x)
-    (MkD s (updf x i (PRetn v None)))
-| SnapWrite v s x :
+    (MkD s x o)
+    (MkD s (updf x i (PRetn v None)) o)
+| SnapWrite v s x o :
   s i = MkReg None false ->
   x i = PWait v ->
   SnapTran
-    (MkD s x)
+    (MkD s x o)
     (MkD
       (updf s i (MkReg (Some v) true))
-      (updf x i (PRetn v (Some (insert v (collect s)))))).
+      (updf x i (PRetn v (Some (insert v (collect s)))))
+      (cons v o)).
 Arguments SnapTran {T A} i.
 
 Definition Guar {T A} (i : Name T) : Relt T A :=
   λ s ρs t σs,
-    ∀ last_wrt d,
-      Inv last_wrt d s ρs ->
-      ∃ last_wrt' d',
+    (∀ d,
+      Inv d s ρs ->
+      ∃ d',
+        d.(und_vals) = d'.(und_vals) /\
         SnapTran i d d' /\
-        Inv last_wrt' d' t σs.
+        Inv d' t σs) \/
+    (∃ v : A,
+      updt (RState (snd s)) (RState (snd t)) i
+        (MkRacy
+          (Some (MkReg None false))
+          [(i, existT _ _ (Write (MkReg (Some v) true)))])
+          (MkRacy
+            (Some (MkReg (Some v) true))
+            emp) /\
+      σs = (λ σ : Poss (VF T A),
+        ∃ ρ, ρs ρ /\
+          match ρ.(PState), σ.(PState) with
+          | SnapDef vs m c, SnapDef vs' m' c' =>
+            vs' = insert v vs /\
+            updt m m' i (Some v) None /\
+            updt c c' i false true
+          end /\
+          ∀ i,
+            (
+              ρ.(PCalls) i = CallPoss (WriteSnap v) /\
+              ρ.(PRets) i = RetIdle /\
+              σ.(PCalls) i = CallDone (WriteSnap v) /\
+              (
+                σ.(PRets) i = RetIdle \/
+                σ.(PRets) i = RetPoss (WriteSnap v) (Some (snapSt σ))
+              )
+            ) \/
+            (
+              ρ.(PCalls) i ≠ CallPoss (WriteSnap v) /\
+              ρ.(PRets) i ≠ RetIdle /\
+              ρ.(PCalls) i = σ.(PCalls) i /\
+              ρ.(PRets) i = σ.(PRets) i
+            )
+      )
+    ).
 
 Definition SnapTrans {T A} :=
   clos_refl_trans_1n (pdata T A) (λ d d', ∃ i, SnapTran i d d').
@@ -684,18 +708,18 @@ Definition OtherSnapTrans {T A} (i : Name T) :=
 
 Definition Rely {T A} (i : Name T) : Relt T A :=
   λ s ρs t σs,
-    ∀ last_wrt d,
-      Inv last_wrt d s ρs ->
-      ∃ last_wrt' d',
+    ∀ d,
+      Inv d s ρs ->
+      ∃' d',
         OtherSnapTrans i d d' /\
-        Inv last_wrt' d' t σs.
+        Inv d' t σs.
 
 Lemma rely_refl {T A} :
   ∀ (i : Name T) s ρs,
     Rely (A:=A) i s ρs s ρs.
 Proof.
   unfold Rely. intros.
-  exists last_wrt, d. split.
+  exists d. split.
   constructor. easy.
 Qed.
 
@@ -707,7 +731,7 @@ Proof.
   intros. psimpl.
   apply H in H0. psimpl.
   apply H1 in H2. psimpl.
-  exists x3, x4. split. 2: easy.
+  exists x2. split. 2: easy.
   eapply clos_rt_rt1n_iff.
   eapply rt_trans.
   {
@@ -756,24 +780,284 @@ Proof.
   now rewrite eqb_nid.
 Qed.
 
+
+Ltac specf H y := apply equal_f with (x:=y) in H.
+Ltac gendep H := generalize dependent H.
+
+Ltac case_match :=
+  match goal with
+  | |- context[classicT ?P] => destruct (classicT P)
+  end.
+
+Ltac dstr_rposs :=
+  repeat match goal with
+  | x : option _ |- _ => destruct x
+  | x : prod _ _ |- _ => destruct x
+  end.
+
+Lemma In_app {A} :
+  ∀ (x : A) ys zs,
+    In x (ys ++ zs) ->
+    In x ys \/ In x zs.
+Proof.
+  intros x ys.
+  induction ys; simpl.
+  { tauto. }
+  {
+    intros.
+    destruct H.
+    { subst. now do 2 left. }
+    {
+      apply IHys in H.
+      destruct H.
+      { left. now right. }
+      { now right. }
+    }
+  }
+Qed.
+
 Lemma guar_in_rely {T A} :
   ∀ i j,
     i ≠ j ->
     @Guar T A i ==> @Rely T A j.
 Proof.
   unfold sub, subRelt, Guar, Rely.
-  intros. apply H0 in H1. psimpl.
-  exists x, x0. split.
+  intros. destruct H0; psimpl.
   {
-    econstructor.
+    apply H0 in H1. psimpl.
+    exists x. split.
     {
-      exists i.
-      split. easy.
-      exact H1.
+      econstructor.
+      {
+        exists i.
+        split. easy.
+        exact H2.
+      }
+      constructor.
     }
-    constructor.
+    { easy. }
   }
-  { easy. }
+  {
+    destruct H0, d.
+    exists (MkD
+      (updf und_vals0 i (MkReg (Some x) true))
+      (updf rets_map0 i (PRetn x (Some (insert x (collect und_vals0)))))
+      (wrt_ordn0 ++ (x :: nil))).
+    match goal with
+    | |- context[Inv ?d ?t ?σs] =>
+      assert (Inv d t σs)
+    end.
+    {
+      destruct H1. psimpl.
+      constructor; simpl;
+      unfold updf in *.
+      {
+        intros. dec_eq_nats i0 i.
+        { now rewrite eqb_id, m2_set0 at 1. }
+        { now rewrite eqb_nid, m_diff0. }
+      }
+      {
+        set_ext σ.
+        split; intros; psimpl.
+        {
+          assert ( Hleft :
+            insert x (collect und_vals0) ⊆
+            collect (updf und_vals0 i (MkReg (Some x) true))
+          ).
+          {
+            unfold updf.
+            intros. destruct H3.
+            {
+              subst. exists i.
+              now rewrite eqb_id.
+            }
+            {
+              psimpl.
+              dec_eq_nats x0 i.
+              {
+                clear - und_def0 m1_set0 H3.
+                specialize (und_def0 i).
+                rewrite m1_set0 in und_def0 at 1.
+                ddestruct und_def0. now rewrite <-x in H3.
+              }
+              { exists x0. now rewrite eqb_nid. }
+            }
+          }
+          assert ( Hright :
+            collect (updf und_vals0 i (MkReg (Some x) true)) ⊆
+            insert x (collect und_vals0)
+          ).
+          {
+            unfold updf. intros.
+            destruct H3. dec_eq_nats x0 i.
+            {
+              rewrite eqb_id in H3.
+              ddestruct H3. now left.
+            }
+            {
+              rewrite eqb_nid in H3;
+              auto. right. now exists x0.
+            }
+          }
+          exists (updf x1 i (PRetn x (Some (insert x (collect und_vals0))))).
+          split.
+          {
+            unfold updf. intros.
+            specialize (H0 i0).
+            specialize (H2 i0).
+            destruct H2; psimpl.
+            {
+              ddestruct H0;
+              rewrite <-x in *;
+              try easy.
+              dec_eq_nats i0 i.
+              {
+                rewrite eqb_id.
+                constructor.
+                {
+                  eapply Build_ObWr with
+                    (pfx:= wrt_ordn0 ++ (x0 :: nil))
+                    (qfx:= nil).
+                  { now rewrite app_nil_r. }
+                  {
+                    intros. apply In_app in H0.
+                    simpl in *. destruct H0.
+                    { right. now apply ordn_val0. }
+                    { left. tauto. }
+                  }
+                  { easy. }
+                }
+                { easy. }
+                { easy. }
+              }
+              {
+                rewrite eqb_nid; auto.
+                rewrite <-x2. constructor.
+              }
+            }
+            {
+              assert (ObWr (insert x (collect und_vals0)) (x :: wrt_ordn0)).
+              {
+                apply Build_ObWr with
+                  (pfx:= x :: wrt_ordn0)
+                  (qfx:= nil).
+                { now rewrite app_nil_r. }
+                {
+                  intros. destruct H6.
+                  { subst. now left. }
+                  { right. now apply ordn_val0. }
+                }
+                { easy. }
+              }
+              ddestruct H0;
+              rewrite <-x in *;
+              try easy; dec_eq_nats i0 i;
+              (rewrite eqb_id || rewrite eqb_nid; auto);
+              try rewrite <-x2 in *; try now constructor.
+              {
+                constructor; try easy.
+                apply Build_ObWr with
+                  (pfx:= wrt_ordn0 ++ (x0 :: nil))
+                  (qfx:= nil).
+                { easy. }
+                {
+                  intros. right.
+                  now apply ordn_val0.
+                }
+              }
+            }
+          }
+          {
+            destruct σ. unfold conPoss.
+            psimpl. repeat f_equal.
+            {
+              clear H2. destruct PState.
+              psimpl. repeat f_equal.
+              {
+                set_ext y. split.
+                { now apply Hleft. }
+                { now apply Hright. }
+              }
+              {
+                unfold updf.
+                clear - H2. destruct H2.
+                extensionality j. dec_eq_nats j i.
+                { now rewrite m2_set0, eqb_id. }
+                { rewrite eqb_nid; auto. }
+              }
+              {
+                clear - H3. destruct H3.
+                extensionality j. dec_eq_nats j i.
+                { now rewrite m2_set0, eqb_id. }
+                { rewrite eqb_nid; auto. }
+              }
+            }
+            {
+              unfold updf. extensionality k.
+              specialize (H2 k). psimpl.
+              dec_eq_nats k i.
+              { now rewrite eqb_id. }
+              {
+                rewrite eqb_nid; auto.
+                clear H1 Hleft Hright.
+                specialize (H0 k). gendep (x1 k).
+                unfold RRet'. intros. dstr_rposs;
+                ddestruct H0; try easy.
+                ddestruct H2.
+              }
+            }
+            {
+              admit.
+            }
+          }
+        }
+        {
+          admit.
+        }
+      }
+      {
+        admit.
+      }
+      {
+        admit.
+      }
+      {
+        admit.
+      }
+      {
+        admit.
+      }
+    }
+    split. 2: easy.
+    destruct H1, H0. psimpl.
+    econstructor. 2: constructor.
+    exists i. split. easy.
+    constructor.
+    {
+      specialize (und_def0 i).
+      rewrite m1_set0 in und_def0 at 1.
+      simpl in *. now ddestruct und_def0.
+    }
+    {
+      clear - ovr_def1.
+      apply equal_f with
+        (x:= conPoss
+          (updf und_vals0 i (MkReg (Some x) true))
+          (updf rets_map0 i (PRetn x (Some (insert x (collect und_vals0))))))
+        in ovr_def1.
+      match type of ovr_def1 with
+      | _ = ?P => assert P
+      end.
+      { admit. }
+      rewrite <-ovr_def1 in H.
+      psimpl. clear ovr_def1 H0.
+      specialize (H i). specialize (H1 i).
+      psimpl. destruct H2; psimpl;
+      unfold updf in *; rewrite eqb_id in *;
+      ddestruct H; rewrite <-x in *; try easy.
+      now ddestruct H3.
+    }
+  }
 Qed.
 
 Definition Lift {T A} (P : pdata T A -> Prop) : Prec T A :=
@@ -836,14 +1120,6 @@ Proof.
   rewrite eqb_id. repeat split;
   (easy || apply differ_pointwise_trivial).
 Qed.
-
-Ltac specf H y := apply equal_f with (x:=y) in H.
-Ltac gendep H := generalize dependent H.
-
-Ltac case_match :=
-  match goal with
-  | |- context[classicT ?P] => destruct (classicT P)
-  end.
 
 Lemma conPoss_inj {T A} :
   ∀ (ρ σ : RPoss T A) u,
@@ -935,12 +1211,6 @@ Proof.
   { now subst. }
   { now set_ext x. }
 Qed.
-
-Ltac dstr_rposs :=
-  repeat match goal with
-  | x : option _ |- _ => destruct x
-  | x : prod _ _ |- _ => destruct x
-  end.
 
 Lemma PS_refl {T A} :
   ∀ last_wrt (d : pdata T A) s ρs i,
