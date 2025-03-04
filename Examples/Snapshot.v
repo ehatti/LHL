@@ -1746,6 +1746,47 @@ Proof.
   now repeat constructor.
 Qed.
 
+Lemma split_prefixes {A} :
+  ∀ xs ys zs (x : A),
+    xs ++ x :: nil = ys ++ zs ->
+    (∃ zs', zs = zs' ++ x :: nil) \/
+    ( zs = nil /\ ∃ ys', ys = ys' ++ x :: nil).
+Proof.
+  intros.
+  generalize dependent ys.
+  generalize dependent zs.
+  induction xs;
+  intros; simpl in *.
+  {
+    destruct ys;
+    simpl in *; subst.
+    { left. now exists nil. }
+    {
+      ddestruct H.
+      assert (ys = nil)
+        by now destruct ys.
+      subst. psimpl.
+      right. split. easy.
+      now exists nil.
+    }
+  }
+  {
+    destruct ys;
+    simpl in *; subst.
+    { left. now exists (a :: xs). }
+    {
+      ddestruct H.
+      apply IHxs in x.
+      destruct x; psimpl.
+      { left. now exists x. }
+      {
+        right. split. easy.
+        now exists (a0 :: x).
+      }
+    }
+  }
+Qed.
+
 Lemma write_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
     (λ _ _ s ρs,
@@ -2386,39 +2427,8 @@ Proof.
                         ( qfx = nil /\ ∃ pfx', pfx = pfx' ++ v :: nil)
                       ).
                       {
-                        clear - p_comb.
-                        generalize dependent pfx.
-                        generalize dependent qfx.
-                        induction wrt_ordn0;
-                        intros; simpl in *.
-                        {
-                          destruct pfx;
-                          simpl in *; subst.
-                          { left. now exists nil. }
-                          {
-                            ddestruct p_comb.
-                            assert (pfx = nil)
-                              by now destruct pfx.
-                            subst. psimpl.
-                            right. split. easy.
-                            now exists nil.
-                          }
-                        }
-                        {
-                          destruct pfx;
-                          simpl in *; subst.
-                          { left. now exists (a :: wrt_ordn0). }
-                          {
-                            ddestruct p_comb.
-                            apply IHwrt_ordn0 in x.
-                            destruct x; psimpl.
-                            { left. now exists x. }
-                            {
-                              right. split. easy.
-                              now exists (a0 :: x).
-                            }
-                          }
-                        }
+                        eapply split_prefixes.
+                        exact p_comb.
                       }
                       destruct H; psimpl.
                       {
@@ -2523,7 +2533,60 @@ Proof.
                 }
               }
               {
-                
+                clear H2 IH IHn. subst rp'.
+                specialize (H nt).  subst rets_map1.
+                unfold updf in H.
+                assert (i ≠ nt).
+                {
+                  intros ?. subst.
+                  rewrite eqb_id, <-Heqr in H.
+                  ddestruct H. apply H10, H0. now left.
+                }
+                rewrite eqb_nid in H; auto. exfalso.
+                apply H7. ddestruct H; rewrite <-x in *;
+                try easy. rewrite <-x5 at 1. ddestruct Heqr.
+                constructor.
+                {
+                  destruct H.
+                  eassert _.
+                  {
+                    eapply split_prefixes.
+                    exact p_comb.
+                  }
+                  destruct X; psimpl.
+                  {
+                    rewrite app_assoc in p_comb.
+                    apply app_inj_tail in p_comb.
+                    psimpl. clear H12.
+                    apply Build_ObWr with
+                      (pfx:=pfx) (qfx:=x6).
+                    { easy. }
+                    { easy. }
+                    {
+                      intros. apply all_dups.
+                      { apply In_app_rev. now left. }
+                      { easy. }
+                    }
+                  }
+                  {
+                    rewrite app_nil_r in p_comb.
+                    apply app_inj_tail in p_comb.
+                    psimpl. clear H12. specialize (all_in v).
+                    assert (¬ v ∈ vs -> ¬In v (x6 ++ v :: nil))
+                      by auto.
+                    apply H in H10. exfalso.
+                    apply H10, In_app_rev.
+                    right. now left.
+                  }
+                }
+                { easy. }
+                {
+                  subst und_vals1. intros.
+                  assert (H12' := H12). apply H2 in H12.
+                  rewrite Heq in H12 at 1. destruct H12.
+                  { now subst. }
+                  { easy. } 
+                }
               }
             }
           }
