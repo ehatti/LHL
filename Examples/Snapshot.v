@@ -2224,7 +2224,149 @@ Proof.
       }
       split.
       {
-        admit.
+        intros. psimpl.
+        exists (conPoss und_vals0 (updf x1 i (PWait v))).
+        split.
+        {
+          eexists.
+          split. 2: easy.
+          unfold updf. intros.
+          dec_eq_nats i0 i.
+          {
+            rewrite eqb_id, H3.
+            constructor.
+          }
+          {
+            subst rets_map1. unfold updf in H. specialize (H i0).
+            rewrite eqb_nid in *; auto. ddestruct H;
+            rewrite <-x6, <-x at 1; try constructor.
+            {
+              destruct H.
+              eassert _.
+              {
+                apply split_prefixes in p_comb.
+                exact p_comb.
+              }
+              destruct X; psimpl.
+              {
+                rewrite app_assoc in p_comb.
+                apply app_inj_tail in p_comb.
+                psimpl. clear H12.
+                apply Build_ObWr with
+                  (pfx:=pfx) (qfx:=x7).
+                { easy. }
+                { easy. }
+                {
+                  intros. apply all_dups.
+                  { apply In_app_rev. now left. }
+                  { easy. }
+                }
+              }
+              {
+                rewrite app_nil_r in p_comb.
+                apply app_inj_tail in p_comb.
+                psimpl. clear H12.
+                apply Build_ObWr with
+                  (pfx:= x7) (qfx:= nil).
+                { now rewrite app_nil_r. }
+                {
+                  intros.
+                  apply all_in, In_app_rev.
+                  now left.
+                }
+                { easy. }
+              }
+            }
+            { easy. }
+            {
+              intros. subst und_vals1.
+              apply H10 in H12.
+              rewrite Heq in H12 at 1.
+              now (destruct H12; subst).
+            }
+          }
+        }
+        {
+          eapply PossStepsStep with
+            (i:=i)
+            (σ:= conPoss und_vals1 (updf x1 i (PCall v))).
+          {
+            eapply PCommitCall with
+              (m:= WriteSnap v).
+            {
+              simpl. rewrite Heq.
+              apply SnapCallPass.
+              { easy. }
+              { subst und_vals1. unfold updf. now rewrite eqb_id. }
+              { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
+              { unfold updf. now rewrite eqb_id. }
+              {
+                subst rets_map1. simpl in *.
+                specialize (H i). unfold updf in *.
+                now rewrite eqb_id in *.
+              }
+              { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
+            }
+            { simpl. unfold updf. now rewrite eqb_id. }
+            {
+              subst rets_map1. unfold updf in *.
+              specialize (H i). rewrite eqb_id in H.
+              simpl. now rewrite eqb_id.
+            }
+            { simpl. unfold updf. now rewrite eqb_id. }
+            {
+              subst rets_map1. unfold updf in *.
+              specialize (H i). rewrite eqb_id in H.
+              ddestruct H; simpl; rewrite <-x;
+              try (easy || case_match);
+              now rewrite eqb_id.
+            }
+          }
+          { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
+          { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
+          eapply PossStepsStep with
+            (i:=i)
+            (σ:= conPoss und_vals1 (updf x1 i (PRetn v (Some (collect und_vals1))))).
+          {
+            eapply PCommitRet with
+              (m:= WriteSnap v)
+              (v:= Some (collect und_vals1)).
+            {
+              simpl. rewrite Heq.
+              apply SnapRetPass.
+              { subst und_vals1. unfold updf. now rewrite eqb_id. }
+              { unfold updf. now rewrite eqb_id. }
+              { unfold updf. now rewrite eqb_id. }
+              { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
+            }
+            { simpl. unfold updf. now rewrite eqb_id. }
+            {
+              subst rets_map1. unfold updf in *.
+              specialize (H i). rewrite eqb_id in H.
+              simpl. now rewrite eqb_id.
+            }
+            { simpl. unfold updf. now rewrite eqb_id. }
+            {
+              subst rets_map1. unfold updf in *.
+              specialize (H i). rewrite eqb_id in H.
+              ddestruct H; simpl; rewrite <-x;
+              try (easy || case_match);
+              now rewrite eqb_id.
+            }
+          }
+          { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
+          { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
+          assert (updf x1 i (PRetn v (Some (collect und_vals1))) = x1).
+          {
+            extensionality j.
+            unfold updf. dec_eq_nats j i.
+            {
+              specialize (H i).
+              subst rets_map1. unfold updf in H.
+              rewrite eqb_id in H.
+            }
+          }
+        }
       }
       admit.
     }
@@ -2605,7 +2747,7 @@ Proof.
                 destruct j; psimpl; lia.
               }
             }
-            rewrite H6. apply IHn.
+            rewrite H7. apply IHn.
             intros. lia.
           }
           {
@@ -2623,7 +2765,7 @@ Proof.
                 destruct j; psimpl; lia.
               }
             }
-            rewrite H6. apply IHn.
+            rewrite H7. apply IHn.
             intros. lia.
           }
           {
@@ -2641,7 +2783,7 @@ Proof.
                 destruct j; psimpl; lia.
               }
             }
-            rewrite H6. apply IHn.
+            rewrite H7. apply IHn.
             intros. lia.
           }
           {
@@ -2659,7 +2801,7 @@ Proof.
                 destruct j; psimpl; lia.
               }
             }
-            rewrite H6. apply IHn.
+            rewrite H7. apply IHn.
             intros. lia.
           }
         }
