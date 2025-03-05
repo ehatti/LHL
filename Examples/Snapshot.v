@@ -1598,7 +1598,157 @@ Lemma return_none_step {T A} :
     (WriteSnap v) r
     (λ _ _ s ρs,
       ∃ d, Inv d s ρs).
-Admitted.
+Proof.
+  unfold ReturnStep.
+  intros. clear H0. psimpl.
+  exists (λ σ,
+    ρs σ /\
+    Done i (WriteSnap v) None σ).
+  split.
+  {
+    assert (H' := H).
+    destruct H. psimpl.
+    exists (conPoss x.(und_vals) x.(rets_map)).
+    split.
+    {
+      exists x.(rets_map). split. 2: easy.
+      intros. eapply PS_refl. exact H'.
+    }
+    {
+      constructor; simpl;
+      now rewrite H1.
+    }
+  }
+  split.
+  {
+    intros. exists σ.
+    split. easy. constructor.
+  }
+  split.
+  {
+    intros. psimpl.
+    now destruct H2.
+  }
+  eassert _.
+  2:{
+    split.
+    exists (MkD x.(und_vals) (updf x.(rets_map) i PIdle) x.(wrt_ordn)).
+    exact X. intros ??.
+    eapply Inv_eqv in H0.
+    2: exact H. psimpl.
+    destruct d. eexists. split.
+    { eapply SnapReturn. exact H1. }
+    { easy. }
+  }
+  {
+    destruct H. psimpl.
+    constructor; psimpl; auto.
+    {
+      set_ext y;
+      unfold mapRetPoss;
+      split; intros; do 2 psimpl.
+      {
+        assert (x1 i = PRetn v None).
+        {
+          specialize (H i).
+          rewrite H1 in H.
+          now ddestruct H.
+        }
+        exists (updf x1 i PIdle).
+        split.
+        {
+          unfold updf.
+          intros. dec_eq_nats i0 i.
+          { rewrite eqb_id. constructor. }
+          { rewrite eqb_nid; auto. }
+        }
+        {
+          unfold conPoss.
+          destruct y. psimpl.
+          f_equal.
+          {
+            f_equal. unfold updf.
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id, H9. }
+            { now rewrite eqb_nid. }
+          }
+          {
+            unfold updf.
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id. }
+            { now rewrite eqb_nid, H5. }
+          }
+          {
+            unfold updf.
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id. }
+            { now rewrite eqb_nid, H6. }
+          }
+        }
+      }
+      {
+        exists (conPoss x.(und_vals) (updf x0 i (PRetn v None))).
+        split.
+        {
+          split.
+          {
+            exists (updf x0 i (PRetn v None)).
+            split. 2: easy. intros. specialize (H i0).
+            unfold updf in *. dec_eq_nats i0 i.
+            { rewrite eqb_id, H1. constructor. }
+            { rewrite eqb_nid in *; auto. }
+          }
+          {
+            constructor; simpl;
+            unfold updf; now rewrite eqb_id.
+          }
+        }
+        assert (x0 i = PIdle).
+        {
+          specialize (H i).
+          unfold updf in H.
+          rewrite eqb_id in H.
+          now ddestruct H.
+        }
+        simpl. unfold updf.
+        rewrite H0, eqb_id.
+        do 4 split;[easy|idtac].
+        split.
+        { intros ??. now rewrite eqb_nid. }
+        split.
+        { intros ??. now rewrite eqb_nid. }
+        {
+          f_equal.
+          extensionality j.
+          dec_eq_nats j i.
+          { now rewrite H0, eqb_id. }
+          { now rewrite eqb_nid. }
+        }
+      }
+    }
+    {
+      unfold updf.
+      intros. dec_eq_nats i0 i.
+      { now rewrite eqb_id in H. }
+      { rewrite eqb_nid in H; eauto. }
+    }
+    {
+      unfold updf.
+      intros. dec_eq_nats i0 i.
+      { now rewrite eqb_id in H; psimpl. }
+      { rewrite eqb_nid in H; eauto. }
+    }
+    {
+      unfold updf.
+      intros. dec_eq_nats i0 i.
+      { now rewrite eqb_id in H. }
+      { rewrite eqb_nid in H; eauto. }
+    }
+  }
+Qed.
 
 Lemma return_some_step {T A} :
   ∀ (i : Name T) (v : A) (r : option (set A)),
@@ -2875,6 +3025,34 @@ Proof.
   now repeat constructor.
 Qed.
 
+Lemma ob_stable {T A} :
+  ∀ s d d',
+    @SnapTrans T A d d' ->
+    ObWr s d.(wrt_ordn) ->
+    ObWr s d'.(wrt_ordn).
+Proof.
+  intros.
+  induction H; auto.
+  apply IHclos_refl_trans_1n.
+  clear IHclos_refl_trans_1n H1.
+  psimpl. ddestruct H; auto; psimpl.
+  destruct H1. subst.
+  apply Build_ObWr with
+    (pfx:=pfx)
+    (qfx:= qfx ++ v :: nil).
+  { now rewrite app_assoc. }
+  { easy. }
+  {
+    intros.
+    apply In_app in H1.
+    destruct H1; psimpl.
+    { now apply all_dups. }
+    {
+      destruct H1;
+      subst. 2: easy.
+    }
+  }
+
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   x.(new) = emp ->
   VerifyProg i (Rely i) (Guar i)
@@ -2890,7 +3068,8 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
         (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
         d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
         (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v) ⊆ y.(new) /\
-        y.(new) ⊆ collect d.(und_vals)).
+        y.(new) ⊆ collect d.(und_vals) /\
+        ObWr y.(new) d.(wrt_ordn)).
 Proof.
   intros Heq.
   unfold fill_new, runStateM, bindM.
@@ -2904,7 +3083,8 @@ Proof.
         (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
         rets_map d i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
         (λ v1, ∃ i0, vi i0 /\ `i0 ≥ n ∧ val (und_vals d i0) = Some v1) ⊆ new y /\
-        new y ⊆ collect (und_vals d)).
+        new y ⊆ collect (und_vals d) /\
+        ObWr y.(new) d.(wrt_ordn)).
   2:{
     unfold sub, subRelt.
     intros. psimpl.
@@ -2919,9 +3099,19 @@ Proof.
       destruct x2. psimpl.
       lia.
     }
+    split.
     {
       rewrite Heq.
       now intros ??.
+    }
+    {
+      rewrite Heq.
+      apply Build_ObWr with
+        (pfx:= nil)
+        (qfx := x0.(wrt_ordn)).
+      { easy. }
+      { easy. }
+      { easy. }
     }
   }
   2:{
@@ -2935,10 +3125,12 @@ Proof.
     split.
     {
       intros ??.
-      destruct H4, H4.
+      destruct H4, H5, H4.
       apply H2. exists x2.
       repeat split; (easy || lia).
     }
+    split.
+    { easy. }
     { easy. }
   }
   {
@@ -2957,7 +3149,8 @@ Proof.
           match r.(val) with
           | Some w => (d.(und_vals) (exist _ n p)) = r
           | None => ¬vi (exist _ n p)
-          end).
+          end /\
+          ObWr s.(new) d.(wrt_ordn)).
     {
       unfold lift.
       eapply lemBind.
@@ -2969,7 +3162,8 @@ Proof.
               (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
               rets_map d i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
               (λ v1, ∃ i0, vi i0 /\ `i0 ≥ S n ∧ val (und_vals d i0) = Some v1) ⊆ new s /\
-              new s ⊆ collect (und_vals d))
+              new s ⊆ collect (und_vals d) /\
+              ObWr s.(new) d.(wrt_ordn))
           (S:=λ r s0 ρs,
             ∃ d vi,
               Inv d s0 ρs /\
@@ -2980,7 +3174,8 @@ Proof.
               match r.(val) with
               | Some w => (d.(und_vals) (exist _ n p)) = r
               | None => ¬vi (exist _ n p)
-              end
+              end /\
+              ObWr s.(new) d.(wrt_ordn)
             )
         .
         {
@@ -2994,7 +3189,7 @@ Proof.
           split.
           {
             intros.
-            apply H1 in H6.
+            apply H1 in H7.
             remember (und_vals x1 i0).
             destruct r, val0. simpl in *.
             eapply forget_othr, one_shot in H.
@@ -3012,22 +3207,22 @@ Proof.
               set_ext y.
               split; intros; psimpl.
               {
-                assert (H6' := H6).
-                apply H1 in H6.
+                assert (H7' := H7).
+                apply H1 in H7.
                 remember (und_vals x1 x4).
                 destruct r. simpl in *. destruct val0.
-                2: easy. ddestruct H7.
+                2: easy. ddestruct H8.
                 eapply forget_othr, one_shot in H.
                 2: now rewrite <-Heqr.
                 exists x4. rewrite <-H.
                 now rewrite <-Heqr.
               }
               {
-                assert (H6' := H6).
-                apply H1 in H6.
+                assert (H7' := H7).
+                apply H1 in H7.
                 remember (und_vals x1 x4).
                 destruct r. simpl in *. destruct val0.
-                2: easy. ddestruct H7.
+                2: easy. ddestruct H8.
                 eapply forget_othr, one_shot in H.
                 2: now rewrite <-Heqr.
                 exists x4.
@@ -3039,13 +3234,13 @@ Proof.
               }
             }
             erewrite <-Inv_pres_self.
-            setoid_rewrite <-H6. exact H2.
+            setoid_rewrite <-H7. exact H2.
             easy.
           }
           split.
           {
             intros ??.
-            destruct H6, H6, H7.
+            destruct H6, H7, H6, H7.
             apply H3.
             exists x4.
             split. easy.
@@ -3059,12 +3254,16 @@ Proof.
             now ddestruct H8.
             easy.
           }
+          split.
           {
             intros.
-            apply H4 in H6.
-            destruct H6. exists x4.
+            apply H4 in H7.
+            destruct H7. exists x4.
             eapply forget_othr, one_shot in H.
-            2: exact H6. now rewrite <-H.
+            2: exact H7. now rewrite <-H.
+          }
+          {
+            
           }
         }
         {
@@ -3518,8 +3717,7 @@ Lemma ws_correct {T A} (i : Name T) (v : A) :
           ∃ vi new,
             r = Some new /\
             d.(rets_map) i = PRetn v (Some vi) /\
-            vi ⊆ new /\
-            new ⊆ collect d.(und_vals)
+            PossDef d.(wrt_ordn) d.(und_vals) (PRetn v (Some vi)) (PRetn v (Some new))
         ))).
 Proof.
   eapply weakenPrec with
@@ -4507,7 +4705,8 @@ Proof.
               (∀ i, vi i -> val (d.(und_vals) i) ≠ None) /\
               d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v)) /\
               (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v) ⊆ y.(new) /\
-              y.(new) ⊆ collect d.(und_vals))
+              y.(new) ⊆ collect d.(und_vals) /\
+              ObWr y.(new) d.(wrt_ordn))
           (S:=λ _ _ s ρs,
             ∃ d vi,
               Inv d s ρs /\
@@ -4570,7 +4769,7 @@ Proof.
           { now exists x2, x3. }
           {
             intros ??.
-            eapply Inv_eqv in H7.
+            eapply Inv_eqv in H8.
             2: exact H. subst.
             exists d. split.
             constructor. easy.
@@ -4606,13 +4805,12 @@ Proof.
       }
       {
         intros [[]].
-        unfold bindM, get.
-        rewrite ret_lunit.
-        simpl. apply lemRet.
-        unfold sub, subRelt.
-        intros. psimpl. exists x.
-        split. easy. right.
-        now exists (λ v, ∃ i, x0 i /\ val (und_vals x i) = Some v), l0.(new).
+        unfold bindM, get. rewrite ret_lunit.
+        simpl. apply lemRet. unfold sub, subRelt.
+        intros. psimpl. exists x. split. easy. right.
+        exists (λ v, ∃ i, x0 i /\ val (und_vals x i) = Some v), l0.(new).
+        split. easy. split. easy.
+        constructor.
       }
       {
         unfold sub, subRelt.
@@ -4653,8 +4851,7 @@ Theorem writeSnapshotCorrect {T A} :
           ∃ vi new,
             r = Some new /\
             d.(rets_map) i = PRetn v (Some vi) /\
-            vi ⊆ new /\
-            new ⊆ collect d.(und_vals)
+            PossDef d.(wrt_ordn) d.(und_vals) (PRetn v (Some vi)) (PRetn v (Some new))
         )))
     (λ i _ _ _ _ _ s ρs,
       ∃ d,
@@ -4668,8 +4865,9 @@ Proof.
   { apply return_in_rely. }
   {
     intros.
-    exists (MkD (λ _, MkReg None false) (λ _, PIdle)).
+    exists (MkD (λ _, MkReg None false) (λ _, PIdle) nil).
     constructor; psimpl; auto.
+    { constructor. }
     {
       set_ext ρ.
       split; intros; psimpl.
@@ -4720,6 +4918,12 @@ Proof.
     }
     { easy. }
     { intros ??. now psimpl. }
+    { intros. now psimpl. }
+    {
+      split; unfold contains;
+      intros; now psimpl.
+    }
+    { easy. }
   }
   {
     unfold
