@@ -2324,51 +2324,84 @@ Proof.
           }
           { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
           { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
-          eapply PossStepsStep with
-            (i:=i)
-            (σ:= conPoss und_vals1 (updf x1 i (PRetn v (Some (collect und_vals1))))).
+          specialize (H i). subst rets_map1.
+          unfold updf in H. rewrite eqb_id in H.
+          ddestruct H.
           {
-            eapply PCommitRet with
-              (m:= WriteSnap v)
-              (v:= Some (collect und_vals1)).
+            eapply PossStepsStep with
+              (i:=i)
+              (σ:= conPoss und_vals1 (updf x1 i (PRetn v (Some (collect und_vals1))))).
             {
-              simpl. rewrite Heq.
-              apply SnapRetPass.
-              { subst und_vals1. unfold updf. now rewrite eqb_id. }
-              { unfold updf. now rewrite eqb_id. }
-              { unfold updf. now rewrite eqb_id. }
-              { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
+              eapply PCommitRet with
+                (m:= WriteSnap v)
+                (v:= Some (collect und_vals1)).
+              {
+                simpl.
+                apply SnapRetPass.
+                { subst und_vals1. unfold updf. now rewrite eqb_id. }
+                { unfold updf. now rewrite eqb_id. }
+                { unfold updf. now rewrite eqb_id. }
+                { intros ??. subst und_vals1. unfold updf. now rewrite eqb_nid. }
+              }
+              { simpl. unfold updf. now rewrite eqb_id. }
+              { simpl. unfold updf. now rewrite eqb_id. }
+              { simpl. unfold updf. now rewrite eqb_id. }
+              { simpl. unfold updf. now rewrite eqb_id. }
             }
-            { simpl. unfold updf. now rewrite eqb_id. }
+            { unfold updf. intros. simpl. now rewrite eqb_nid. }
+            { unfold updf. intros. simpl. now rewrite eqb_nid. }
+            assert (vs = collect und_vals1).
             {
-              subst rets_map1. unfold updf in *.
-              specialize (H i). rewrite eqb_id in H.
-              simpl. now rewrite eqb_id.
+              set_ext z.
+              split; intros.
+              { now apply H10. }
+              { apply H9. now rewrite <-Heq at 1. }
             }
-            { simpl. unfold updf. now rewrite eqb_id. }
+            subst.
+            assert (updf x1 i (PRetn v (Some (collect und_vals1))) = x1).
             {
-              subst rets_map1. unfold updf in *.
-              specialize (H i). rewrite eqb_id in H.
-              ddestruct H; simpl; rewrite <-x;
-              try (easy || case_match);
-              now rewrite eqb_id.
+              extensionality j.
+              unfold updf. dec_eq_nats j i.
+              { now rewrite eqb_id. }
+              { now rewrite eqb_nid. }
             }
+            rewrite H11.
+            subst und_vals1.
+            constructor.
           }
-          { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
-          { subst rets_map1. unfold updf. intros. simpl. now rewrite eqb_nid. }
-          assert (updf x1 i (PRetn v (Some (collect und_vals1))) = x1).
           {
-            extensionality j.
-            unfold updf. dec_eq_nats j i.
+            assert (updf x1 i (PCall v) = x1).
             {
-              specialize (H i).
-              subst rets_map1. unfold updf in H.
-              rewrite eqb_id in H.
+              extensionality j.
+              unfold updf. dec_eq_nats j i.
+              { now rewrite eqb_id. }
+              { now rewrite eqb_nid. }
             }
+            rewrite H.
+            constructor.
           }
         }
       }
-      admit.
+      split.
+      {
+        psimpl.
+        eexists _, _.
+        split. exact H.
+        psimpl.
+        split. exact H2.
+        easy.
+      }
+      {
+        psimpl.
+        intros ??.
+        eapply Inv_eqv in H7.
+        2: exact H'. psimpl.
+        eexists. split. 2: exact H.
+        subst wrt_ordn1 rets_map1 und_vals1.
+        apply SnapWrite.
+        { destruct (und_vals0 i). now psimpl. }
+        { easy. }
+      }
     }
     exists (λ σ,
       ∃ dσ,
@@ -2830,7 +2863,7 @@ Proof.
     }
   }
   { now intros []. }
-Admitted.
+Qed.
 
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   x.(new) = emp ->
