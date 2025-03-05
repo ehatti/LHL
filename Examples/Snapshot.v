@@ -3535,14 +3535,16 @@ Proof.
     rename σ into σs.
     assert (
       Inv
-        (MkD d.(und_vals) (updf d.(rets_map) i (PWait v)))
+        (MkD d.(und_vals) (updf d.(rets_map) i (PWait v)) d.(wrt_ordn))
         x x0
     ).
     {
       clear - H H1.
       unfold TInvoke, TIdle in H1.
+      assert (H' := H).
       destruct H. psimpl.
       constructor; simpl.
+      { now setoid_rewrite <- H1. }
       { now setoid_rewrite <- H1. }
       {
         set_ext σ.
@@ -3606,7 +3608,7 @@ Proof.
               apply H3.
               exists d.(rets_map).
               split.
-              { intros. apply PS_refl, vi_subs0. }
+              { intros. eapply PS_refl. exact H'. }
               { easy. }
             }
             clear - H4. psimpl.
@@ -3661,6 +3663,22 @@ Proof.
       }
       { now setoid_rewrite <-H1. }
       { easy. }
+      {
+        unfold updf. intros.
+        dec_eq_nats i0 i.
+        { now rewrite eqb_id in H2; psimpl. }
+        { rewrite eqb_nid in H2; auto. }
+      }
+      { easy. }
+      {
+        unfold updf. intros.
+        dec_eq_nats i0 i.
+        { now rewrite eqb_id in H2. }
+        {
+          rewrite eqb_nid in H2; auto.
+          eapply ob_write0. exact H2.
+        }
+      }
     }
     clear - H0 H2.
     apply H0 in H2. psimpl.
@@ -3699,10 +3717,11 @@ Proof.
       exists ρs.
       split.
       {
+        assert (H' := H).
         destruct H. psimpl.
         exists (conPoss x1.(und_vals) x1.(rets_map)).
         exists x1.(rets_map). split. 2: easy.
-        intros. apply PS_refl, vi_subs0.
+        intros. eapply PS_refl. exact H'.
       }
       split.
       {
@@ -3713,12 +3732,8 @@ Proof.
       {
         clear - H H7.
         destruct H. psimpl.
-        constructor; simpl.
-        { now setoid_rewrite <- H7. }
-        { easy. }
-        { easy. }
-        { now setoid_rewrite <-H7. }
-        { easy. }
+        constructor; simpl;
+        now try setoid_rewrite <-H7.
       }
       split.
       { now exists x1. }
@@ -3737,10 +3752,11 @@ Proof.
       exists ρs.
       split.
       {
+        assert (H' := H).
         destruct H. psimpl.
         exists (conPoss x.(und_vals) x.(rets_map)).
         exists x.(rets_map). split. 2: easy.
-        intros. apply PS_refl, vi_subs0.
+        intros. eapply PS_refl. exact H'.
       }
       split.
       {
@@ -3751,12 +3767,8 @@ Proof.
       {
         clear - H H7.
         destruct H. psimpl.
-        constructor; simpl.
-        { now setoid_rewrite <- H7. }
-        { easy. }
-        { easy. }
-        { now setoid_rewrite <-H7. }
-        { easy. }
+        constructor; simpl;
+        now try setoid_rewrite <-H7.
       }
       split.
       {
@@ -3830,10 +3842,11 @@ Proof.
       exists ρs.
       split.
       {
+        assert (H3' := H3).
         destruct H3. psimpl.
         exists (conPoss x1.(und_vals) x1.(rets_map)).
         exists x1.(rets_map). split. 2: easy.
-        intros. apply PS_refl, vi_subs0.
+        intros. eapply PS_refl. exact H3'.
       }
       split.
       {
@@ -3845,6 +3858,7 @@ Proof.
         clear - H3 H.
         destruct H3. psimpl.
         ddestruct H. simpl in *.
+        ddestruct H. simpl in *.
         ddestruct H3. simpl in *.
         constructor.
         {
@@ -3852,8 +3866,12 @@ Proof.
           specialize (und_def0 i0).
           rewrite <-und_def0.
           dec_eq_nats i0 i.
-          { now rewrite <-x0, <-x at 1. }
-          { now rewrite H2. }
+          { now rewrite <-x3, <-x4, <-x2, <-x at 1. }
+          { now rewrite <-x3, <-x4, H2 at 1. }
+        }
+        {
+          rewrite <-x4 at 1.
+          now rewrite <-x3 in wrt_def0.
         }
         { easy. }
         { easy. }
@@ -3861,16 +3879,20 @@ Proof.
           intros ??. psimpl.
           dec_eq_nats i0 i.
           {
-            rewrite <-x in H1 at 1.
+            rewrite <-x4, <-x in H1 at 1.
             simpl in *. destruct H1.
             now ddestruct H1. easy.
           }
           {
             apply (resp_own0 i0).
-            exists x2, x3.
-            now rewrite <-H2.
+            exists x5, x6.
+            rewrite <-x4 in H1 at 1.
+            now rewrite <-x3, <-H2 at 1.
           }
         }
+        { easy. }
+        { easy. }
+        { easy. }
         { easy. }
         {
           unfold RegCond in H0.
@@ -3898,19 +3920,18 @@ Proof.
         unfold Commit.
         intros. do 2 psimpl.
         ddestruct H; simpl in *.
+        ddestruct H; simpl in *.
         ddestruct H6; simpl in *.
         2:{
-          clear - H3 x1. exfalso.
-          destruct H3. psimpl.
-          specialize (und_def0 i).
-          now rewrite <-x1 in und_def0.
+          exfalso.
+          destruct H3. psimpl. specialize (und_def0 i).
+          now rewrite <-x3, <-x2 in und_def0 at 1.
         }
         ddestruct H1.
         2:{
-          clear - H3 x1. exfalso.
-          destruct H3. psimpl.
-          specialize (und_def0 i).
-          now rewrite <-x1 in und_def0.
+          exfalso.
+          destruct H3. psimpl. specialize (und_def0 i).
+          now rewrite <-x3, <-x2 in und_def0 at 1.
         }
         destruct ran0.
         {
@@ -3923,9 +3944,10 @@ Proof.
           ).
           split.
           {
-            clear - x1 H3 H4.
+            clear - x x2 x3 x4 H3 H4.
+            assert (H3' := H3).
             destruct H3. psimpl.
-            pose (ρ := conPoss x0.(und_vals) x0.(rets_map)).
+            pose (ρ := conPoss x1.(und_vals) x1.(rets_map)).
             remember ρ. destruct p, PState.
             exists (
               comRetPoss i
@@ -3943,7 +3965,7 @@ Proof.
             {
               subst ρ. eexists.
               split. 2: easy. intros.
-              apply PS_refl, vi_subs0.
+              eapply PS_refl. exact H3'.
             }
             {
               change (
@@ -3968,13 +3990,13 @@ Proof.
                 rewrite H4.
                 split. easy.
                 split. easy.
-                replace c with (λ i, (x0.(und_vals) i).(ran)).
+                replace c with (λ i, (x1.(und_vals) i).(ran)).
                 2:{
                   clear - Heqp.
                   unfold conPoss in Heqp.
                   now ddestruct Heqp.
                 }
-                replace vs with (collect x0.(und_vals)).
+                replace vs with (collect x1.(und_vals)).
                 2:{
                   clear - Heqp.
                   unfold conPoss in Heqp.
@@ -3983,7 +4005,7 @@ Proof.
                 constructor.
                 {
                   specialize (und_def0 i).
-                  rewrite <-x1 in und_def0.
+                  rewrite <-x3, <-x2 in und_def0 at 1.
                   simpl in *. ddestruct und_def0.
                   now rewrite <-x.
                 }
@@ -4003,13 +4025,13 @@ Proof.
                 split. easy.
                 split. easy.
                 constructor.
-                replace c with (λ i, (x0.(und_vals) i).(ran)).
+                replace c with (λ i, (x1.(und_vals) i).(ran)).
                 2:{
                   clear - Heqp.
                   unfold conPoss in Heqp.
                   now ddestruct Heqp.
                 }
-                replace vs with (collect x0.(und_vals)).
+                replace vs with (collect x1.(und_vals)).
                 2:{
                   clear - Heqp.
                   unfold conPoss in Heqp.
@@ -4017,7 +4039,7 @@ Proof.
                 }
                 {
                   specialize (und_def0 i).
-                  rewrite <-x1 in und_def0.
+                  rewrite <-x3, <-x2 in und_def0 at 1.
                   simpl in *. ddestruct und_def0.
                   now rewrite <-x.
                 }
@@ -4040,14 +4062,14 @@ Proof.
           split.
           {
             intros. psimpl.
-            exists x2.
+            exists x5.
             split. easy.
             eapply erase_vis.
             exact H10.
           }
-          destruct x0. psimpl.
+          destruct x1. psimpl.
           assert (
-            Inv (MkD und_vals0 (updf rets_map0 i (PRetn v None))) t
+            Inv (MkD und_vals0 (updf rets_map0 i (PRetn v None)) wrt_ordn0) t
               (λ σ,
                 ∃ ρ, ρs ρ /\
                 VisPossSteps
@@ -4062,8 +4084,13 @@ Proof.
             {
               intros. rewrite <-und_def0.
               dec_eq_nats i0 i.
-              { now rewrite <-x1, <-x at 1. }
-              { now rewrite H5. }
+              { now rewrite <-x3, <-x4, <-x2, <-x at 1. }
+              { now rewrite <-x3, <-x4, H5 at 1. }
+            }
+            {
+              rewrite <-x4 at 1.
+              rewrite <-x3 in wrt_def0 at 1.
+              now apply wrt_ordn_read.
             }
             {
               set_ext σ.
@@ -4074,14 +4101,14 @@ Proof.
                 ddestruct H16. psimpl.
                 ddestruct H3.
                 {
-                  clear - H3 und_def0 x1 x0.
+                  clear - H3 und_def0 x x0 x1 x2 x3 x4.
                   specialize (und_def0 i).
-                  rewrite <-x1 in und_def0.
+                  rewrite <-x3, <-x2 in und_def0 at 1.
                   simpl in *. ddestruct und_def0.
                   now rewrite <-x in H3.
                 }
                 ddestruct H19.
-                exists (updf x2 i (PRetn v None)).
+                exists (updf x5 i (PRetn v None)).
                 split.
                 {
                   unfold updf. intros.
@@ -4097,30 +4124,30 @@ Proof.
                   destruct σ. psimpl.
                   repeat f_equal.
                   {
-                    rewrite <-x3 in x4.
-                    now ddestruct x4.
+                    rewrite <-x6 in x7.
+                    now ddestruct x7.
                   }
                   {
                     extensionality j.
                     dec_eq_nats j i.
                     { now rewrite eqb_id, H21. }
                     {
-                      rewrite <-x3 in x4. ddestruct x4.
+                      rewrite <-x6 in x7. ddestruct x7.
                       now rewrite eqb_nid, H22, H12.
                     }
                   }
-                  { rewrite <-x3 in x4. now ddestruct x4. }
+                  { rewrite <-x6 in x7. now ddestruct x7. }
                   {
-                    rewrite <-x3 in x4.
-                    ddestruct x4.
+                    rewrite <-x6 in x7.
+                    ddestruct x7.
                     extensionality j.
                     dec_eq_nats j i.
                     { now rewrite eqb_id. }
                     { now rewrite eqb_nid, H25, H17. }
                   }
                   {
-                    rewrite <-x3 in x4.
-                    ddestruct x4.
+                    rewrite <-x6 in x7.
+                    ddestruct x7.
                     extensionality j.
                     dec_eq_nats j i.
                     { now rewrite eqb_id. }
@@ -4129,7 +4156,7 @@ Proof.
                 }
               }
               {
-                exists (conPoss und_vals0 (updf x0 i (PWait v))).
+                exists (conPoss und_vals0 (updf x1 i (PWait v))).
                 split.
                 {
                   eexists.
@@ -4143,13 +4170,13 @@ Proof.
                   { now rewrite eqb_nid in *. }
                 }
                 {
-                  remember (conPoss und_vals0 (updf x0 i (PWait v))).
+                  remember (conPoss und_vals0 (updf x1 i (PWait v))).
                   destruct p, PState.
                   assert (
-                    conPoss und_vals0 x0 =
+                    conPoss und_vals0 x1 =
                     comRetPoss i
                       (comInvPoss i
-                        (conPoss und_vals0 (updf x0 i (PWait v)))
+                        (conPoss und_vals0 (updf x1 i (PWait v)))
                         (WriteSnap v)
                         (SnapDef vs (updf m i (Some v)) c)
                       )
@@ -4158,7 +4185,7 @@ Proof.
                       None
                   ).
                   {
-                    assert (x0 i = PRetn v None).
+                    assert (x1 i = PRetn v None).
                     {
                       specialize (H1 i).
                       unfold updf in H1.
@@ -4234,7 +4261,7 @@ Proof.
                     constructor.
                     {
                       specialize (und_def0 i).
-                      rewrite <-x1 in und_def0.
+                      rewrite <-x3, <-x2 in und_def0 at 1.
                       simpl in *. ddestruct und_def0.
                       now rewrite <-x.
                     }
@@ -4268,7 +4295,7 @@ Proof.
                     }
                     {
                       specialize (und_def0 i).
-                      rewrite <-x1 in und_def0.
+                      rewrite <-x3, <-x2 in und_def0 at 1.
                       simpl in *. ddestruct und_def0.
                       now rewrite <-x.
                     }
@@ -4301,14 +4328,35 @@ Proof.
             {
               intros ??. psimpl.
               dec_eq_nats i0 i.
-              { now rewrite <-x in H3 at 1. }
+              { now rewrite <-x4, <-x in H3 at 1. }
               {
-                rewrite H5 in H3; auto.
-                apply (resp_own0 i0).
-                now exists x0, x2.
+                rewrite <-x4, H5 in H3 at 1; auto.
+                apply (resp_own0 i0). setoid_rewrite <-x3 at 1.
+                simpl. now exists x1, x5.
               }
             }
             { easy. }
+            {
+              unfold updf. intros.
+              dec_eq_nats i0 i.
+              {
+                specialize (und_def0 i).
+                rewrite <-x3, <-x2 in und_def0 at 1.
+                simpl in *. ddestruct und_def0.
+                now rewrite <-x at 1.
+              }
+              { rewrite eqb_nid in H1; auto. }
+            }
+            { easy. }
+            {
+              unfold updf. intros.
+              dec_eq_nats i0 i.
+              { now rewrite eqb_id in H1. }
+              {
+                rewrite eqb_nid in H1; auto.
+                eapply ob_write0. exact H1.
+              }
+            }
           }
           split.
           {
@@ -4336,52 +4384,61 @@ Proof.
           split.
           {
             clear - H3.
+            assert (H3' := H3).
             destruct H3. psimpl.
-            exists (conPoss x0.(und_vals) x0.(rets_map)).
-            exists x0.(rets_map).
+            exists (conPoss x1.(und_vals) x1.(rets_map)).
+            exists x1.(rets_map).
             split. 2: easy. intros.
-            apply PS_refl, vi_subs0.
+            eapply PS_refl. exact H3'.
           }
           split.
           {
             intros. exists σ.
             split. easy. constructor.
           }
-          assert (Inv x0 t ρs).
+          assert (Inv x1 t ρs).
           {
-            clear - H3 x x1 H5.
+            clear - H3 x x0 x1 x2 x3 x4 H5.
             destruct H3. psimpl.
             constructor; simpl.
             {
               intros.
               dec_eq_nats i0 i.
-              { now rewrite <-und_def0, <-x1, <-x at 1. }
-              { now rewrite H5. }
+              { now rewrite <-und_def0, <-x3, <-x4, <-x, <-x2 at 1. }
+              { now rewrite <-und_def0, <-x3, <-x4, H5 at 1. }
+            }
+            {
+              rewrite <-x4 at 1.
+              rewrite <-x3 in wrt_def0.
+              now apply wrt_ordn_read.
             }
             { easy. }
             { easy. }
             {
               intros ??. psimpl.
               dec_eq_nats i0 i.
-              { now rewrite <-x in H0 at 1. }
+              { now rewrite <-x4, <-x in H0 at 1. }
               {
-                rewrite H5 in H0; auto.
-                apply (resp_own0 i0).
-                now exists x2, x3.
+                rewrite <-x4, H5 in H0 at 1; auto.
+                apply (resp_own0 i0). setoid_rewrite <-x3 at 1.
+                now exists x5, x6.
               }
             }
+            { easy. }
+            { easy. }
+            { easy. }
             { easy. }
           }
           split.
           {
             split. easy.
-            exists x0.
+            exists x1.
             split. easy.
             split. easy.
-            clear - H3 x1.
+            clear - H3 x x0 x1 x2 x3 x4.
             destruct H3. psimpl.
             specialize (und_def0 i).
-            rewrite <-x1 in und_def0.
+            rewrite <-x3, <-x2 in und_def0 at 1.
             simpl in *. ddestruct und_def0.
             now rewrite <-x.
           }
