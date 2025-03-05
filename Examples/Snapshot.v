@@ -1762,7 +1762,168 @@ Lemma return_some_step {T A} :
     (WriteSnap v) r
     (λ _ _ s ρs,
       ∃ d, Inv d s ρs).
-Admitted.
+Proof.
+  unfold ReturnStep.
+  intros. clear H0. psimpl.
+  rename x0 into vi.
+  rename x1 into new.
+  exists (λ σ,
+    ρs σ /\
+    Done i (WriteSnap v) (Some new) σ).
+  split.
+  {
+    assert (H' := H).
+    destruct H. psimpl.
+    exists (conPoss x.(und_vals) (updf x.(rets_map) i (PRetn v (Some new)))).
+    split.
+    {
+      exists (updf x.(rets_map) i (PRetn v (Some new))).
+      split. 2: easy. intros. unfold updf.
+      dec_eq_nats i0 i.
+      { now rewrite eqb_id, H1. }
+      {
+        rewrite eqb_nid; eauto.
+        eapply PS_refl. exact H'.
+      }
+    }
+    {
+      unfold updf.
+      constructor; simpl;
+      now rewrite eqb_id.
+    }
+  }
+  split.
+  {
+    intros. exists σ.
+    split. easy. constructor.
+  }
+  split.
+  {
+    intros. psimpl.
+    now destruct H3.
+  }
+  eassert _.
+  2:{
+    split.
+    exists (MkD x.(und_vals) (updf x.(rets_map) i PIdle) x.(wrt_ordn)).
+    exact X. intros ??.
+    eapply Inv_eqv in H0.
+    2: exact H. psimpl.
+    destruct d. eexists. split.
+    { eapply SnapReturn. exact H1. }
+    { easy. }
+  }
+  {
+    destruct H. psimpl.
+    constructor; psimpl; auto.
+    {
+      set_ext y;
+      unfold mapRetPoss;
+      split; intros; do 2 psimpl.
+      {
+        exists (updf x1 i PIdle).
+        split.
+        {
+          unfold updf.
+          intros. dec_eq_nats i0 i.
+          { rewrite eqb_id. constructor. }
+          { rewrite eqb_nid; auto. }
+        }
+        {
+          assert (x1 i = PRetn v (Some new)).
+          {
+            clear - H5.
+            destruct (x1 i). 2: easy.
+            destruct p, o. 2: easy.
+            destruct o. 2: easy.
+            now ddestruct H5.
+          }
+          unfold conPoss.
+          destruct y. psimpl.
+          f_equal.
+          {
+            f_equal. unfold updf.
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id, H10. }
+            { now rewrite eqb_nid. }
+          }
+          {
+            unfold updf.
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id. }
+            { now rewrite eqb_nid, H6. }
+          }
+          {
+            unfold updf.
+            extensionality j.
+            dec_eq_nats j i.
+            { now rewrite eqb_id. }
+            { now rewrite eqb_nid, H7. }
+          }
+        }
+      }
+      {
+        exists (conPoss x.(und_vals) (updf x0 i (PRetn v (Some new)))).
+        split.
+        {
+          split.
+          {
+            exists (updf x0 i (PRetn v (Some new))).
+            split. 2: easy. intros. specialize (H i0).
+            unfold updf in *. dec_eq_nats i0 i.
+            { now rewrite eqb_id, H1. }
+            { rewrite eqb_nid in *; auto. }
+          }
+          {
+            constructor; simpl;
+            unfold updf; now rewrite eqb_id.
+          }
+        }
+        assert (x0 i = PIdle).
+        {
+          specialize (H i).
+          unfold updf in H.
+          rewrite eqb_id in H.
+          now ddestruct H.
+        }
+        simpl. unfold updf.
+        rewrite H0, eqb_id.
+        do 4 split;[easy|idtac].
+        split.
+        { intros ??. now rewrite eqb_nid. }
+        split.
+        { intros ??. now rewrite eqb_nid. }
+        {
+          f_equal.
+          extensionality j.
+          dec_eq_nats j i.
+          { now rewrite H0, eqb_id. }
+          { now rewrite eqb_nid. }
+        }
+      }
+    }
+    {
+      unfold updf.
+      intros. dec_eq_nats i0 i.
+      { now rewrite eqb_id in H. }
+      { rewrite eqb_nid in H; eauto. }
+    }
+    {
+      unfold updf.
+      intros. dec_eq_nats i0 i.
+      { now rewrite eqb_id in H; psimpl. }
+      { rewrite eqb_nid in H; eauto. }
+    }
+    {
+      unfold updf.
+      intros. dec_eq_nats i0 i.
+      { now rewrite eqb_id in H. }
+      { rewrite eqb_nid in H; eauto. }
+    }
+  }
+Qed.
 
 Lemma return_step {T A} :
   ∀ (i : Name T) (v : A) (r : option (set A)),
