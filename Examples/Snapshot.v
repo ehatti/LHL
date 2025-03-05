@@ -1962,7 +1962,6 @@ Proof.
   }
 Qed.
 
-Check @lemCall.
 Arguments lemCall {T i E F VE VF R G A} Q S.
 
 Lemma Inv_stable {T A} :
@@ -3186,18 +3185,38 @@ Proof.
   now repeat constructor.
 Qed.
 
+(* Inductive WrtDef {T A} :
+  list (Name T * {R & prod (ArraySig (RegSig (reg_st A)) T R) R}) ->
+  OWr A ->
+  Prop :=
+| WDEnd :
+  WrtDef nil nil
+| WDSkip i n v os wr :
+  WrtDef os wr ->
+  WrtDef ((i, existT _ _ (At n Read, v)) :: os) wr
+| WDKeep (i : Name T) (v : A) (f : bool) os (wr : OWr A) :
+  WrtDef os wr ->
+  WrtDef ((i, existT _ _ (At i (Write (MkReg (Some v) f)), tt)) :: os) (v :: wr). *)
+
+
 Lemma ob_stable {T A} :
   ∀ s d d',
     @SnapTrans T A d d' ->
+    s ⊆ (λ v, In v d.(wrt_ordn)) ->
     ObWr s d.(wrt_ordn) ->
     ObWr s d'.(wrt_ordn).
 Proof.
-  intros.
+  intros s d d' H Hsub H0.
   induction H; auto.
-  apply IHclos_refl_trans_1n.
-  clear IHclos_refl_trans_1n H1.
   psimpl. ddestruct H; auto; psimpl.
-  destruct H1. subst.
+  apply IHclos_refl_trans_1n;
+  clear IHclos_refl_trans_1n H1.
+  {
+    intros.
+    apply In_app_rev.
+    left. now apply Hsub.
+  }
+  destruct H2. subst.
   apply Build_ObWr with
     (pfx:=pfx)
     (qfx:= qfx ++ v :: nil).
@@ -3211,8 +3230,12 @@ Proof.
     {
       destruct H1;
       subst. 2: easy.
+      assert (H2' := H2).
+      apply Hsub, In_app in H2.
+      destruct H2. easy. eauto.
     }
   }
+Qed.
 
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   x.(new) = emp ->
