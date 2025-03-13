@@ -3192,26 +3192,27 @@ Proof.
   now repeat constructor.
 Qed.
 
-Inductive WrtDefRes {T A} {c : nat} :
+Inductive WrtPfxRes {T A} {c : nat} :
   list (Name T * {R & prod (ArraySig (RegSig (reg_st A)) T R) R}) ->
   OWr A ->
+  OWr A ->
   Prop :=
-| WDREnd :
-  WrtDefRes nil nil
-| WDRSkipR i n v os wr :
-  WrtDefRes os wr ->
-  WrtDefRes ((i, existT _ _ (At n Read, v)) :: os) wr
-| WDRKeep (i n : Name T) (v : A) os (wr : OWr A) :
+| WDREnd os :
+  WrtPfxRes os nil nil
+| WDRSkipR i n v os wr wrp :
+  WrtPfxRes os wr wrp ->
+  WrtPfxRes ((i, existT _ _ (At n Read, v)) :: os) wr wrp
+| WDRKeep (i n : Name T) (v : A) os (wr wrp : OWr A) :
   `n ≥ c ->
-  WrtDefRes os wr ->
-  WrtDefRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) (v :: wr)
-| WDRSkipW (i n : Name T) (v : A) os (wr : OWr A) :
+  WrtPfxRes os wr wrp ->
+  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) (v :: wr) (v :: wrp)
+| WDRSkipW (i n : Name T) (v : A) os (wr wrp : OWr A) :
   `n < c ->
-  WrtDefRes os wr ->
-  WrtDefRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) wr.
-Arguments WrtDefRes {T A} c.
+  WrtPfxRes os wr wrp ->
+  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) (v :: wr) wrp.
+Arguments WrtPfxRes {T A} c.
 
-Lemma wdr_unres {T A} :
+(* Lemma wdr_unres {T A} :
   ∀ und ord,
     @WrtDefRes T A 0 und ord <-> WrtDef und ord.
 Proof.
@@ -3252,7 +3253,7 @@ Proof.
       }
     }
   }
-Qed.
+Qed. *)
 
 Lemma ob_stable {T A} :
   ∀ s d d',
@@ -3356,6 +3357,17 @@ Proof.
   }
 Qed.
 
+Lemma res_stable {T A} :
+  ∀ n wrt wrt' p p',
+    Prefix wrt' wrt ->
+    @WrtPfxRes T A n wrt' p p' ->
+    WrtPfxRes n wrt p p'.
+Proof.
+  intros. destruct H.
+  psimpl. induction H0;
+  now constructor.
+Qed.
+
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   x.(new) = emp ->
   VerifyProg i (Rely i) (Guar i)
@@ -3396,7 +3408,9 @@ Proof.
         ∃ p,
           Prefix p d.(wrt_ordn) /\
           y.(old) ⊆ set_of p /\
-          (λ v, v ∈ set_of p /\ ∃ i, `i ≥ n /\ (und_vals d i).(val) = Some v) ⊆ y.(new)).
+          ∃ p',
+            WrtPfxRes n (snd s).(RState).(os_ord) p p' /\
+            set_of p' ⊆ y.(new)).
   2:{
     unfold sub, subRelt.
     intros. psimpl.
@@ -3420,10 +3434,40 @@ Proof.
     split. easy.
     split. easy.
     {
-      intros.
-      unfold contains in H4.
-      psimpl. destruct x3.
-      psimpl. lia.
+      exists nil.
+      split. 2: easy.
+      destruct H2, H.
+      rewrite H2 in wrt_def0.
+      clear - wrt_def0.
+      cut (
+        ∀ wrt p p',
+          WrtDef wrt (p ++ p') ->
+          @WrtPfxRes T A T wrt p nil
+      ).
+      {
+        intros. eapply H.
+        exact wrt_def0.
+      }
+      clear. intros.
+      dependent induction H.
+      {
+        destruct p.
+        constructor.
+        easy.
+      }
+      {
+        constructor.
+        now eapply IHWrtDef.
+      }
+      {
+        destruct p; psimpl.
+        { constructor. }
+        {
+          ddestruct x. constructor.
+          { destruct n. now psimpl. }
+          { now eapply IHWrtDef. }
+        }
+      }
     }
   }
   2:{
@@ -3434,33 +3478,31 @@ Proof.
     split. easy.
     split. easy.
     split. easy.
+    assert (x3 = x2).
+    {
+      clear - H6. revert H6.
+      cut (
+        ∀ wrt p p',
+          @WrtPfxRes T A 0 wrt p p' → p' = p
+      ).
+      {
+        intros.
+        eapply H.
+        exact H6.
+      }
+      clear. intros.
+      induction H; now subst.
+    }
+    clear H6. subst.
     split.
     {
       intros ??.
-      destruct H7, H7.
+      destruct H6, H6.
       apply H2. exists x3.
       repeat split; (easy || lia).
     }
-    split.
-    { easy. }
-    exists x2.
     split. easy.
-    split. easy.
-    {
-      intros. apply H6.
-      split. easy.
-      cut (v0 ∈ collect x0.(und_vals)).
-      {
-        intros. destruct H8.
-        exists x3. split. lia.
-        easy.
-      }
-      apply H.
-      destruct H4.
-      rewrite H4.
-      apply In_app_rev.
-      now left.
-    }
+    now exists x2.
   }
   {
     clear.
@@ -3482,8 +3524,9 @@ Proof.
           ∃ p,
             Prefix p d.(wrt_ordn) /\
             s.(old) ⊆ set_of p /\
-            set_of p ⊆ (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v) /\
-            (λ v, v ∈ set_of p /\ ∃ i, `i ≥ S n /\ (und_vals d i).(val) = Some v) ⊆ s.(new)).
+            ∃ p',
+              WrtPfxRes n (snd s0).(RState).(os_ord) p p' /\
+              set_of p' ⊆ s.(new)).
     {
       unfold lift.
       eapply lemBind.
@@ -3498,8 +3541,9 @@ Proof.
             ∃ p,
               Prefix p d.(wrt_ordn) /\
               s.(old) ⊆ set_of p /\
-              set_of p ⊆ (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v) /\
-              (λ v, v ∈ set_of p /\ ∃ i, `i ≥ S n /\ (und_vals d i).(val) = Some v) ⊆ s.(new)
+              ∃ p',
+                WrtPfxRes (S n) (snd s0).(RState).(os_ord) p p' /\
+                set_of p' ⊆ s.(new)
         ).
         assert (I_stable : Stable (Rely i) I).
         {
@@ -3508,7 +3552,7 @@ Proof.
             sub, subPrec.
           intros.
           destruct H, H, H, H, H, H, H1, H2, H3, H4.
-          destruct H5 as [pf [Hpfx [Hsub [Hval Hsup]]]].
+          destruct H5 as [pf [Hpfx [Hsub [pf' [Hres Hsup]]]]].
           assert (H' := H).
           apply H0 in H. psimpl.
           exists x3, x2.
@@ -3597,33 +3641,11 @@ Proof.
             exact H.
           }
           split. easy.
-          split.
-          {
-            intros.
-            apply Hval in H6.
-            destruct H6, H6.
-            exists x4.
-            split. easy.
-            assert (H7' := H7).
-            eapply one_shot in H7.
-            2: eapply forget_othr, H.
-            now rewrite <-H7.
-          }
-          {
-            intros. apply Hsup.
-            destruct H6, H7, H7, H8.
-            split. easy.
-            exists x4.
-            split. easy.
-            apply H1 in H7.
-            remember (val (und_vals x1 x4)).
-            destruct o. 2: easy.
-            symmetry in Heqo.
-            assert (Heqo' := Heqo).
-            eapply one_shot in Heqo.
-            2: eapply forget_othr, H.
-            now rewrite <-Heqo, Heqo' in H9 at 1.
-          }
+          exists pf'.
+          split. 2: easy.
+          eapply res_stable.
+          2: exact Hres.
+          admit.
         }
         eapply weakenPrec with (P:=λ _ _, I).
         2: easy.
@@ -3643,8 +3665,9 @@ Proof.
               ∃ p,
                 Prefix p d.(wrt_ordn) /\
                 s.(old) ⊆ set_of p /\
-                set_of p ⊆ (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v) /\
-                (λ v, v ∈ set_of p /\ ∃ i, vi i /\ `i ≥ S n /\ (und_vals d i).(val) = Some v) ⊆ s.(new)).
+                ∃ p',
+                  WrtPfxRes (S n) (snd s0).(RState).(os_ord) p p' /\
+                  set_of p' ⊆ s.(new)).
         { easy. }
         {
           unfold
@@ -3652,7 +3675,7 @@ Proof.
             sub, subPrec.
           intros.
           destruct H, H, H, H, H, H, H1, H2, H3, H4.
-          destruct H5 as [pf [Hpfx [Hsub [Hval Hsup]]]].
+          destruct H5 as [Hval [pf [Hpfx [Hsub [pf' [Hres Hsup]]]]]].
           assert (H' := H).
           apply H0 in H. psimpl.
           exists x3, x2.
@@ -3660,7 +3683,7 @@ Proof.
           split.
           {
             intros.
-            apply H1 in H8.
+            apply H1 in H6.
             remember (und_vals x1 i0).
             destruct r, val0. simpl in *.
             eapply forget_othr, one_shot in H.
@@ -3678,8 +3701,8 @@ Proof.
               set_ext y.
               split; intros; psimpl.
               {
-                assert (H8' := H8).
-                apply H1 in H8.
+                assert (H6' := H6).
+                apply H1 in H6.
                 remember (und_vals x1 x4).
                 destruct r. simpl in *. destruct val0.
                 2: easy. ddestruct H7.
@@ -3689,8 +3712,8 @@ Proof.
                 now rewrite <-Heqr.
               }
               {
-                assert (H8' := H8).
-                apply H1 in H8.
+                assert (H6' := H6).
+                apply H1 in H6.
                 remember (und_vals x1 x4).
                 destruct r. simpl in *. destruct val0.
                 2: easy. ddestruct H7.
@@ -3702,87 +3725,51 @@ Proof.
               }
             }
             erewrite <-Inv_pres_self.
-            setoid_rewrite <-H8. exact H2.
+            setoid_rewrite <-H6. exact H2.
             easy.
           }
           split.
           {
             intros ??.
-            destruct H8, H8, H9.
+            destruct H6, H6, H7.
             apply H3.
             exists x4.
             split. easy.
             split. easy.
-            apply H1 in H8.
+            apply H1 in H6.
             remember (und_vals x1 x4).
             destruct r, val0. simpl in *.
             eapply forget_othr, one_shot in H.
             2: now rewrite <-Heqr at 1.
-            now rewrite <-H, <-Heqr in H10.
+            now rewrite <-H, <-Heqr in H8.
             easy.
           }
           split.
           {
             intros.
-            apply H4 in H8.
-            destruct H8. exists x4.
+            apply H4 in H6.
+            destruct H6. exists x4.
             eapply forget_othr, one_shot in H.
-            2: exact H8. now rewrite <-H.
+            2: exact H6. now rewrite <-H.
           }
-          rename pf into Hcase.
-          rename Hpfx into pf.
-          rename Hsub into Hpfx.
-          rename Hval into Hsub.
-          rename H5 into Hval.
-          rename H6 into Hsup.
           split.
           {
-            remember (val v0).
-            destruct o; subst.
-            {
-              symmetry.
-              eapply one_shot.
-              { eapply forget_othr, H. }
-              { symmetry. exact Heqo. }
-            }
-            { easy. }
+            admit.
           }
+          assert (Prefix x1.(wrt_ordn) x3.(wrt_ordn)).
+          { eapply pfx_stable, forget_othr, H. }
           exists pf.
           split.
           {
-            eapply prefix_trans. exact Hpfx.
-            eapply pfx_stable, forget_othr.
-            exact H.
+            eapply prefix_trans.
+            exact Hpfx. easy.
           }
           split. easy.
-          split.
-          {
-            intros.
-            apply Hval in H5.
-            destruct H5, H5.
-            exists x4.
-            split. easy.
-            assert (H6' := H6).
-            eapply one_shot in H6.
-            2: eapply forget_othr, H.
-            now rewrite <-H6.
-          }
-          {
-            intros. apply Hsup.
-            destruct H5, H6, H6, H8.
-            split. easy.
-            exists x4.
-            split. easy.
-            split. easy.
-            apply H1 in H6.
-            remember (val (und_vals x1 x4)).
-            destruct o. 2: easy.
-            symmetry in Heqo.
-            assert (Heqo' := Heqo).
-            eapply one_shot in Heqo.
-            2: eapply forget_othr, H.
-            now rewrite <-Heqo, Heqo' in H9 at 1.
-          }
+          exists pf'. split. 2: easy.
+          eapply res_stable with
+            (wrt' := (snd x).(RState).(os_ord)).
+          2: easy.
+          admit.
         }
         {
           unfold Commit.
@@ -3847,7 +3834,7 @@ Proof.
               }
               {
                 apply (resp_own0 i0).
-                exists x7, x8.
+                exists x8, x9.
                 rewrite <-x2 at 1.
                 rewrite <-x3 in H9 at 1.
                 now rewrite <-H3.
@@ -3862,7 +3849,9 @@ Proof.
             split. easy.
             split. easy.
             split. easy.
-            now exists x6.
+            exists x7.
+            split. easy.
+            split. easy.
           }
           {
             intros ??.
