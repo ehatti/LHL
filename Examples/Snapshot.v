@@ -516,14 +516,14 @@ Notation PRetn v vs := (Some (v, Some (Some vs))).
 Definition RPossSet (T : nat) (A : Type) :=
   RPoss T A -> Prop.
 
-Definition OWr A := list A.
+Definition OWr T A := list (Name T * A).
 
-Record ObWr {A} (vs : set A) (wr : OWr A) : Prop := {
-  pfx : OWr A;
-  qfx : OWr A;
-  p_comb : wr = pfx ++ qfx;
-  all_in : ∀ v, List.In v pfx -> v ∈ vs;
-  all_dups : ∀ v, List.In v qfx -> v ∈ vs -> List.In v pfx
+Definition Prefix {A} (xs zs : list A) :=
+  ∃ ys, zs = xs ++ ys.
+
+Record ObWr {T A} (vs : set A) (wr : OWr T A) : Prop := {
+  ob_wr :
+
 }.
 Arguments ObWr {A} vs wr.
 
@@ -3300,9 +3300,6 @@ Lemma wdr_stable {T A} :
     Inv d' t σs ->
     WrtDefRes (T:=T) c (os_ord (RState (snd t))) o. *)
 
-Definition Prefix {A} (xs zs : list A) :=
-  ∃ ys, zs = xs ++ ys.
-
 Notation set_of xs := (λ v, List.In v xs).
 
 Lemma ob_help {A} :
@@ -3754,7 +3751,15 @@ Proof.
           }
           split.
           {
-            admit.
+            remember (val v0).
+            destruct o. 2: easy.
+            eapply forget_othr in H.
+            eapply one_shot with
+              (i:= exist _ n p)
+              (v:= a)
+              in H.
+            2: now subst.
+            now rewrite <-H.
           }
           assert (Prefix x1.(wrt_ordn) x3.(wrt_ordn)).
           { eapply pfx_stable, forget_othr, H. }
@@ -3766,10 +3771,36 @@ Proof.
           }
           split. easy.
           exists pf'. split. 2: easy.
-          eapply res_stable with
-            (wrt' := (snd x).(RState).(os_ord)).
-          2: easy.
-          admit.
+          clear - H5 H' Hres H6. destruct H5, H'.
+          clear - Hres H6 wrt_def0 wrt_def1.
+          destruct H6. rewrite H in *. clear H.
+          cut (
+            ∀ wrt' wrt q ord n pf pf',
+              WrtDef wrt (ord ++ q) ->
+              WrtDef wrt' ord ->
+              @WrtPfxRes T A n wrt' pf pf' ->
+              @WrtPfxRes T A n wrt pf pf'
+          ).
+          {
+            intros.
+            eapply H.
+            exact wrt_def0.
+            exact wrt_def1.
+            easy.
+          }
+          clear. intros. gendep ord.
+          induction H1; simpl; intros.
+          { constructor. }
+          {
+            ddestruct H0.
+            eapply IHWrtPfxRes.
+            { exact H. }
+            { easy. }
+          }
+          {
+            ddestruct H2.
+            simpl in *.
+          }
         }
         {
           unfold Commit.
