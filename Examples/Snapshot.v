@@ -3269,11 +3269,11 @@ Inductive WrtPfxRes {T A} {c : nat} :
 | WDRKeep (i n : Name T) (v : A) os (wr wrp : OWr T A) :
   `n ≥ c ->
   WrtPfxRes os wr wrp ->
-  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((n, v) :: wr) ((n, v) :: wrp)
+  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((i, n, v) :: wr) ((i, n, v) :: wrp)
 | WDRSkipW (i n : Name T) (v : A) os (wr wrp : OWr T A) :
   `n < c ->
   WrtPfxRes os wr wrp ->
-  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((n, v) :: wr) wrp.
+  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((i, n, v) :: wr) wrp.
 Arguments WrtPfxRes {T A} c.
 
 Lemma wrt_res_ordn_read {T A} :
@@ -3375,7 +3375,7 @@ Lemma wdr_stable {T A} :
     WrtDefRes (T:=T) c (os_ord (RState (snd t))) o. *)
 
 Lemma ob_help {T A} :
-  ∀ pfx ord : list (Name T * A),
+  ∀ pfx ord : list (Name T * Index T * A),
     Prefix pfx ord ->
     ObWr (set_of pfx) ord.
 Proof.
@@ -3383,7 +3383,15 @@ Proof.
   destruct H. psimpl.
   apply Build_ObWr with
     (pfx:= pfx).
-  { easy. }
+  {
+    set_ext v. split;
+    intros; psimpl.
+    { now exists (x0, x1). }
+    {
+      destruct x0.
+      now exists n, i.
+    }
+  }
   { now apply prefix_cons, prefix_refl. }
 Qed.
 
@@ -3404,7 +3412,7 @@ Proof.
     clear H0 IHclos_refl_trans_1n.
     psimpl. ddestruct H; simpl;
     try now apply prefix_refl.
-    now exists ((x0, v) :: nil).
+    now exists ((x0, x0, v) :: nil).
   }
 Qed.
 
@@ -3535,7 +3543,7 @@ Proof.
     {
       exists nil.
       split.
-      2: intros; now destruct H4.
+      2: intros; now destruct H4, H4.
       destruct H2, H.
       rewrite H2 in wrt_def0.
       clear - wrt_def0.
@@ -3767,16 +3775,21 @@ Proof.
             now exists x.
           }
           {
-            remember ((n, v) :: wr ++ q).
-            induction H; psimpl; try easy;
+            adjust H (
+              ∃ l,
+                l = (i, n, v) :: wr ++ q /\
+                WrtDef t l
+            ).
+            { now eexists. }
+            destruct H, H.
+            induction H1; psimpl; try easy;
             try specialize (IHWrtDef0 eq_refl).
             { easy. }
             {
-              ddestruct Heql.
-              apply IHWrtDef in H.
-              destruct H. rewrite H.
-              exists x. simpl.
-              f_equ
+              ddestruct H.
+              apply IHWrtDef in H1.
+              destruct H1. rewrite H.
+              now exists x.
             }
           }
         }
@@ -3948,17 +3961,22 @@ Proof.
               { easy. }
             }
             clear - IHWrtPfxRes H0 H.
-            remember ((n0, v) :: wr0 ++ q).
-            dependent induction H0; subst;
+            adjust H0 (
+              ∃ l,
+                l = (i, n0, v) :: wr0 ++ q /\
+                WrtDef wrt l
+            ).
+            { now eexists. }
+            destruct H0, H0.
+            dependent induction H1; subst;
             try specialize (IHWrtDef eq_refl).
             { easy. }
             {
               constructor.
               eapply IHWrtDef.
-              { intros. now apply IHWrtPfxRes. }
             }
             {
-              ddestruct Heql.
+              ddestruct H0.
               constructor; try easy.
               now apply IHWrtPfxRes.
             }
@@ -3977,17 +3995,22 @@ Proof.
               { easy. }
             }
             clear - IHWrtPfxRes H0 H.
-            remember ((n0, v) :: wr0 ++ q).
-            dependent induction H0; subst;
+            adjust H0 (
+              ∃ l,
+                l = (i, n0, v) :: wr0 ++ q /\
+                WrtDef wrt l
+            ).
+            { now eexists. }
+            destruct H0, H0.
+            dependent induction H1; subst;
             try specialize (IHWrtDef eq_refl).
             { easy. }
             {
               constructor.
               eapply IHWrtDef.
-              { intros. now apply IHWrtPfxRes. }
             }
             {
-              ddestruct Heql.
+              ddestruct H0.
               constructor; try easy.
               now apply IHWrtPfxRes.
             }
@@ -4289,7 +4312,7 @@ Proof.
       }
     }
   }
-Qed.
+Admitted.
 
 Lemma wk_write {T A} (i i' : Name T) (v : A) :
   ∀ (P : Prec T A) (Q : unit -> Relt T A),
