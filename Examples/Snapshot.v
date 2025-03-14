@@ -553,7 +553,7 @@ Proof.
 Qed.
 
 
-Notation set_of xs := (λ v, List.In v xs).
+Notation set_of xs := (λ v, ∃ i, List.In (i, v) xs).
 
 Record ObWr {T A} (vs : set A) (wr : OWr T A) : Prop := {
   pfx : OWr T A;
@@ -624,7 +624,7 @@ Inductive WrtDef {T A} :
   WrtDef ((i, existT _ _ (At n Read, v)) :: os) wr
 | WDKeep (i n : Name T) (v : A) os (wr : OWr T A) :
   WrtDef os wr ->
-  WrtDef ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((i, v) :: wr).
+  WrtDef ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((n, v) :: wr).
 
 Record bisub {X} (A B : set X) := {
   sub_fwd : A ⊆ B;
@@ -3255,23 +3255,33 @@ Qed.
 
 Inductive WrtPfxRes {T A} {c : nat} :
   list (Name T * {R & prod (ArraySig (RegSig (reg_st A)) T R) R}) ->
-  OWr A ->
-  OWr A ->
+  OWr T A ->
+  OWr T A ->
   Prop :=
 | WDREnd os :
   WrtPfxRes os nil nil
 | WDRSkipR i n v os wr wrp :
   WrtPfxRes os wr wrp ->
   WrtPfxRes ((i, existT _ _ (At n Read, v)) :: os) wr wrp
-| WDRKeep (i n : Name T) (v : A) os (wr wrp : OWr A) :
+| WDRKeep (i n : Name T) (v : A) os (wr wrp : OWr T A) :
   `n ≥ c ->
   WrtPfxRes os wr wrp ->
-  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) (v :: wr) (v :: wrp)
-| WDRSkipW (i n : Name T) (v : A) os (wr wrp : OWr A) :
+  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((n, v) :: wr) ((n, v) :: wrp)
+| WDRSkipW (i n : Name T) (v : A) os (wr wrp : OWr T A) :
   `n < c ->
   WrtPfxRes os wr wrp ->
-  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) (v :: wr) wrp.
+  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((n, v) :: wr) wrp.
 Arguments WrtPfxRes {T A} c.
+
+Lemma wrt_res_ordn_read {T A} :
+  ∀ c ord wrt wrt' i n v,
+    @WrtPfxRes T A c ord wrt wrt' ->
+    WrtPfxRes c (ord ++ cons (i, existT _ _ (At n Read, v)) nil) wrt wrt'.
+Proof.
+  intros.
+  induction H; simpl;
+  now repeat constructor.
+Qed.
 
 (* Lemma wdr_unres {T A} :
   ∀ und ord,
@@ -3316,10 +3326,10 @@ Proof.
   }
 Qed. *)
 
-Lemma ob_stable {T A} :
+(* Lemma ob_stable {T A} :
   ∀ s d d',
     @SnapTrans T A d d' ->
-    s ⊆ (λ v, In v d.(wrt_ordn)) ->
+    s ⊆ (λ v, ∃ i, In v d.(wrt_ordn)) ->
     ObWr s d.(wrt_ordn) ->
     ObWr s d'.(wrt_ordn).
 Proof.
@@ -3352,7 +3362,7 @@ Proof.
       destruct H2. easy. eauto.
     }
   }
-Qed.
+Qed. *)
 (* 
 Lemma wdr_stable {T A} :
   ∀ c und d d' o t σs,
@@ -3361,15 +3371,17 @@ Lemma wdr_stable {T A} :
     Inv d' t σs ->
     WrtDefRes (T:=T) c (os_ord (RState (snd t))) o. *)
 
-Lemma ob_help {A} :
-  ∀ pfx ord : list A,
+Lemma ob_help {T A} :
+  ∀ pfx ord : list (Name T * A),
     Prefix pfx ord ->
     ObWr (set_of pfx) ord.
 Proof.
   intros.
   destruct H. psimpl.
-  now apply Build_ObWr with
-    (pfx:= pfx) (qfx:= x).
+  apply Build_ObWr with
+    (pfx:= pfx).
+  { easy. }
+  { now apply prefix_cons, prefix_refl. }
 Qed.
 
 Lemma pfx_stable {T A} :
@@ -3389,19 +3401,67 @@ Proof.
     clear H0 IHclos_refl_trans_1n.
     psimpl. ddestruct H; simpl;
     try now apply prefix_refl.
-    now exists (v :: nil).
+    now exists ((x0, v) :: nil).
   }
 Qed.
 
+Fixpoint del_reads {T A} (wrt : list (Name T * {R : Type & prod (ArraySig (RegSig (reg_st A)) T R) R})) :=
+  match wrt with
+  | nil => nil
+  | cons (_, existT _ _ (At _ Read, _)) wrt => del_reads wrt
+  | cons ((_, existT _ _ (At _ (Write _), _)) as e) wrt => cons e (del_reads wrt)
+  end.
+
 Lemma res_stable {T A} :
   ∀ n wrt wrt' p p',
-    Prefix wrt' wrt ->
+    Prefix (del_reads wrt') (del_reads wrt) ->
     @WrtPfxRes T A n wrt' p p' ->
     WrtPfxRes n wrt p p'.
 Proof.
   intros. destruct H.
-  psimpl. induction H0;
-  now constructor.
+  gendep wrt. psimpl.
+  induction H0; simpl in *;
+  intros.
+  { constructor. }
+  { now apply IHWrtPfxRes. }
+  {
+    clear - IHWrtPfxRes H1 H.
+    induction wrt; simpl in *.
+    { easy. }
+    {
+      destruct a, s, p.
+      destruct a, m.
+      {
+        ddestruct H1.
+        constructor.
+        { easy. }
+        { now apply IHWrtPfxRes. }
+      }
+      {
+        constructor.
+        now apply IHwrt.
+      }
+    }
+  }
+  {
+    clear - IHWrtPfxRes H1 H.
+    induction wrt; simpl in *.
+    { easy. }
+    {
+      destruct a, s, p.
+      destruct a, m.
+      {
+        ddestruct H1.
+        constructor.
+        { easy. }
+        { now apply IHWrtPfxRes. }
+      }
+      {
+        constructor.
+        now apply IHwrt.
+      }
+    }
+  }
 Qed.
 
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
@@ -3471,7 +3531,8 @@ Proof.
     split. easy.
     {
       exists nil.
-      split. 2: easy.
+      split.
+      2: intros; now destruct H4.
       destruct H2, H.
       rewrite H2 in wrt_def0.
       clear - wrt_def0.
@@ -3561,7 +3622,7 @@ Proof.
             Prefix p d.(wrt_ordn) /\
             s.(old) ⊆ set_of p /\
             ∃ p',
-              WrtPfxRes n (snd s0).(RState).(os_ord) p p' /\
+              WrtPfxRes (S n) (snd s0).(RState).(os_ord) p p' /\
               set_of p' ⊆ s.(new)).
     {
       unfold lift.
@@ -3677,11 +3738,44 @@ Proof.
             exact H.
           }
           split. easy.
-          exists pf'.
-          split. 2: easy.
-          eapply res_stable.
-          2: exact Hres.
-          admit.
+          exists pf'. split. 2: easy.
+          eapply res_stable. 2: exact Hres.
+          clear - H H5 H'. destruct H5, H'.
+          clear - H wrt_def0 wrt_def1.
+          eapply forget_othr, pfx_stable in H.
+          destruct H. rewrite H in *. clear H.
+          cut (
+            ∀ s t ord q,
+              @WrtDef T A t (ord ++ q) ->
+              WrtDef s ord ->
+              Prefix (del_reads s) (del_reads t)
+          ).
+          {
+            intros. eapply H.
+            exact wrt_def0. easy.
+          }
+          clear. intros. gendep t.
+          induction H0; simpl; intros.
+          { now exists (del_reads t). }
+          {
+            apply IHWrtDef in H.
+            clear - H0 H. destruct H.
+            rewrite H. clear H.
+            now exists x.
+          }
+          {
+            remember ((n, v) :: wr ++ q).
+            induction H; psimpl; try easy;
+            try specialize (IHWrtDef0 eq_refl).
+            { easy. }
+            {
+              ddestruct Heql.
+              apply IHWrtDef in H.
+              destruct H. rewrite H.
+              exists x. simpl.
+              f_equ
+            }
+          }
         }
         eapply weakenPrec with (P:=λ _ _, I).
         2: easy.
@@ -3827,7 +3921,8 @@ Proof.
             exact wrt_def1.
             easy.
           }
-          clear. intros. gendep ord.
+          clear. intros.
+          gendep ord. gendep wrt.
           induction H1; simpl; intros.
           { constructor. }
           {
@@ -3837,8 +3932,62 @@ Proof.
             { easy. }
           }
           {
-            ddestruct H2.
-            simpl in *.
+            ddestruct H2. simpl in *.
+            adjust IHWrtPfxRes (
+              ∀ wrt,
+                WrtDef wrt (wr0 ++ q) ->
+                WrtPfxRes n wrt wr wrp
+            ).
+            {
+              intros.
+              eapply IHWrtPfxRes.
+              { exact H3. }
+              { easy. }
+            }
+            clear - IHWrtPfxRes H0 H.
+            remember ((n0, v) :: wr0 ++ q).
+            dependent induction H0; subst;
+            try specialize (IHWrtDef eq_refl).
+            { easy. }
+            {
+              constructor.
+              eapply IHWrtDef.
+              { intros. now apply IHWrtPfxRes. }
+            }
+            {
+              ddestruct Heql.
+              constructor; try easy.
+              now apply IHWrtPfxRes.
+            }
+          }
+          {
+            ddestruct H2. simpl in *.
+            adjust IHWrtPfxRes (
+              ∀ wrt,
+                WrtDef wrt (wr0 ++ q) ->
+                WrtPfxRes n wrt wr wrp
+            ).
+            {
+              intros.
+              eapply IHWrtPfxRes.
+              { exact H3. }
+              { easy. }
+            }
+            clear - IHWrtPfxRes H0 H.
+            remember ((n0, v) :: wr0 ++ q).
+            dependent induction H0; subst;
+            try specialize (IHWrtDef eq_refl).
+            { easy. }
+            {
+              constructor.
+              eapply IHWrtDef.
+              { intros. now apply IHWrtPfxRes. }
+            }
+            {
+              ddestruct Heql.
+              constructor; try easy.
+              now apply IHWrtPfxRes.
+            }
           }
         }
         {
@@ -3919,9 +4068,14 @@ Proof.
             split. easy.
             split. easy.
             split. easy.
+            exists x6.
+            split. easy.
+            split. easy.
             exists x7.
-            split. easy.
-            split. easy.
+            split. 2: easy.
+            rewrite <-x3 at 1.
+            rewrite <-x2 in H7.
+            easy.
           }
           {
             intros ??.
@@ -3996,7 +4150,7 @@ Proof.
               }
               {
                 apply (resp_own0 i0).
-                exists x7, x8.
+                exists x8, x9.
                 rewrite <-x2 at 1.
                 rewrite <-x3 in H9 at 1.
                 now rewrite <-H3.
@@ -4022,7 +4176,15 @@ Proof.
               intros ?. apply H0 in H.
               now rewrite <-Heqo0 in H at 1.
             }
-            now exists x6.
+            exists x6.
+            split. easy.
+            split. easy.
+            exists x7.
+            split. 2: easy.
+            rewrite <-x3 at 1.
+            rewrite <-x2 in H7.
+            simpl in *.
+            now apply wrt_res_ordn_read.
           }
           {
             intros ??.
@@ -4051,11 +4213,11 @@ Proof.
         {
           intros ??.
           destruct H9, H9, H10.
-          dec_eq_nats (`x2) n.
+          dec_eq_nats (`x3) n.
           {
-            assert (exist _ (`x2) p = x2).
+            assert (exist _ (`x3) p = x3).
             {
-              destruct x2. psimpl. f_equal.
+              destruct x3. psimpl. f_equal.
               apply proof_irrelevance.
             }
             rewrite H12 in H4.
@@ -4066,7 +4228,7 @@ Proof.
           {
             right.
             apply H2.
-            exists x2.
+            exists x3.
             split. easy.
             split. lia.
             easy.
@@ -4086,30 +4248,7 @@ Proof.
           exists x1.
           split. easy.
           split. easy.
-          split. easy.
-          intros.
-          destruct H9, H10, H10, H11.
-          dec_eq_nats (`x2) n.
-          {
-            assert (exist _ (`x2) p = x2).
-            {
-              destruct x2. psimpl. f_equal.
-              apply proof_irrelevance.
-            }
-            rewrite H13 in H4.
-            rewrite H4 in H12.
-            ddestruct H12.
-            now left.
-          }
-          {
-            right.
-            apply H8.
-            split. easy.
-            exists x2.
-            split. easy.
-            split. lia.
-            easy.
-          }
+          admit.
         }
       }
       {
@@ -4123,18 +4262,18 @@ Proof.
         {
           intros ??.
           destruct H9, H9, H10.
-          assert (`x2 ≠ n).
+          assert (`x3 ≠ n).
           {
             intros ?. subst.
             apply H4.
-            assert (exist _ (`x2) p = x2).
+            assert (exist _ (`x3) p = x3).
             {
-              destruct x2. psimpl. f_equal.
+              destruct x3. psimpl. f_equal.
               apply proof_irrelevance.
             }
             now rewrite H12.
           }
-          apply H2. exists x2.
+          apply H2. exists x3.
           split. easy.
           split. lia.
           easy.
@@ -4143,26 +4282,7 @@ Proof.
         exists x1.
         split. easy.
         split. easy.
-        split. easy.
-        {
-          intros ??.
-          destruct H9, H10, H10.
-          assert (`x2 ≠ n).
-          {
-            intros ?. subst.
-            apply H4.
-            assert (exist _ (`x2) p = x2).
-            {
-              destruct x2. psimpl. f_equal.
-              apply proof_irrelevance.
-            }
-            now rewrite H12.
-          }
-          apply H2. exists x2.
-          split. easy.
-          split. lia.
-          easy.
-        }
+        admit.
       }
     }
   }
