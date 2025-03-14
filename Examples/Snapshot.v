@@ -521,16 +521,51 @@ Definition OWr T A := list (Name T * A).
 Definition Prefix {A} (xs zs : list A) :=
   ∃ ys, zs = xs ++ ys.
 
-Record ObWr {T A} (vs : set A) (wr : OWr T A) : Prop := {
-  ob_wr :
+Lemma prefix_cons {A} :
+  ∀ (xs ys zs : list A),
+    Prefix xs ys ->
+    Prefix xs (ys ++ zs).
+Proof.
+  unfold Prefix.
+  intros. psimpl.
+  exists (x ++ zs).
+  now rewrite app_assoc.
+Qed.
 
+Lemma prefix_trans {A} :
+  ∀ xs ys zs : list A,
+    Prefix xs ys ->
+    Prefix ys zs ->
+    Prefix xs zs.
+Proof.
+  unfold Prefix.
+  intros. psimpl.
+  exists (x0 ++ x).
+  now rewrite app_assoc.
+Qed.
+
+Lemma prefix_refl {A} :
+  ∀ xs : list A,
+    Prefix xs xs.
+Proof.
+  intros. exists nil.
+  now rewrite app_nil_r.
+Qed.
+
+
+Notation set_of xs := (λ v, List.In v xs).
+
+Record ObWr {T A} (vs : set A) (wr : OWr T A) : Prop := {
+  pfx : OWr T A;
+  pfx_def : vs = (λ v, ∃ i, List.In (i, v) pfx);
+  pfx_prefix : Prefix pfx wr
 }.
-Arguments ObWr {A} vs wr.
+Arguments ObWr {T A} vs wr.
 
 Record pdata {T A} := MkD {
   und_vals : Index T -> reg_st A;
   rets_map : Name T -> RRet' T A A;
-  wrt_ordn : OWr A
+  wrt_ordn : OWr T A
 }.
 Arguments pdata : clear implicits.
 Arguments MkD {T A}.
@@ -559,7 +594,7 @@ Definition conPoss {T A} (d : Index T -> reg_st A) (ρ : RPoss T A) : Poss (VF T
       | _ => RetIdle
       end).
 
-Variant PossDef {T A} {wr : OWr A} {st : Name T -> reg_st A} :
+Variant PossDef {T A} {wr : OWr T A} {st : Name T -> reg_st A} :
   RRet' T A A -> RRet' T A A -> Prop :=
 | PDIdle :
   PossDef None None
@@ -580,16 +615,16 @@ Arguments PossDef {T A} wr st _ _.
 
 Inductive WrtDef {T A} :
   list (Name T * {R & prod (ArraySig (RegSig (reg_st A)) T R) R}) ->
-  OWr A ->
+  OWr T A ->
   Prop :=
 | WDEnd :
   WrtDef nil nil
 | WDSkip i n v os wr :
   WrtDef os wr ->
   WrtDef ((i, existT _ _ (At n Read, v)) :: os) wr
-| WDKeep (i n : Name T) (v : A) os (wr : OWr A) :
+| WDKeep (i n : Name T) (v : A) os (wr : OWr T A) :
   WrtDef os wr ->
-  WrtDef ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) (v :: wr).
+  WrtDef ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((i, v) :: wr).
 
 Record bisub {X} (A B : set X) := {
   sub_fwd : A ⊆ B;
@@ -629,7 +664,7 @@ Record Inv {T A}
       (∃ v o, d.(rets_map) i = Some (v, Some o)) ->
       (d.(und_vals) i).(ran) = true;
   ordn_val :
-    (λ v, List.In v d.(wrt_ordn)) ≡ collect d.(und_vals);
+    (λ v, ∃ i, List.In (i, v) d.(wrt_ordn)) ≡ collect d.(und_vals);
   ob_write :
     ∀ i v vi,
       d.(rets_map) i = PRetn v (Some vi) ->
@@ -672,7 +707,7 @@ Variant SnapTran {T A} {i : Name T} : pdata T A -> pdata T A -> Prop :=
     (MkD
       (updf s i (MkReg (Some v) true))
       (updf x i (PRetn v (Some (insert v (collect s)))))
-      (app o (cons v nil))).
+      (app o (cons (i, v) nil))).
 Arguments SnapTran {T A} i.
 
 Definition Guar {T A} (i : Name T) : Relt T A :=
@@ -2056,7 +2091,7 @@ Lemma wrt_def_snoc {T A} :
     @WrtDef T A und wrs ->
     WrtDef
       (und ++ cons (i, existT _ _ (At i (Write (MkReg (Some v) true)), tt)) nil)
-      (wrs ++ cons v nil).
+      (wrs ++ cons (i, v) nil).
 Proof.
   intros.
   induction H; simpl;
@@ -2103,6 +2138,14 @@ Proof.
     }
   }
 Qed.
+
+Ltac adjust H P :=
+  let H' := fresh in
+  assert (H' : P);[
+    idtac |
+    clear H;
+    rename H' into H
+  ].
 
 Lemma write_correct {T A} (i : Name T) (v : A) :
   VerifyProg i (Rely i) (Guar i)
@@ -2300,7 +2343,7 @@ Proof.
     pose (rets_map1 :=
       updf rets_map0 i (PRetn v (Some (insert v (collect und_vals0))))).
     pose (wrt_ordn1 :=
-      app wrt_ordn0 (cons v nil)).
+      app wrt_ordn0 (cons (i, v) nil)).
     assert (Heq : collect und_vals1 = insert v (collect und_vals0)).
     {
       subst und_vals1.
@@ -2419,16 +2462,21 @@ Proof.
           subst wrt_ordn1.
           split; intros.
           {
+            destruct H as [i' H].
             apply In_app in H. destruct H.
-            apply ordn_val0 in H. destruct H.
             {
-              exists x1. dec_eq_nats x1 i.
-              { now rewrite H5 in H. }
-              { now rewrite eqb_nid. }
+              adjust H (∃ i', In (i', v0) wrt_ordn0).
+              { now exists i'. }
+              apply ordn_val0 in H. destruct H.
+              {
+                exists x1. dec_eq_nats x1 i.
+                { now rewrite H5 in H. }
+                { now rewrite eqb_nid. }
+              }
             }
             {
               destruct H. 2: easy.
-              subst. exists i.
+              ddestruct H. exists i'.
               now rewrite eqb_id.
             }
           }
@@ -2437,11 +2485,17 @@ Proof.
             dec_eq_nats x1 i.
             {
               rewrite eqb_id in H. ddestruct H.
-              apply In_app_rev. right. now left.
+              exists i. apply In_app_rev.
+              right. now left.
             }
             {
+              cut (v0 ∈ (λ v1, ∃ i0, In (i0, v1) wrt_ordn0)).
+              {
+                clear. intros.
+                destruct H. exists x.
+                apply In_app_rev; auto.
+              }
               rewrite eqb_nid in H; auto.
-              apply In_app_rev. left.
               apply ordn_val0. now exists x1.
             }
           }
@@ -2453,16 +2507,47 @@ Proof.
             rewrite eqb_id in H.
             ddestruct H.
             apply Build_ObWr with
-              (pfx:= wrt_ordn0 ++ v0 :: nil)
-              (qfx:= nil).
-            { now rewrite <-app_assoc. }
+              (pfx:=wrt_ordn0 ++ (i, v0) :: nil).
             {
-              intros.
-              apply In_app in H. destruct H.
-              { right. now apply ordn_val0. }
-              { left. destruct H; now psimpl. }
+              set_ext v. split.
+              intros. psimpl.
+              {
+                destruct H; psimpl.
+                {
+                  exists i.
+                  apply In_app_rev.
+                  right. now left.
+                }
+                {
+                  adjust H (v ∈ collect und_vals0).
+                  { now exists x1. }
+                  apply ordn_val0 in H.
+                  destruct H. exists x5.
+                  apply In_app_rev.
+                  now left.
+                }
+              }
+              {
+                intros. destruct H.
+                apply In_app in H.
+                destruct H.
+                {
+                  right.
+                  apply ordn_val0.
+                  now exists x1.
+                }
+                {
+                  psimpl.
+                  destruct H;
+                  ddestruct H.
+                  now left.
+                }
+              }
             }
-            { easy. }
+            {
+              exists nil.
+              now rewrite app_nil_r.
+            }
           }
           {
             rewrite eqb_nid in H; auto.
@@ -2470,22 +2555,9 @@ Proof.
             apply ob_write0 in H.
             destruct H. subst.
             apply Build_ObWr with
-              (pfx:= pfx)
-              (qfx:= qfx ++ v :: nil).
-            { now rewrite app_assoc. }
+              (pfx:=pfx).
             { easy. }
-            {
-              intros.
-              apply In_app in H.
-              destruct H.
-              { now apply all_dups. }
-              {
-                destruct H. 2: easy. subst.
-                eapply vi_subs0 in H''. 2: exact H2.
-                apply ordn_val0, In_app in H''.
-                destruct H''. easy. auto.
-              }
-            }
+            { now apply prefix_cons. }
           }
         }
       }
@@ -2558,40 +2630,45 @@ Proof.
             rewrite eqb_nid in *; auto. ddestruct H;
             rewrite <-x6, <-x at 1; try constructor.
             {
-              destruct H.
-              eassert _.
+              ddestruct H. subst.
+              destruct pfx_prefix.
+              assert (H'' := H).
+              apply split_prefixes in H.
+              destruct H; psimpl.
               {
-                apply split_prefixes in p_comb.
-                exact p_comb.
-              }
-              destruct X; psimpl.
-              {
-                rewrite app_assoc in p_comb.
-                apply app_inj_tail in p_comb.
+                rewrite app_assoc in H''.
+                apply app_inj_tail in H''.
                 psimpl. clear H12.
                 apply Build_ObWr with
-                  (pfx:=pfx) (qfx:=x7).
+                  (pfx:=pfx).
                 { easy. }
-                { easy. }
-                {
-                  intros. apply all_dups.
-                  { apply In_app_rev. now left. }
-                  { easy. }
-                }
+                { now apply prefix_cons, prefix_refl. }
               }
               {
-                rewrite app_nil_r in p_comb.
-                apply app_inj_tail in p_comb.
+                rewrite app_nil_r in H''.
+                apply app_inj_tail in H''.
                 psimpl. clear H12.
                 apply Build_ObWr with
-                  (pfx:= x7) (qfx:= nil).
-                { now rewrite app_nil_r. }
+                  (pfx:= x8).
                 {
-                  intros.
-                  apply all_in, In_app_rev.
-                  now left.
+                  set_ext v1. split.
+                  intros; psimpl.
+                  {
+                    apply In_app in H.
+                    destruct H.
+                    { now exists x7. }
+                    {
+                      psimpl.
+                      destruct H; ddestruct H.
+                      now apply ordn_val0.
+                    }
+                  }
+                  {
+                    intros. psimpl. exists x7.
+                    apply In_app_rev; auto.
+                  }
                 }
-                { easy. }
+                { apply prefix_refl. }
               }
             }
             { easy. }
@@ -2913,38 +2990,36 @@ Proof.
                     destruct H11.
                     { now subst. }
                     {
-                      ddestruct H.
-                      assert (
-                        (∃ qfx', qfx = qfx' ++ v :: nil) \/
-                        ( qfx = nil /\ ∃ pfx', pfx = pfx' ++ v :: nil)
-                      ).
-                      {
-                        eapply split_prefixes.
-                        exact p_comb.
-                      }
+                      destruct H, pfx_prefix. psimpl.
+                      assert (H'' := H).
+                      apply split_prefixes in H.
                       destruct H; psimpl.
                       {
-                        rewrite app_assoc in p_comb.
-                        apply app_inj_tail in p_comb.
-                        psimpl. move ordn_val0 after H7.
-                        assert (In v pfx).
+                        rewrite app_assoc in H''.
+                        apply app_inj_tail in H''.
+                        psimpl. clear H11. subst rets_map1.
+                        unfold updf in x. dec_eq_nats nt i.
                         {
-                          apply all_dups.
-                          {
-                            apply In_app_rev.
-                            right. now left.
-                          }
-                          { easy. }
+                          rewrite eqb_id in x.
+                          symmetry in x. ddestruct x.
+                          apply H1. right. now exists x6.
                         }
-                        assert (In v (pfx ++ x5)).
-                        { apply In_app_rev. now left. }
-                        now apply ordn_val0 in H12.
+                        {
+                          rewrite eqb_nid in x; auto.
+                          exfalso. apply v_nin, ordn_val0.
+                          destruct v_in. exists x5.
+                          apply In_app_rev; auto.
+                        }
                       }
                       {
-                        rewrite app_nil_r in p_comb.
-                        apply app_inj_tail in p_comb.
-                        psimpl. apply all_in, In_app_rev.
-                        left. apply ordn_val0. now exists x6.
+                        rewrite app_nil_r in H''.
+                        apply app_inj_tail in H''.
+                        psimpl. clear H11.
+                        adjust H7 (z ∈ collect und_vals0).
+                        { now exists x6. }
+                        apply ordn_val0 in H7.
+                        destruct H7. exists x5.
+                        apply In_app_rev; auto.
                       }
                     }
                   }
@@ -3039,36 +3114,22 @@ Proof.
                 try easy. rewrite <-x5 at 1. ddestruct Heqr.
                 constructor.
                 {
-                  destruct H.
-                  eassert _.
+                  destruct H, pfx_prefix. psimpl.
+                  assert (H'' := H).
+                  apply split_prefixes in H.
+                  destruct H; psimpl.
                   {
-                    eapply split_prefixes.
-                    exact p_comb.
-                  }
-                  destruct X; psimpl.
-                  {
-                    rewrite app_assoc in p_comb.
-                    apply app_inj_tail in p_comb.
-                    psimpl. clear H12.
+                    rewrite app_assoc in H''.
+                    apply app_inj_tail in H''.
+                    psimpl. clear H11.
                     apply Build_ObWr with
-                      (pfx:=pfx) (qfx:=x6).
+                      (pfx:=pfx).
                     { easy. }
-                    { easy. }
-                    {
-                      intros. apply all_dups.
-                      { apply In_app_rev. now left. }
-                      { easy. }
-                    }
+                    { now apply prefix_cons, prefix_refl. }
                   }
                   {
-                    rewrite app_nil_r in p_comb.
-                    apply app_inj_tail in p_comb.
-                    psimpl. clear H12. specialize (all_in v).
-                    assert (¬ v ∈ vs -> ¬In v (x6 ++ v :: nil))
-                      by auto.
-                    apply H in H10. exfalso.
-                    apply H10, In_app_rev.
-                    right. now left.
+                    exfalso. apply H10. exists i.
+                    apply In_app_rev. right. now left.
                   }
                 }
                 { easy. }
@@ -3300,8 +3361,6 @@ Lemma wdr_stable {T A} :
     Inv d' t σs ->
     WrtDefRes (T:=T) c (os_ord (RState (snd t))) o. *)
 
-Notation set_of xs := (λ v, List.In v xs).
-
 Lemma ob_help {A} :
   ∀ pfx ord : list A,
     Prefix pfx ord ->
@@ -3311,26 +3370,6 @@ Proof.
   destruct H. psimpl.
   now apply Build_ObWr with
     (pfx:= pfx) (qfx:= x).
-Qed.
-
-Lemma prefix_trans {A} :
-  ∀ xs ys zs : list A,
-    Prefix xs ys ->
-    Prefix ys zs ->
-    Prefix xs zs.
-Proof.
-  unfold Prefix.
-  intros. psimpl.
-  exists (x0 ++ x).
-  now rewrite app_assoc.
-Qed.
-
-Lemma prefix_refl {A} :
-  ∀ xs : list A,
-    Prefix xs xs.
-Proof.
-  intros. exists nil.
-  now rewrite app_nil_r.
 Qed.
 
 Lemma pfx_stable {T A} :
