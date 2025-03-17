@@ -3475,6 +3475,77 @@ Proof.
   }
 Qed.
 
+Local Fixpoint remove {T A} (n : nat) (p : OWr T A) : OWr T A :=
+  match p with
+  | nil => nil
+  | (i, m, v) :: p =>
+    if classicT (`m < n) then
+      remove n p
+    else
+      (i, m, v) :: remove n p
+  end.
+
+Lemma wrt_pfx_triv {T A} :
+  ∀ n wrt p q,
+    @WrtPfxRes T A n wrt p q ->
+    q = remove n p.
+Proof.
+  intros.
+  induction H;
+  simpl; auto.
+  { subst. case_match; lia||easy. }
+  { subst. now case_match. }
+Qed.
+
+Lemma wrt_pfx_next {T A} :
+  ∀ n wrt (p : OWr T A),
+    WrtPfxRes (S n) wrt p (remove (S n) p) ->
+    WrtPfxRes n wrt p (remove n p).
+Proof.
+  intros.
+  dependent induction H;
+  simpl in *.
+  { constructor. }
+  { constructor. now eapply IHWrtPfxRes. }
+  {
+    case_match; try lia.
+    constructor.
+    { lia. }
+    {
+      eapply IHWrtPfxRes.
+      { easy. }
+      {
+        eapply wrt_pfx_triv.
+        exact H0.
+      }
+    }
+  }
+  {
+    case_match.
+    constructor.
+    { lia. }
+    {
+      eapply IHWrtPfxRes.
+      { easy. }
+      {
+        eapply wrt_pfx_triv.
+        exact H0.
+      }
+    }
+    {
+      assert (`n0 = n)
+        by lia. subst.
+      constructor.
+      { lia. }
+      {
+        eapply IHWrtPfxRes.
+        { easy. }
+        { case_match; lia||easy. }
+      }
+    }
+  }
+Qed.
+
 Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   x.(new) = emp ->
   VerifyProg i (Rely i) (Guar i)
@@ -4274,7 +4345,15 @@ Proof.
           exists x1.
           split. easy.
           split. easy.
-          admit.
+          exists (remove n x1).
+          assert (x2 = remove (S n) x1).
+          {
+            eapply wrt_pfx_triv.
+            exact H7.
+          }
+          subst.
+          split. now apply wrt_pfx_next.
+          
         }
       }
       {
@@ -4308,7 +4387,15 @@ Proof.
         exists x1.
         split. easy.
         split. easy.
-        admit.
+        exists (remove n x1).
+        assert (x2 = remove (S n) x1).
+        {
+          eapply wrt_pfx_triv.
+          exact H7.
+        }
+        subst.
+        split. now apply wrt_pfx_next.
+
       }
     }
   }
