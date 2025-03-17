@@ -553,11 +553,11 @@ Proof.
 Qed.
 
 
-Notation set_of xs := (λ v, ∃ i n, List.In (i, n, v) xs).
+Notation set_of xs := (λ v, ∃ i, List.In (i, i, v) xs).
 
 Record ObWr {T A} (vs : set A) (wr : OWr T A) : Prop := {
   pfx : OWr T A;
-  pfx_def : vs = (λ v, ∃ i, List.In (i, v) pfx);
+  pfx_def : vs = (λ v, ∃ i, List.In (i, i, v) pfx);
   pfx_prefix : Prefix pfx wr
 }.
 Arguments ObWr {T A} vs wr.
@@ -622,9 +622,9 @@ Inductive WrtDef {T A} :
 | WDSkip i n v os wr :
   WrtDef os wr ->
   WrtDef ((i, existT _ _ (At n Read, v)) :: os) wr
-| WDKeep (i n : Name T) (v : A) os (wr : OWr T A) :
+| WDKeep (i : Name T) (v : A) os (wr : OWr T A) :
   WrtDef os wr ->
-  WrtDef ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((i, n, v) :: wr).
+  WrtDef ((i, existT _ _ (At i (Write (MkReg (Some v) true)), tt)) :: os) ((i, i, v) :: wr).
 
 Record bisub {X} (A B : set X) := {
   sub_fwd : A ⊆ B;
@@ -664,7 +664,7 @@ Record Inv {T A}
       (∃ v o, d.(rets_map) i = Some (v, Some o)) ->
       (d.(und_vals) i).(ran) = true;
   ordn_val :
-    (λ v, ∃ i n, List.In (i, n, v) d.(wrt_ordn)) ≡ collect d.(und_vals);
+    ∀ i v, List.In (i, i, v) d.(wrt_ordn) <-> (d.(und_vals) i).(val) = Some v;
   ob_write :
     ∀ i v vi,
       d.(rets_map) i = PRetn v (Some vi) ->
@@ -2462,41 +2462,32 @@ Proof.
           subst wrt_ordn1.
           split; intros.
           {
-            destruct H as [i' [n' H]].
+            rename i0 into i'.
             apply In_app in H. destruct H.
             {
-              adjust H (∃ i' n', In (i', n', v0) wrt_ordn0).
-              { now exists i', n'. }
-              apply ordn_val0 in H. destruct H.
+              apply ordn_val0 in H.
               {
-                exists x1. dec_eq_nats x1 i.
+                dec_eq_nats i' i.
                 { now rewrite H5 in H. }
                 { now rewrite eqb_nid. }
               }
             }
             {
               destruct H. 2: easy.
-              ddestruct H. exists i'.
+              ddestruct H.
               now rewrite eqb_id.
             }
           }
           {
-            destruct H.
-            dec_eq_nats x1 i.
+            dec_eq_nats i0 i.
             {
               rewrite eqb_id in H. ddestruct H.
-              exists i, i. apply In_app_rev.
-              right. now left.
+              apply In_app_rev. right. now left.
             }
             {
-              cut (v0 ∈ (λ v1, ∃ i0 n', In (i0, n', v1) wrt_ordn0)).
-              {
-                clear. intros.
-                destruct H, H. exists x, x0.
-                apply In_app_rev; auto.
-              }
               rewrite eqb_nid in H; auto.
-              apply ordn_val0. now exists x1.
+              apply In_app_rev. left.
+              now apply ordn_val0.
             }
           }
         }
@@ -2514,16 +2505,13 @@ Proof.
               {
                 destruct H; psimpl.
                 {
-                  exists (i, i).
+                  exists i.
                   apply In_app_rev.
                   right. now left.
                 }
                 {
-                  adjust H (v ∈ collect und_vals0).
-                  { now exists x1. }
                   apply ordn_val0 in H.
-                  destruct H, H. exists (x5, x6).
-                  apply In_app_rev.
+                  exists x1. apply In_app_rev.
                   now left.
                 }
               }
@@ -2533,9 +2521,8 @@ Proof.
                 destruct H.
                 {
                   right.
-                  apply ordn_val0.
-                  destruct x1.
-                  now exists n, i0.
+                  apply ordn_val0 in H.
+                  now exists x1.
                 }
                 {
                   psimpl.
@@ -2661,9 +2648,9 @@ Proof.
                     {
                       psimpl.
                       destruct H; ddestruct H.
-                      apply ordn_val0 in v_nin.
-                      destruct v_nin, H.
-                      now exists (x7, x9).
+                      destruct v_nin.
+                      apply ordn_val0 in H.
+                      now exists x9.
                     }
                   }
                   {
@@ -3009,20 +2996,17 @@ Proof.
                         }
                         {
                           rewrite eqb_nid in x; auto.
-                          exfalso. apply v_nin, ordn_val0.
-                          destruct v_in, x5. exists n0, i0.
-                          apply In_app_rev; auto.
+                          exfalso. destruct v_in.
+                          apply v_nin. exists x5.
+                          apply ordn_val0, In_app_rev; auto.
                         }
                       }
                       {
                         rewrite app_nil_r in H''.
                         apply app_inj_tail in H''.
                         psimpl. clear H11.
-                        adjust H7 (z ∈ collect und_vals0).
-                        { now exists x6. }
                         apply ordn_val0 in H7.
-                        destruct H7, H. exists (x5, x8).
-                        apply In_app_rev; auto.
+                        exists x6. apply In_app_rev; auto.
                       }
                     }
                   }
@@ -3131,7 +3115,7 @@ Proof.
                     { now apply prefix_cons, prefix_refl. }
                   }
                   {
-                    exfalso. apply H10. exists (i, i).
+                    exfalso. apply H10. exists i.
                     apply In_app_rev. right. now left.
                   }
                 }
@@ -3266,14 +3250,14 @@ Inductive WrtPfxRes {T A} {c : nat} :
 | WDRSkipR i n v os wr wrp :
   WrtPfxRes os wr wrp ->
   WrtPfxRes ((i, existT _ _ (At n Read, v)) :: os) wr wrp
-| WDRKeep (i n : Name T) (v : A) os (wr wrp : OWr T A) :
-  `n ≥ c ->
+| WDRKeep (i : Name T) (v : A) os (wr wrp : OWr T A) :
+  `i ≥ c ->
   WrtPfxRes os wr wrp ->
-  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((i, n, v) :: wr) ((i, n, v) :: wrp)
-| WDRSkipW (i n : Name T) (v : A) os (wr wrp : OWr T A) :
-  `n < c ->
+  WrtPfxRes ((i, existT _ _ (At i (Write (MkReg (Some v) true)), tt)) :: os) ((i, i, v) :: wr) ((i, i, v) :: wrp)
+| WDRSkipW (i : Name T) (v : A) os (wr wrp : OWr T A) :
+  `i < c ->
   WrtPfxRes os wr wrp ->
-  WrtPfxRes ((i, existT _ _ (At n (Write (MkReg (Some v) true)), tt)) :: os) ((i, n, v) :: wr) wrp.
+  WrtPfxRes ((i, existT _ _ (At i (Write (MkReg (Some v) true)), tt)) :: os) ((i, i, v) :: wr) wrp.
 Arguments WrtPfxRes {T A} c.
 
 Lemma wrt_res_ordn_read {T A} :
@@ -3386,10 +3370,9 @@ Proof.
   {
     set_ext v. split;
     intros; psimpl.
-    { now exists (x0, x1). }
+    { now exists x0. }
     {
-      destruct x0.
-      now exists n, i.
+      now exists x0.
     }
   }
   { now apply prefix_cons, prefix_refl. }
@@ -3479,7 +3462,7 @@ Local Fixpoint remove {T A} (n : nat) (p : OWr T A) : OWr T A :=
   match p with
   | nil => nil
   | (i, m, v) :: p =>
-    if classicT (`m < n) then
+    if classicT (`i < n) then
       remove n p
     else
       (i, m, v) :: remove n p
@@ -3533,7 +3516,7 @@ Proof.
       }
     }
     {
-      assert (`n0 = n)
+      assert (`i = n)
         by lia. subst.
       constructor.
       { lia. }
@@ -3543,6 +3526,75 @@ Proof.
         { case_match; lia||easy. }
       }
     }
+  }
+Qed.
+
+Lemma remove_set {T A} :
+  ∀ (n : nat) (p : OWr T A),
+    set_of (remove n p) = (λ v, ∃ i, `i ≥ n /\ List.In (i, i, v) p).
+Proof.
+  intros. set_ext v.
+  split; intros; psimpl.
+  {
+    induction p;
+    simpl in *.
+    { easy. }
+    {
+      destruct a, p0.
+      destruct (classicT (`n0 < n));
+      simpl in *.
+      {
+        apply IHp in H. clear IHp.
+        psimpl. exists x0. auto.
+      }
+      {
+        destruct H.
+        {
+          ddestruct H.
+          exists x.
+          split; auto. lia.
+        }
+        {
+          apply IHp in H. clear IHp.
+          psimpl. exists x0. auto.
+        }
+      }
+    }
+  }
+  {
+    induction p;
+    simpl in *.
+    { easy. }
+    {
+      destruct a, p0.
+      destruct H0.
+      {
+        ddestruct H0. exists x.
+        case_match; lia || (simpl; auto).
+      }
+      {
+        apply IHp in H0. clear IHp.
+        psimpl. exists x0.
+        case_match; simpl; auto.
+      }
+    }
+  }
+Qed.
+
+Lemma wrt_pfx_defn {T A} :
+  ∀ n wrt p q i,
+    @WrtPfxRes T A n wrt p q ->
+    (∃ v, In (i, i, v) q) ->
+    `i ≥ n.
+Proof.
+  intros. psimpl.
+  induction H;
+  simpl in *;
+  easy || auto.
+  {
+    destruct H0.
+    { now ddestruct H0. }
+    { auto. }
   }
 Qed.
 
@@ -3643,7 +3695,7 @@ Proof.
         { constructor. }
         {
           ddestruct x. constructor.
-          { destruct n. now psimpl. }
+          { destruct i. now psimpl. }
           { now eapply IHWrtDef. }
         }
       }
@@ -3848,7 +3900,7 @@ Proof.
           {
             adjust H (
               ∃ l,
-                l = (i, n, v) :: wr ++ q /\
+                l = (i, i, v) :: wr ++ q /\
                 WrtDef t l
             ).
             { now eexists. }
@@ -4034,7 +4086,7 @@ Proof.
             clear - IHWrtPfxRes H0 H.
             adjust H0 (
               ∃ l,
-                l = (i, n0, v) :: wr0 ++ q /\
+                l = (i, i, v) :: wr0 ++ q /\
                 WrtDef wrt l
             ).
             { now eexists. }
@@ -4068,7 +4120,7 @@ Proof.
             clear - IHWrtPfxRes H0 H.
             adjust H0 (
               ∃ l,
-                l = (i, n0, v) :: wr0 ++ q /\
+                l = (i, i, v) :: wr0 ++ q /\
                 WrtDef wrt l
             ).
             { now eexists. }
@@ -4353,7 +4405,33 @@ Proof.
           }
           subst.
           split. now apply wrt_pfx_next.
-          
+          intros.
+          dec_eq_nats v0 a.
+          { now left. }
+          {
+            right. apply H8.
+            rewrite remove_set in H9.
+            rewrite remove_set.
+            unfold contains in *.
+            psimpl. exists x2.
+            split. 2: easy.
+            cut (`x2 ≠ n).
+            { intros. lia. }
+            intros ?. subst.
+            destruct H.
+            adjust H11 (In (x2, x2, v0) (wrt_ordn x)).
+            {
+              clear - H11 H5.
+              destruct H5. rewrite H.
+              apply In_app_rev; auto.
+            }
+            apply ordn_val0 in H11.
+            destruct x2. simpl in *.
+            assert (p = l0) by
+              now apply proof_irrelevance.
+            subst. rewrite H4 in H11 at 1.
+            now ddestruct H11.
+          }
         }
       }
       {
@@ -4395,7 +4473,19 @@ Proof.
         }
         subst.
         split. now apply wrt_pfx_next.
-
+        intros. apply H8.
+        rewrite remove_set in H9.
+        rewrite remove_set.
+        unfold contains in *.
+        psimpl. exists x2.
+        split. 2: easy.
+        cut (`x2 ≠ n).
+        { intros. lia. }
+        intros ?. subst.
+        rename x2 into n.
+        eapply wrt_pfx_defn in H7.
+        2:{ exists v0. exact H10. }
+        destruct n. simpl in *. lia.
       }
     }
   }
