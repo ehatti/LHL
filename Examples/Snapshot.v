@@ -3607,6 +3607,7 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
         (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
         d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
         ∃ p,
+          (∀ i v, List.In (i, i, v) p -> vi i) /\
           Prefix p d.(wrt_ordn) /\
           x.(old) ⊆ set_of p)
     (fill_new T x)
@@ -3618,6 +3619,7 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
         (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v) ⊆ y.(new) /\
         y.(new) ⊆ collect d.(und_vals) /\
         ∃ p,
+          (∀ i v, List.In (i, i, v) p -> vi i) /\
           Prefix p d.(wrt_ordn) /\
           y.(old) ⊆ set_of p /\
           set_of p ⊆ y.(new)).
@@ -3636,6 +3638,7 @@ Proof.
         (λ v1, ∃ i0, vi i0 /\ `i0 ≥ n ∧ val (und_vals d i0) = Some v1) ⊆ new y /\
         new y ⊆ collect (und_vals d) /\
         ∃ p,
+          (∀ i v, List.In (i, i, v) p -> vi i) /\
           Prefix p d.(wrt_ordn) /\
           y.(old) ⊆ set_of p /\
           ∃ p',
@@ -3651,7 +3654,7 @@ Proof.
     split.
     {
       intros ??.
-      destruct H4, H4, H5.
+      destruct H5, H5, H6.
       destruct x3. psimpl.
       lia.
     }
@@ -3663,12 +3666,13 @@ Proof.
     exists x2.
     split. easy.
     split. easy.
+    split. easy.
     {
       exists nil.
       split.
-      2: intros; now destruct H4, H4.
-      destruct H2, H.
-      rewrite H2 in wrt_def0.
+      2: intros; now destruct H5, H5.
+      destruct H3, H.
+      rewrite H3 in wrt_def0.
       clear - wrt_def0.
       cut (
         ∀ wrt p p',
@@ -3711,7 +3715,7 @@ Proof.
     split. easy.
     assert (x3 = x2).
     {
-      clear - H6. revert H6.
+      clear - H7. revert H7.
       cut (
         ∀ wrt p p',
           @WrtPfxRes T A 0 wrt p p' → p' = p
@@ -3719,16 +3723,16 @@ Proof.
       {
         intros.
         eapply H.
-        exact H6.
+        exact H7.
       }
       clear. intros.
       induction H; now subst.
     }
-    clear H6. subst.
+    clear H7. subst.
     split.
     {
       intros ??.
-      destruct H6, H6.
+      destruct H7, H7.
       apply H2. exists x3.
       repeat split; (easy || lia).
     }
@@ -3753,6 +3757,7 @@ Proof.
           | None => ¬vi (exist _ n p)
           end /\
           ∃ p,
+            (∀ i v, List.In (i, i, v) p -> vi i) /\
             Prefix p d.(wrt_ordn) /\
             s.(old) ⊆ set_of p /\
             ∃ p',
@@ -3770,6 +3775,7 @@ Proof.
             (λ v1, ∃ i0, vi i0 /\ `i0 ≥ S n ∧ val (und_vals d i0) = Some v1) ⊆ new s /\
             new s ⊆ collect (und_vals d) /\
             ∃ p,
+              (∀ i v, List.In (i, i, v) p -> vi i) /\
               Prefix p d.(wrt_ordn) /\
               s.(old) ⊆ set_of p /\
               ∃ p',
@@ -3783,7 +3789,7 @@ Proof.
             sub, subPrec.
           intros.
           destruct H, H, H, H, H, H, H1, H2, H3, H4.
-          destruct H5 as [pf [Hpfx [Hsub [pf' [Hres Hsup]]]]].
+          destruct H5 as [pf [Hvi [Hpfx [Hsub [pf' [Hres Hsup]]]]]].
           assert (H' := H).
           apply H0 in H. psimpl.
           exists x3, x2.
@@ -3865,6 +3871,7 @@ Proof.
             2: exact H6. now rewrite <-H.
           }
           exists pf.
+          split. easy.
           split.
           {
             eapply prefix_trans. exact Hpfx.
@@ -3932,6 +3939,7 @@ Proof.
               | None => ¬vi (exist _ n p)
               end /\
               ∃ p,
+                (∀ i v, List.In (i, i, v) p -> vi i) /\
                 Prefix p d.(wrt_ordn) /\
                 s.(old) ⊆ set_of p /\
                 ∃ p',
@@ -3944,7 +3952,7 @@ Proof.
             sub, subPrec.
           intros.
           destruct H, H, H, H, H, H, H1, H2, H3, H4.
-          destruct H5 as [Hval [pf [Hpfx [Hsub [pf' [Hres Hsup]]]]]].
+          destruct H5 as [Hval [pf [Hvi [Hpfx [Hsub [pf' [Hres Hsup]]]]]]].
           assert (H' := H).
           apply H0 in H. psimpl.
           exists x3, x2.
@@ -4036,6 +4044,7 @@ Proof.
           assert (Prefix x1.(wrt_ordn) x3.(wrt_ordn)).
           { eapply pfx_stable, forget_othr, H. }
           exists pf.
+          split. easy.
           split.
           {
             eapply prefix_trans.
@@ -4195,16 +4204,16 @@ Proof.
               intros ??. psimpl.
               dec_eq_nats i0 (exist (λ i, i < T) n p).
               {
-                rewrite <-x3, <-x in H9 at 1.
-                psimpl. destruct H9.
-                now ddestruct H9.
+                rewrite <-x3, <-x in H10 at 1.
+                psimpl. destruct H10.
+                now ddestruct H10.
                 easy.
               }
               {
                 apply (resp_own0 i0).
                 exists x8, x9.
                 rewrite <-x2 at 1.
-                rewrite <-x3 in H9 at 1.
+                rewrite <-x3 in H10 at 1.
                 now rewrite <-H3.
               }
             }
@@ -4220,15 +4229,16 @@ Proof.
             exists x6.
             split. easy.
             split. easy.
+            split. easy.
             exists x7.
             split. 2: easy.
             rewrite <-x3 at 1.
-            rewrite <-x2 in H7.
+            rewrite <-x2 in H8.
             easy.
           }
           {
             intros ??.
-            eapply Inv_eqv in H10.
+            eapply Inv_eqv in H11.
             2: exact H. psimpl.
             exists d. split.
             constructor. easy.
@@ -4294,14 +4304,14 @@ Proof.
               intros ??. psimpl.
               dec_eq_nats i0 (exist (λ i, i < T) n p).
               {
-                rewrite <-x3, <-x in H9 at 1.
-                psimpl. destruct H9.
+                rewrite <-x3, <-x in H10 at 1.
+                psimpl. destruct H10.
               }
               {
                 apply (resp_own0 i0).
                 exists x8, x9.
                 rewrite <-x2 at 1.
-                rewrite <-x3 in H9 at 1.
+                rewrite <-x3 in H10 at 1.
                 now rewrite <-H3.
               }
             }
@@ -4328,16 +4338,17 @@ Proof.
             exists x6.
             split. easy.
             split. easy.
+            split. easy.
             exists x7.
             split. 2: easy.
             rewrite <-x3 at 1.
-            rewrite <-x2 in H7.
+            rewrite <-x2 in H8.
             simpl in *.
             now apply wrt_res_ordn_read.
           }
           {
             intros ??.
-            eapply Inv_eqv in H10.
+            eapply Inv_eqv in H11.
             2: exact H. psimpl.
             exists d. split.
             constructor. easy.
@@ -4361,7 +4372,7 @@ Proof.
         split.
         {
           intros ??.
-          destruct H9, H9, H10.
+          destruct H10, H10, H11.
           dec_eq_nats (`x3) n.
           {
             assert (exist _ (`x3) p = x3).
@@ -4369,9 +4380,9 @@ Proof.
               destruct x3. psimpl. f_equal.
               apply proof_irrelevance.
             }
-            rewrite H12 in H4.
-            rewrite H4 in H11.
-            psimpl. ddestruct H11.
+            rewrite H13 in H4.
+            rewrite H4 in H12.
+            psimpl. ddestruct H12.
             now left.
           }
           {
@@ -4386,7 +4397,7 @@ Proof.
         split.
         {
           intros.
-          destruct H9; psimpl.
+          destruct H10; psimpl.
           {
             exists (exist _ n p).
             now rewrite H4.
@@ -4397,11 +4408,12 @@ Proof.
           exists x1.
           split. easy.
           split. easy.
+          split. easy.
           exists (remove n x1).
           assert (x2 = remove (S n) x1).
           {
             eapply wrt_pfx_triv.
-            exact H7.
+            exact H8.
           }
           subst.
           split. now apply wrt_pfx_next.
@@ -4409,8 +4421,8 @@ Proof.
           dec_eq_nats v0 a.
           { now left. }
           {
-            right. apply H8.
-            rewrite remove_set in H9.
+            right. apply H9.
+            rewrite remove_set in H10.
             rewrite remove_set.
             unfold contains in *.
             psimpl. exists x2.
@@ -4419,18 +4431,18 @@ Proof.
             { intros. lia. }
             intros ?. subst.
             destruct H.
-            adjust H11 (In (x2, x2, v0) (wrt_ordn x)).
+            adjust H12 (In (x2, x2, v0) (wrt_ordn x)).
             {
-              clear - H11 H5.
-              destruct H5. rewrite H.
+              clear - H12 H6.
+              destruct H6. rewrite H.
               apply In_app_rev; auto.
             }
-            apply ordn_val0 in H11.
+            apply ordn_val0 in H12.
             destruct x2. simpl in *.
             assert (p = l0) by
               now apply proof_irrelevance.
-            subst. rewrite H4 in H11 at 1.
-            now ddestruct H11.
+            subst. rewrite H4 in H12 at 1.
+            now ddestruct H12.
           }
         }
       }
@@ -4444,7 +4456,7 @@ Proof.
         split.
         {
           intros ??.
-          destruct H9, H9, H10.
+          destruct H10, H10, H11.
           assert (`x3 ≠ n).
           {
             intros ?. subst.
@@ -4454,7 +4466,7 @@ Proof.
               destruct x3. psimpl. f_equal.
               apply proof_irrelevance.
             }
-            now rewrite H12.
+            now rewrite H13.
           }
           apply H2. exists x3.
           split. easy.
@@ -4465,16 +4477,23 @@ Proof.
         exists x1.
         split. easy.
         split. easy.
+        split. easy.
         exists (remove n x1).
         assert (x2 = remove (S n) x1).
         {
           eapply wrt_pfx_triv.
-          exact H7.
+          exact H8.
         }
         subst.
         split. now apply wrt_pfx_next.
-        intros. apply H8.
-        rewrite remove_set in H9.
+        assert (¬∃ v, List.In (exist _ n p, exist _ n p, v) x1).
+        {
+          intros ?. apply H4.
+          psimpl. clear H4.
+          eapply H5. exact H10.
+        }
+        intros. apply H9.
+        rewrite remove_set in H11.
         rewrite remove_set.
         unfold contains in *.
         psimpl. exists x2.
@@ -4482,14 +4501,15 @@ Proof.
         cut (`x2 ≠ n).
         { intros. lia. }
         intros ?. subst.
-        rename x2 into n.
-        eapply wrt_pfx_defn in H7.
-        2:{ exists v0. exact H10. }
-        destruct n. simpl in *. lia.
+        apply H10. exists v0.
+        destruct x2. simpl in *.
+        assert (l0 = p) by
+          now apply proof_irrelevance.
+        now subst.
       }
     }
   }
-Admitted.
+Qed.
 
 Lemma wk_write {T A} (i i' : Name T) (v : A) :
   ∀ (P : Prec T A) (Q : unit -> Relt T A),
@@ -5561,6 +5581,7 @@ Proof.
           split. easy.
           split. easy.
           exists nil.
+          split. easy.
           split.
           { now exists x.(wrt_ordn). }
           { easy. }
@@ -5579,6 +5600,7 @@ Proof.
             (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v) ⊆ y.(new) /\
             y.(new) ⊆ collect d.(und_vals) /\
             ∃ p,
+              (∀ i v, List.In (i, i, v) p -> vi i) /\
               Prefix p d.(wrt_ordn) /\
               y.(old) ⊆ set_of p /\
               set_of p ⊆ y.(new)
@@ -5594,7 +5616,7 @@ Proof.
             sub, subRelt.
           intros.
           destruct H, H, H, H, H, H, H1, H2, H3, H4.
-          destruct H5 as [p [Hpfx Hsub]].
+          destruct H5 as [p [Hvi [Hpfx Hsub]]].
           apply H0 in H. psimpl.
           exists x4, x3.
           split. easy.
@@ -5660,7 +5682,9 @@ Proof.
             exists x5. now rewrite <-H8.
           }
           {
-            exists p. split.
+            exists p.
+            split. easy.
+            split.
             {
               apply forget_othr, pfx_stable in H.
               eapply prefix_trans. exact Hpfx. easy.
@@ -5671,7 +5695,7 @@ Proof.
         {
           unfold SilentStep. intros.
           destruct H, H, H, H, H, H2, H3, H4, H5.
-          destruct H6 as [p [Hpfx Hsub]].
+          destruct H6 as [p [Hvi [Hpfx Hsub]]].
           assert (Inv x2 (tht, s) ρs).
           {
             destruct H.
@@ -5715,9 +5739,11 @@ Proof.
             split. easy.
             split. exact H1.
             exists x0.(wrt_ordn).
+            split. easy.
             split. apply prefix_refl.
             intros. apply H3 in H7.
             now apply H.(ordn_val).
+            admit.
           }
         }
       }
@@ -5735,14 +5761,14 @@ Proof.
           unfold negb, eqb in H0.
           now destruct (classicT (new l0 = old l0)).
         }
-        rewrite H8 in *.
+        rewrite H9 in *.
         assert (old l0 = set_of x1).
         {
           set_ext y. split.
-          { apply H6. }
           { apply H7. }
+          { apply H8. }
         }
-        rewrite H9.
+        rewrite H10.
         now apply ob_help.
       }
       {
