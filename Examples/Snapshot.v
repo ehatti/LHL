@@ -1797,9 +1797,10 @@ Lemma return_some_step {T A} :
     ReturnStep i (Guar i)
     (λ s ρs, ∃ d,
       Inv d s ρs /\
-      ∃ vi new,
+      ∃ lb vi new,
         r = Some new /\
-        d.(rets_map) i = PRetn v (Some vi) /\
+        d.(rets_map) i = PRetn v (Some lb) /\
+        lb ⊆ vi /\
         PossDef d.(wrt_ordn) d.(und_vals) (PRetn v (Some vi)) (PRetn v (Some new)))
     (WriteSnap v) r
     (λ _ _ s ρs,
@@ -1807,8 +1808,11 @@ Lemma return_some_step {T A} :
 Proof.
   unfold ReturnStep.
   intros. clear H0. psimpl.
-  rename x0 into vi.
-  rename x1 into new.
+  rename x0 into lb.
+  rename x1 into vi.
+  rename x2 into new.
+  rename H2 into Hlb.
+  rename H3 into H2.
   exists (λ σ,
     ρs σ /\
     Done i (WriteSnap v) (Some new) σ).
@@ -1822,7 +1826,12 @@ Proof.
       exists (updf x.(rets_map) i (PRetn v (Some new))).
       split. 2: easy. intros. unfold updf.
       dec_eq_nats i0 i.
-      { now rewrite eqb_id, H1. }
+      {
+        rewrite eqb_id, H1.
+        clear - H2 Hlb.
+        ddestruct H2.
+        constructor; eauto.
+      }
       {
         rewrite eqb_nid; eauto.
         eapply PS_refl. exact H'.
@@ -1915,7 +1924,11 @@ Proof.
             exists (updf x0 i (PRetn v (Some new))).
             split. 2: easy. intros. specialize (H i0).
             unfold updf in *. dec_eq_nats i0 i.
-            { now rewrite eqb_id, H1. }
+            {
+              rewrite eqb_id, H1 in *.
+              clear - H2 Hlb. ddestruct H2.
+              constructor; eauto.
+            }
             { rewrite eqb_nid in *; auto. }
           }
           {
@@ -1977,9 +1990,10 @@ Lemma return_step {T A} :
           d.(rets_map) i = PRetn v None
         ) \/
         (
-          ∃ vi new,
+          ∃ lb vi new,
             r = Some new /\
-            d.(rets_map) i = PRetn v (Some vi) /\
+            d.(rets_map) i = PRetn v (Some lb) /\
+            lb ⊆ vi /\
             PossDef d.(wrt_ordn) d.(und_vals) (PRetn v (Some vi)) (PRetn v (Some new))
         )))
       (WriteSnap v) r
@@ -1998,7 +2012,7 @@ Proof.
     {
       exists x.
       split. easy.
-      now exists x0, x1.
+      now exists x0, x1, x2.
     }
     { easy. }
   }
@@ -3607,7 +3621,8 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
         (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
         d.(rets_map) i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
         ∃ p,
-          (∀ i v, List.In (i, i, v) p -> vi i) /\
+          (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
+          True /\
           Prefix p d.(wrt_ordn) /\
           x.(old) ⊆ set_of p)
     (fill_new T x)
@@ -3619,7 +3634,8 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
         (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v) ⊆ y.(new) /\
         y.(new) ⊆ collect d.(und_vals) /\
         ∃ p,
-          (∀ i v, List.In (i, i, v) p -> vi i) /\
+          (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
+          True /\
           Prefix p d.(wrt_ordn) /\
           y.(old) ⊆ set_of p /\
           set_of p ⊆ y.(new)).
@@ -3638,7 +3654,8 @@ Proof.
         (λ v1, ∃ i0, vi i0 /\ `i0 ≥ n ∧ val (und_vals d i0) = Some v1) ⊆ new y /\
         new y ⊆ collect (und_vals d) /\
         ∃ p,
-          (∀ i v, List.In (i, i, v) p -> vi i) /\
+          (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
+          True /\
           Prefix p d.(wrt_ordn) /\
           y.(old) ⊆ set_of p /\
           ∃ p',
@@ -3744,6 +3761,7 @@ Proof.
     intros.
     unfold runStateM.
     unfold lift.
+    rename p into pp.
     eapply lemBind with
       (Q:=λ '(r, s) _ _ s0 ρs,
         ∃ d vi,
@@ -3752,12 +3770,14 @@ Proof.
           rets_map d i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
           (λ v1, ∃ i0, vi i0 /\ `i0 ≥ S n ∧ val (und_vals d i0) = Some v1) ⊆ new s /\
           new s ⊆ collect (und_vals d) /\
-          match r.(val) with
-          | Some w => (d.(und_vals) (exist _ n p)) = r
-          | None => ¬vi (exist _ n p)
-          end /\
+          True /\
           ∃ p,
-            (∀ i v, List.In (i, i, v) p -> vi i) /\
+            (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
+            (* True /\ *)
+            match r.(val) with
+            | Some w => (d.(und_vals) (exist _ n pp)) = r
+            | None => ¬∃ v, List.In (exist _ n pp, exist _ n pp, v) p
+            end /\
             Prefix p d.(wrt_ordn) /\
             s.(old) ⊆ set_of p /\
             ∃ p',
@@ -3775,7 +3795,8 @@ Proof.
             (λ v1, ∃ i0, vi i0 /\ `i0 ≥ S n ∧ val (und_vals d i0) = Some v1) ⊆ new s /\
             new s ⊆ collect (und_vals d) /\
             ∃ p,
-              (∀ i v, List.In (i, i, v) p -> vi i) /\
+              (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
+              True /\
               Prefix p d.(wrt_ordn) /\
               s.(old) ⊆ set_of p /\
               ∃ p',
@@ -3934,12 +3955,14 @@ Proof.
               rets_map d i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
               (λ v1, ∃ i0, vi i0 /\ `i0 ≥ S n ∧ val (und_vals d i0) = Some v1) ⊆ new s /\
               new s ⊆ collect (und_vals d) /\
-              match r.(val) with
-              | Some w => (d.(und_vals) (exist _ n p)) = r
-              | None => ¬vi (exist _ n p)
-              end /\
+              True /\
               ∃ p,
-                (∀ i v, List.In (i, i, v) p -> vi i) /\
+                (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
+                (* True /\ *)
+                match r.(val) with
+                | Some w => (d.(und_vals) (exist _ n pp)) = r
+                | None => ¬∃ v, List.In (exist _ n pp, exist _ n pp, v) p
+                end /\
                 Prefix p d.(wrt_ordn) /\
                 s.(old) ⊆ set_of p /\
                 ∃ p',
@@ -4035,16 +4058,25 @@ Proof.
             destruct o. 2: easy.
             eapply forget_othr in H.
             eapply one_shot with
-              (i:= exist _ n p)
+              (i:= exist _ n pp)
               (v:= a)
               in H.
             2: now subst.
-            now rewrite <-H.
+            (* now rewrite <-H. *)
+            easy.
           }
           assert (Prefix x1.(wrt_ordn) x3.(wrt_ordn)).
           { eapply pfx_stable, forget_othr, H. }
           exists pf.
-          split. easy.
+          split.
+          {
+            remember (val v0).
+            destruct o; try easy.
+            subst. symmetry.
+            eapply one_shot.
+            { eapply forget_othr. exact H. }
+            { symmetry. exact Heqo. }
+          }
           split.
           {
             eapply prefix_trans.
@@ -4181,7 +4213,7 @@ Proof.
             {
               intros.
               specialize (und_def0 i0).
-              dec_eq_nats i0 (exist (λ i, i < T) n p).
+              dec_eq_nats i0 (exist (λ i, i < T) n pp).
               {
                 rewrite <-x3 at 1. simpl.
                 rewrite <-x at 1. simpl.
@@ -4202,7 +4234,7 @@ Proof.
             }
             {
               intros ??. psimpl.
-              dec_eq_nats i0 (exist (λ i, i < T) n p).
+              dec_eq_nats i0 (exist (λ i, i < T) n pp).
               {
                 rewrite <-x3, <-x in H10 at 1.
                 psimpl. destruct H10.
@@ -4255,14 +4287,14 @@ Proof.
             subst I. do 2 psimpl.
             destruct H. exfalso.
             clear - x1 x x2 x3 x4 und_def0.
-            specialize (und_def0 (exist _ n p)).
+            specialize (und_def0 (exist _ n pp)).
             now rewrite <-x2, <-x1 in und_def0 at 1.
           }
           2:{
             subst I. do 2 psimpl.
             destruct H. exfalso.
             clear - x1 x x2 x3 x4 und_def0.
-            specialize (und_def0 (exist _ n p)).
+            specialize (und_def0 (exist _ n pp)).
             now rewrite <-x2, <-x1 in und_def0 at 1.
           }
           ddestruct H1.
@@ -4288,7 +4320,7 @@ Proof.
             {
               intros.
               specialize (und_def0 i0).
-              dec_eq_nats i0 (exist (λ i, i < T) n p).
+              dec_eq_nats i0 (exist (λ i, i < T) n pp).
               {
                 rewrite <-x2, <-x1 in und_def0 at 1.
                 simpl in und_def0. ddestruct und_def0.
@@ -4302,7 +4334,7 @@ Proof.
             }
             {
               intros ??. psimpl.
-              dec_eq_nats i0 (exist (λ i, i < T) n p).
+              dec_eq_nats i0 (exist (λ i, i < T) n pp).
               {
                 rewrite <-x3, <-x in H10 at 1.
                 psimpl. destruct H10.
@@ -4326,17 +4358,25 @@ Proof.
             split. easy.
             split.
             {
-              destruct H. psimpl.
+              (* destruct H. psimpl.
               specialize (und_def0 (exist _ n p)).
               rewrite <-x2, <-x1 in und_def0 at 1.
               ddestruct und_def0.
               remember (val (und_vals x4 (exist _ n p))).
               destruct o0. easy.
               intros ?. apply H0 in H.
-              now rewrite <-Heqo0 in H at 1.
+              now rewrite <-Heqo0 in H at 1. *)
+              easy.
             }
             exists x6.
-            split. easy.
+            split.
+            {
+              destruct H. psimpl.
+              specialize (und_def0 (exist _ n pp)).
+              rewrite <-x2, <-x1 in und_def0 at 1.
+              simpl in *. ddestruct und_def0.
+              admit.
+            }
             split. easy.
             split. easy.
             exists x7.
@@ -4375,15 +4415,18 @@ Proof.
           destruct H10, H10, H11.
           dec_eq_nats (`x3) n.
           {
-            assert (exist _ (`x3) p = x3).
+            assert (exist _ (`x3) pp = x3).
             {
               destruct x3. psimpl. f_equal.
               apply proof_irrelevance.
             }
-            rewrite H13 in H4.
+            
+            (* rewrite H13 in H4.
             rewrite H4 in H12.
             psimpl. ddestruct H12.
-            now left.
+            now left. *)
+            admit.
+            
           }
           {
             right.
@@ -4399,8 +4442,8 @@ Proof.
           intros.
           destruct H10; psimpl.
           {
-            exists (exist _ n p).
-            now rewrite H4.
+            exists (exist _ n pp).
+            now rewrite H5.
           }
           { now apply H3. }
         }
@@ -4439,9 +4482,9 @@ Proof.
             }
             apply ordn_val0 in H12.
             destruct x2. simpl in *.
-            assert (p = l0) by
+            assert (pp = l0) by
               now apply proof_irrelevance.
-            subst. rewrite H4 in H12 at 1.
+            subst. rewrite H5 in H12 at 1.
             now ddestruct H12.
           }
         }
@@ -4460,13 +4503,13 @@ Proof.
           assert (`x3 ≠ n).
           {
             intros ?. subst.
-            apply H4.
-            assert (exist _ (`x3) p = x3).
+            apply H5.
+            assert (exist _ (`x3) pp = x3).
             {
               destruct x3. psimpl. f_equal.
               apply proof_irrelevance.
             }
-            now rewrite H13.
+            setoid_rewrite H13.
           }
           apply H2. exists x3.
           split. easy.
@@ -4486,11 +4529,9 @@ Proof.
         }
         subst.
         split. now apply wrt_pfx_next.
-        assert (¬∃ v, List.In (exist _ n p, exist _ n p, v) x1).
+        assert (¬∃ v, List.In (exist _ n pp, exist _ n pp, v) x1).
         {
-          intros ?. apply H4.
-          psimpl. clear H4.
-          eapply H5. exact H10.
+          easy.
         }
         intros. apply H9.
         rewrite remove_set in H11.
@@ -4503,13 +4544,13 @@ Proof.
         intros ?. subst.
         apply H10. exists v0.
         destruct x2. simpl in *.
-        assert (l0 = p) by
+        assert (l0 = pp) by
           now apply proof_irrelevance.
         now subst.
       }
     }
   }
-Qed.
+Admitted.
 
 Lemma wk_write {T A} (i i' : Name T) (v : A) :
   ∀ (P : Prec T A) (Q : unit -> Relt T A),
@@ -5600,7 +5641,8 @@ Proof.
             (λ v, ∃ i, vi i /\ val (d.(und_vals) i) = Some v) ⊆ y.(new) /\
             y.(new) ⊆ collect d.(und_vals) /\
             ∃ p,
-              (∀ i v, List.In (i, i, v) p -> vi i) /\
+              (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
+              True /\
               Prefix p d.(wrt_ordn) /\
               y.(old) ⊆ set_of p /\
               set_of p ⊆ y.(new)
@@ -5741,9 +5783,9 @@ Proof.
             exists x0.(wrt_ordn).
             split. easy.
             split. apply prefix_refl.
-            intros. apply H3 in H7.
+            intros. apply H3 in H8.
+            destruct H8. exists x3.
             now apply H.(ordn_val).
-            admit.
           }
         }
       }
