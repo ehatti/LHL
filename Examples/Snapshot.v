@@ -3639,7 +3639,7 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
           Prefix p d.(wrt_ordn) /\
           y.(old) ⊆ set_of p /\
           set_of p ⊆ y.(new)).
-(* Proof.
+Proof.
   intros Heq.
   unfold fill_new, runStateM, bindM.
   simpl.
@@ -3647,15 +3647,15 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   eapply weakenPrec.
   apply lemRange with
     (I:=λ n y _ _ s ρs,
-      ∃ d vi,
+      ∃ d lb vi,
         Inv d s ρs /\
         (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
-        rets_map d i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
+        lb ⊆ vi /\
+        rets_map d i = PRetn v (Some (λ v, ∃ i, lb i /\ (und_vals d i).(val) = Some v)) /\
         (λ v1, ∃ i0, vi i0 /\ `i0 ≥ n ∧ val (und_vals d i0) = Some v1) ⊆ new y /\
         new y ⊆ collect (und_vals d) /\
         ∃ p,
-          (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
-          True /\
+          (∀ i v, List.In (i, i, v) p -> vi i) /\
           Prefix p d.(wrt_ordn) /\
           y.(old) ⊆ set_of p /\
           ∃ p',
@@ -3664,15 +3664,16 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
   2:{
     unfold sub, subRelt.
     intros. psimpl.
-    exists x0, x1.
+    exists x0, x1, x2.
+    split. easy.
     split. easy.
     split. easy.
     split. easy.
     split.
     {
       intros ??.
-      destruct H5, H5, H6.
-      destruct x3. psimpl.
+      destruct H6, H6, H7.
+      destruct x4. psimpl.
       lia.
     }
     split.
@@ -3680,16 +3681,16 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
       rewrite Heq.
       now intros ??.
     }
-    exists x2.
+    exists x3.
     split. easy.
     split. easy.
     split. easy.
     {
       exists nil.
       split.
-      2: intros; now destruct H5, H5.
-      destruct H3, H.
-      rewrite H3 in wrt_def0.
+      2: intros; now destruct H6, H6.
+      destruct H4, H.
+      rewrite H4 in wrt_def0.
       clear - wrt_def0.
       cut (
         ∀ wrt p p',
@@ -3726,13 +3727,13 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
     intros [[]].
     unfold sub, subRelt.
     intros. psimpl.
-    exists x0, x1.
+    exists x0, x1, x2.
     split. easy.
     split. easy.
     split. easy.
-    assert (x3 = x2).
+    assert (x4 = x3).
     {
-      clear - H7. revert H7.
+      clear - H8. revert H8.
       cut (
         ∀ wrt p p',
           @WrtPfxRes T A 0 wrt p p' → p' = p
@@ -3740,21 +3741,22 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
       {
         intros.
         eapply H.
-        exact H7.
+        exact H8.
       }
       clear. intros.
       induction H; now subst.
     }
-    clear H7. subst.
+    split. easy.
+    clear H8. subst.
     split.
     {
       intros ??.
-      destruct H7, H7.
-      apply H2. exists x3.
+      destruct H8, H8.
+      apply H3. exists x4.
       repeat split; (easy || lia).
     }
     split. easy.
-    now exists x2.
+    now exists x3.
   }
   {
     clear.
@@ -3764,19 +3766,19 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
     rename p into pp.
     eapply lemBind with
       (Q:=λ '(r, s) _ _ s0 ρs,
-        ∃ d vi,
+        ∃ d lb vi,
           Inv d s0 ρs /\
           (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
-          rets_map d i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
+          lb ⊆ vi /\
+          rets_map d i = PRetn v (Some (λ v, ∃ i, lb i /\ (und_vals d i).(val) = Some v)) /\
           (λ v1, ∃ i0, vi i0 /\ `i0 ≥ S n ∧ val (und_vals d i0) = Some v1) ⊆ new s /\
           new s ⊆ collect (und_vals d) /\
           True /\
           ∃ p,
-            (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
-            (* True /\ *)
+            (∀ i v, List.In (i, i, v) p -> vi i) /\
             match r.(val) with
             | Some w => (d.(und_vals) (exist _ n pp)) = r
-            | None => ¬∃ v, List.In (exist _ n pp, exist _ n pp, v) p
+            | None => ¬vi (exist _ n pp)
             end /\
             Prefix p d.(wrt_ordn) /\
             s.(old) ⊆ set_of p /\
@@ -3788,15 +3790,15 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
       eapply lemBind.
       {
         pose (I:=λ s0 ρs,
-          ∃ d vi,
+          ∃ d lb vi,
             Inv d s0 ρs /\
             (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
-            rets_map d i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
+            lb ⊆ vi /\
+            rets_map d i = PRetn v (Some (λ v, ∃ i, lb i /\ (und_vals d i).(val) = Some v)) /\
             (λ v1, ∃ i0, vi i0 /\ `i0 ≥ S n ∧ val (und_vals d i0) = Some v1) ⊆ new s /\
             new s ⊆ collect (und_vals d) /\
             ∃ p,
-              (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
-              True /\
+              (∀ i v, List.In (i, i, v) p -> vi i) /\
               Prefix p d.(wrt_ordn) /\
               s.(old) ⊆ set_of p /\
               ∃ p',
@@ -3809,89 +3811,87 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
             Stable, stablePrec,
             sub, subPrec.
           intros.
-          destruct H, H, H, H, H, H, H1, H2, H3, H4.
-          destruct H5 as [pf [Hvi [Hpfx [Hsub [pf' [Hres Hsup]]]]]].
-          assert (H' := H).
-          apply H0 in H. psimpl.
-          exists x3, x2.
+          destruct H as [t' [σ' [[d [lb [vi [HI [HviS [Hlb [Hr [Hns [Hus [p [Hvi [Hpfx [Hold [p' [Hwrt Hnew]]]]]]]]]]]]]]] HR]]].
+          assert (HI' := HI).
+          apply HR in HI. psimpl.
+          exists x, lb, vi.
           split. easy.
           split.
           {
-            intros.
-            apply H1 in H6.
-            remember (und_vals x1 i0).
+            intros i0 Hi0.
+            apply HviS in Hi0.
+            remember (und_vals d i0).
             destruct r, val0. simpl in *.
             eapply forget_othr, one_shot in H.
             2: now rewrite <-Heqr at 1.
             now rewrite <-H, <-Heqr.
             easy.
           }
+          split. easy.
           split.
           {
             assert (
-              (λ v, ∃ i, x2 i /\ val (und_vals x1 i) = Some v) =
-              (λ v, ∃ i, x2 i /\ val (und_vals x3 i) = Some v)
+              (λ v, ∃ i, lb i /\ val (und_vals x i) = Some v) =
+              (λ v, ∃ i, lb i /\ val (und_vals d i) = Some v)
             ).
             {
               set_ext y.
-              split; intros; psimpl.
+              split; intros [i0 [Hlbs Hy]].
               {
-                assert (H6' := H6).
-                apply H1 in H6.
-                remember (und_vals x1 x4).
-                destruct r. simpl in *. destruct val0.
-                2: easy. ddestruct H7.
+                exists i0.
+                split. easy.
+                apply Hlb, HviS in Hlbs.
+                remember (und_vals d i0).
+                destruct r. simpl in *.
+                destruct val0. 2: easy.
                 eapply forget_othr, one_shot in H.
                 2: now rewrite <-Heqr.
-                exists x4. rewrite <-H.
-                now rewrite <-Heqr.
+                rewrite H in Heqr.
+                rewrite <-Heqr in Hy at 1.
+                easy.
               }
               {
-                assert (H6' := H6).
-                apply H1 in H6.
-                remember (und_vals x1 x4).
-                destruct r. simpl in *. destruct val0.
-                2: easy. ddestruct H7.
+                exists i0.
+                split. easy.
+                apply Hlb, HviS in Hlbs.
+                remember (und_vals d i0).
+                destruct r. simpl in *.
+                destruct val0. 2: easy.
                 eapply forget_othr, one_shot in H.
                 2: now rewrite <-Heqr.
-                exists x4.
-                split. easy.
-                rewrite <-H in x.
-                rewrite <-Heqr in x.
-                simpl in *. ddestruct x.
-                now rewrite <-Heqr.
+                now rewrite <-H, <-Heqr.
               }
             }
             erewrite <-Inv_pres_self.
-            setoid_rewrite <-H6. exact H2.
+            setoid_rewrite H1. exact Hr.
             easy.
           }
           split.
           {
             intros ??.
-            destruct H6, H6, H7.
-            apply H3.
-            exists x4.
+            destruct H1, H1, H2.
+            apply Hns.
+            exists x0.
             split. easy.
             split. easy.
-            apply H1 in H6.
-            remember (und_vals x1 x4).
+            apply HviS in H1.
+            remember (und_vals d x0).
             destruct r, val0. simpl in *.
             eapply forget_othr, one_shot in H.
             2: now rewrite <-Heqr at 1.
-            rewrite <-H, <-Heqr in H8.
-            now ddestruct H8.
+            rewrite <-H, <-Heqr in H3.
+            now ddestruct H3.
             easy.
           }
           split.
           {
             intros.
-            apply H4 in H6.
-            destruct H6. exists x4.
+            apply Hus in H1.
+            destruct H1. exists x0.
             eapply forget_othr, one_shot in H.
-            2: exact H6. now rewrite <-H.
+            2: exact H1. now rewrite <-H.
           }
-          exists pf.
+          exists p.
           split. easy.
           split.
           {
@@ -3900,8 +3900,8 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
             exact H.
           }
           split. easy.
-          exists pf'. split. 2: easy.
-          eapply res_stable. 2: exact Hres.
+          exists p'. split. 2: easy.
+          eapply res_stable. 2: exact Hwrt.
           clear - H H5 H'. destruct H5, H'.
           clear - H wrt_def0 wrt_def1.
           eapply forget_othr, pfx_stable in H.
@@ -3949,19 +3949,19 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
         eapply lemCallWk with
           (Q:=I)
           (S:=λ r s0 ρs,
-            ∃ d vi,
+            ∃ d lb vi,
               Inv d s0 ρs /\
               (∀ i, vi i -> (d.(und_vals) i).(val) ≠ None) /\
-              rets_map d i = PRetn v (Some (λ v, ∃ i, vi i /\ (und_vals d i).(val) = Some v)) /\
+              lb ⊆ vi /\
+              rets_map d i = PRetn v (Some (λ v, ∃ i, lb i /\ (und_vals d i).(val) = Some v)) /\
               (λ v1, ∃ i0, vi i0 /\ `i0 ≥ S n ∧ val (und_vals d i0) = Some v1) ⊆ new s /\
               new s ⊆ collect (und_vals d) /\
               True /\
               ∃ p,
-                (* (∀ i v, List.In (i, i, v) p -> vi i) /\ *)
-                (* True /\ *)
+                (∀ i v, List.In (i, i, v) p -> vi i) /\
                 match r.(val) with
                 | Some w => (d.(und_vals) (exist _ n pp)) = r
-                | None => ¬∃ v, List.In (exist _ n pp, exist _ n pp, v) p
+                | None => ¬vi (exist _ n pp)
                 end /\
                 Prefix p d.(wrt_ordn) /\
                 s.(old) ⊆ set_of p /\
@@ -3969,7 +3969,7 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
                   WrtPfxRes (S n) (snd s0).(RState).(os_ord) p p' /\
                   set_of p' ⊆ s.(new)).
         { easy. }
-        {
+        (* {
           unfold
             Stable, stablePrec,
             sub, subPrec.
@@ -4179,7 +4179,8 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
               now apply IHWrtPfxRes.
             }
           }
-        }
+        } *)
+         admit.
         {
           unfold Commit.
           intros. do 2 psimpl.
@@ -4236,41 +4237,42 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
               intros ??. psimpl.
               dec_eq_nats i0 (exist (λ i, i < T) n pp).
               {
-                rewrite <-x3, <-x in H10 at 1.
-                psimpl. destruct H10.
-                now ddestruct H10.
+                rewrite <-x3, <-x in H11 at 1.
+                psimpl. destruct H11.
+                now ddestruct H11.
                 easy.
               }
               {
                 apply (resp_own0 i0).
-                exists x8, x9.
+                exists x9, x10.
                 rewrite <-x2 at 1.
-                rewrite <-x3 in H10 at 1.
+                rewrite <-x3 in H11 at 1.
                 now rewrite <-H3.
               }
             }
           }
           split.
           {
-            exists x4, x5.
+            exists x4, x5, x6.
             split. easy.
             split. easy.
             split. easy.
-            split. easy.
-            split. easy.
-            exists x6.
             split. easy.
             split. easy.
             split. easy.
             exists x7.
+            split. easy.
+            split. easy.
+            split. easy.
+            exists x8.
             split. 2: easy.
             rewrite <-x3 at 1.
-            rewrite <-x2 in H8.
+            rewrite <-x2 in H9.
             easy.
           }
           {
             intros ??.
-            eapply Inv_eqv in H11.
+            eapply Inv_eqv in H12.
             2: exact H. psimpl.
             exists d. split.
             constructor. easy.
@@ -4336,59 +4338,52 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
               intros ??. psimpl.
               dec_eq_nats i0 (exist (λ i, i < T) n pp).
               {
-                rewrite <-x3, <-x in H10 at 1.
-                psimpl. destruct H10.
+                rewrite <-x3, <-x in H11 at 1.
+                psimpl. destruct H11.
               }
               {
                 apply (resp_own0 i0).
-                exists x8, x9.
+                exists x9, x10.
                 rewrite <-x2 at 1.
-                rewrite <-x3 in H10 at 1.
+                rewrite <-x3 in H11 at 1.
                 now rewrite <-H3.
               }
             }
           }
           split.
           {
-            exists x4, x5.
+            exists x4, x5, x6.
             split. easy.
             split. easy.
             split. easy.
             split. easy.
             split. easy.
-            split.
-            {
-              (* destruct H. psimpl.
-              specialize (und_def0 (exist _ n p)).
-              rewrite <-x2, <-x1 in und_def0 at 1.
-              ddestruct und_def0.
-              remember (val (und_vals x4 (exist _ n p))).
-              destruct o0. easy.
-              intros ?. apply H0 in H.
-              now rewrite <-Heqo0 in H at 1. *)
-              easy.
-            }
-            exists x6.
+            split. easy.
+            split. easy.
+            exists x7.
+            split. easy.
             split.
             {
               destruct H. psimpl.
               specialize (und_def0 (exist _ n pp)).
               rewrite <-x2, <-x1 in und_def0 at 1.
               simpl in *. ddestruct und_def0.
-              admit.
+              remember (val (und_vals x4 (exist _ n pp))).
+              destruct o0. easy. intros ?.
+              apply H0 in H. congruence.
             }
             split. easy.
             split. easy.
-            exists x7.
+            exists x8.
             split. 2: easy.
             rewrite <-x3 at 1.
-            rewrite <-x2 in H8.
+            rewrite <-x2 in H9.
             simpl in *.
             now apply wrt_res_ordn_read.
           }
           {
             intros ??.
-            eapply Inv_eqv in H11.
+            eapply Inv_eqv in H12.
             2: exact H. psimpl.
             exists d. split.
             constructor. easy.
@@ -4405,33 +4400,31 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
       {
         apply lemRet.
         intros ?????. psimpl.
-        exists x, x0.
+        exists x, x0, x1.
+        split. easy.
         split. easy.
         split. easy.
         split. easy.
         split.
         {
           intros ??.
-          destruct H10, H10, H11.
-          dec_eq_nats (`x3) n.
+          destruct H12, H12, H13.
+          dec_eq_nats (`x4) n.
           {
-            assert (exist _ (`x3) pp = x3).
+            assert (exist _ (`x4) pp = x4).
             {
-              destruct x3. psimpl. f_equal.
+              destruct x4. psimpl. f_equal.
               apply proof_irrelevance.
             }
-            
-            (* rewrite H13 in H4.
-            rewrite H4 in H12.
-            psimpl. ddestruct H12.
-            now left. *)
-            admit.
-            
+            rewrite H15 in H7.
+            rewrite H7 in H14.
+            psimpl. ddestruct H14.
+            now left.
           }
           {
             right.
-            apply H2.
-            exists x3.
+            apply H3.
+            exists x4.
             split. easy.
             split. lia.
             easy.
@@ -4440,23 +4433,23 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
         split.
         {
           intros.
-          destruct H10; psimpl.
+          destruct H12; psimpl.
           {
             exists (exist _ n pp).
-            now rewrite H5.
+            now rewrite H7.
           }
-          { now apply H3. }
+          { now apply H4. }
         }
         {
-          exists x1.
+          exists x2.
           split. easy.
           split. easy.
           split. easy.
-          exists (remove n x1).
-          assert (x2 = remove (S n) x1).
+          exists (remove n x2).
+          assert (x3 = remove (S n) x2).
           {
             eapply wrt_pfx_triv.
-            exact H8.
+            exact H10.
           }
           subst.
           split. now apply wrt_pfx_next.
@@ -4464,93 +4457,95 @@ Lemma fill_new_correct {T A} (i : Name T) (v : A) (x : loop_st A) :
           dec_eq_nats v0 a.
           { now left. }
           {
-            right. apply H9.
-            rewrite remove_set in H10.
+            right. apply H11.
+            rewrite remove_set in H12.
             rewrite remove_set.
             unfold contains in *.
-            psimpl. exists x2.
+            psimpl. exists x3.
             split. 2: easy.
-            cut (`x2 ≠ n).
+            cut (`x3 ≠ n).
             { intros. lia. }
             intros ?. subst.
             destruct H.
-            adjust H12 (In (x2, x2, v0) (wrt_ordn x)).
+            adjust H14 (In (x3, x3, v0) (wrt_ordn x)).
             {
-              clear - H12 H6.
-              destruct H6. rewrite H.
+              clear - H14 H8.
+              destruct H8. rewrite H.
               apply In_app_rev; auto.
             }
-            apply ordn_val0 in H12.
-            destruct x2. simpl in *.
+            apply ordn_val0 in H14.
+            destruct x3. simpl in *.
             assert (pp = l0) by
               now apply proof_irrelevance.
-            subst. rewrite H5 in H12 at 1.
-            now ddestruct H12.
+            subst. rewrite H7 in H14 at 1.
+            now ddestruct H14.
           }
         }
       }
       {
         apply lemRet.
         intros ?????. psimpl.
-        exists x, x0.
+        exists x, x0, x1.
+        split. easy.
         split. easy.
         split. easy.
         split. easy.
         split.
         {
           intros ??.
-          destruct H10, H10, H11.
-          assert (`x3 ≠ n).
+          destruct H12, H12, H13.
+          assert (`x4 ≠ n).
           {
             intros ?. subst.
-            apply H5.
-            assert (exist _ (`x3) pp = x3).
+            apply H7.
+            assert (exist _ (`x4) pp = x4).
             {
-              destruct x3. psimpl. f_equal.
+              destruct x4. psimpl. f_equal.
               apply proof_irrelevance.
             }
-            setoid_rewrite H13.
+            setoid_rewrite H15.
+            easy.
           }
-          apply H2. exists x3.
+          apply H3. exists x4.
           split. easy.
           split. lia.
           easy.
         }
         split. easy.
-        exists x1.
+        exists x2.
         split. easy.
         split. easy.
         split. easy.
-        exists (remove n x1).
-        assert (x2 = remove (S n) x1).
+        exists (remove n x2).
+        assert (x3 = remove (S n) x2).
         {
           eapply wrt_pfx_triv.
-          exact H8.
+          exact H10.
         }
         subst.
         split. now apply wrt_pfx_next.
-        assert (¬∃ v, List.In (exist _ n pp, exist _ n pp, v) x1).
+        assert (¬∃ v, List.In (exist _ n pp, exist _ n pp, v) x2).
         {
-          easy.
+          intros ?. psimpl.
+          apply H7. eapply H6; eauto.
         }
-        intros. apply H9.
-        rewrite remove_set in H11.
+        intros. apply H11.
+        rewrite remove_set in H13.
         rewrite remove_set.
         unfold contains in *.
-        psimpl. exists x2.
+        psimpl. exists x3.
         split. 2: easy.
-        cut (`x2 ≠ n).
+        cut (`x3 ≠ n).
         { intros. lia. }
         intros ?. subst.
-        apply H10. exists v0.
-        destruct x2. simpl in *.
+        apply H12. exists v0.
+        destruct x3. simpl in *.
         assert (l0 = pp) by
           now apply proof_irrelevance.
         now subst.
       }
     }
   }
-Admitted. *)
 Admitted.
 
 Lemma wk_write {T A} (i i' : Name T) (v : A) :
