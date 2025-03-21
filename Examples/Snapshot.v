@@ -3969,218 +3969,154 @@ Proof.
                   WrtPfxRes (S n) (snd s0).(RState).(os_ord) p p' /\
                   set_of p' ⊆ s.(new)).
         { easy. }
-        (* {
+        {
           unfold
             Stable, stablePrec,
             sub, subPrec.
           intros.
-          destruct H, H, H, H, H, H, H1, H2, H3, H4.
-          destruct H5 as [Hval [pf [Hvi [Hpfx [Hsub [pf' [Hres Hsup]]]]]]].
-          assert (H' := H).
-          apply H0 in H. psimpl.
-          exists x3, x2.
+          destruct H as [t' [σ' [[d [lb [vi [HI [HviS [Hlb [Hr [Hns [Hus [Htrue [p [Hvi [Hval [Hpfx [Hold [p' [Hwrt Hnew]]]]]]]]]]]]]]]]] HR]]].
+          assert (HI' := HI).
+          apply HR in HI. psimpl.
+          exists x, lb, vi.
           split. easy.
           split.
           {
-            intros.
-            apply H1 in H6.
-            remember (und_vals x1 i0).
+            intros i0 Hi0.
+            apply HviS in Hi0.
+            remember (und_vals d i0).
             destruct r, val0. simpl in *.
             eapply forget_othr, one_shot in H.
             2: now rewrite <-Heqr at 1.
             now rewrite <-H, <-Heqr.
             easy.
           }
+          split. easy.
           split.
           {
             assert (
-              (λ v, ∃ i, x2 i /\ val (und_vals x1 i) = Some v) =
-              (λ v, ∃ i, x2 i /\ val (und_vals x3 i) = Some v)
+              (λ v, ∃ i, lb i /\ val (und_vals x i) = Some v) =
+              (λ v, ∃ i, lb i /\ val (und_vals d i) = Some v)
             ).
             {
               set_ext y.
-              split; intros; psimpl.
+              split; intros [i0 [Hlbs Hy]].
               {
-                assert (H6' := H6).
-                apply H1 in H6.
-                remember (und_vals x1 x4).
-                destruct r. simpl in *. destruct val0.
-                2: easy. ddestruct H7.
+                exists i0.
+                split. easy.
+                apply Hlb, HviS in Hlbs.
+                remember (und_vals d i0).
+                destruct r. simpl in *.
+                destruct val0. 2: easy.
                 eapply forget_othr, one_shot in H.
                 2: now rewrite <-Heqr.
-                exists x4. rewrite <-H.
-                now rewrite <-Heqr.
+                rewrite H in Heqr.
+                rewrite <-Heqr in Hy at 1.
+                easy.
               }
               {
-                assert (H6' := H6).
-                apply H1 in H6.
-                remember (und_vals x1 x4).
-                destruct r. simpl in *. destruct val0.
-                2: easy. ddestruct H7.
+                exists i0.
+                split. easy.
+                apply Hlb, HviS in Hlbs.
+                remember (und_vals d i0).
+                destruct r. simpl in *.
+                destruct val0. 2: easy.
                 eapply forget_othr, one_shot in H.
                 2: now rewrite <-Heqr.
-                exists x4.
-                split. easy.
-                now rewrite H.
+                now rewrite <-H, <-Heqr.
               }
             }
             erewrite <-Inv_pres_self.
-            setoid_rewrite <-H6. exact H2.
+            setoid_rewrite H1. exact Hr.
             easy.
           }
           split.
           {
             intros ??.
-            destruct H6, H6, H7.
-            apply H3.
-            exists x4.
+            destruct H1, H1, H2.
+            apply Hns.
+            exists x0.
             split. easy.
             split. easy.
-            apply H1 in H6.
-            remember (und_vals x1 x4).
+            apply HviS in H1.
+            remember (und_vals d x0).
             destruct r, val0. simpl in *.
             eapply forget_othr, one_shot in H.
             2: now rewrite <-Heqr at 1.
-            now rewrite <-H, <-Heqr in H8.
+            rewrite <-H, <-Heqr in H3.
+            now ddestruct H3.
             easy.
           }
           split.
           {
             intros.
-            apply H4 in H6.
-            destruct H6. exists x4.
+            apply Hus in H1.
+            destruct H1. exists x0.
             eapply forget_othr, one_shot in H.
-            2: exact H6. now rewrite <-H.
+            2: exact H1. now rewrite <-H.
           }
+          split. easy.
+          exists p.
+          split. easy.
           split.
           {
             remember (val v0).
             destruct o. 2: easy.
-            eapply forget_othr in H.
-            eapply one_shot with
-              (i:= exist _ n pp)
-              (v:= a)
-              in H.
-            2: now subst.
-            (* now rewrite <-H. *)
-            easy.
-          }
-          assert (Prefix x1.(wrt_ordn) x3.(wrt_ordn)).
-          { eapply pfx_stable, forget_othr, H. }
-          exists pf.
-          split.
-          {
-            remember (val v0).
-            destruct o; try easy.
-            subst. symmetry.
-            eapply one_shot.
-            { eapply forget_othr. exact H. }
-            { symmetry. exact Heqo. }
+            subst. symmetry in Heqo.
+            symmetry. eapply one_shot.
+            { eapply forget_othr, H. }
+            { exact Heqo. }
           }
           split.
           {
-            eapply prefix_trans.
-            exact Hpfx. easy.
+            eapply prefix_trans. exact Hpfx.
+            eapply pfx_stable, forget_othr.
+            exact H.
           }
           split. easy.
-          exists pf'. split. 2: easy.
-          clear - H5 H' Hres H6. destruct H5, H'.
-          clear - Hres H6 wrt_def0 wrt_def1.
-          destruct H6. rewrite H in *. clear H.
+          exists p'. split. 2: easy.
+          eapply res_stable. 2: exact Hwrt.
+          clear - H H0 HI'. destruct H0, HI'.
+          clear - H wrt_def0 wrt_def1.
+          eapply forget_othr, pfx_stable in H.
+          destruct H. rewrite H in *. clear H.
           cut (
-            ∀ wrt' wrt q ord n pf pf',
-              WrtDef wrt (ord ++ q) ->
-              WrtDef wrt' ord ->
-              @WrtPfxRes T A n wrt' pf pf' ->
-              @WrtPfxRes T A n wrt pf pf'
+            ∀ s t ord q,
+              @WrtDef T A t (ord ++ q) ->
+              WrtDef s ord ->
+              Prefix (del_reads s) (del_reads t)
           ).
           {
-            intros.
-            eapply H.
-            exact wrt_def0.
-            exact wrt_def1.
-            easy.
+            intros. eapply H.
+            exact wrt_def0. easy.
           }
-          clear. intros.
-          gendep ord. gendep wrt.
-          induction H1; simpl; intros.
-          { constructor. }
+          clear. intros. gendep t.
+          induction H0; simpl; intros.
+          { now exists (del_reads t). }
           {
-            ddestruct H0.
-            eapply IHWrtPfxRes.
-            { exact H. }
-            { easy. }
+            apply IHWrtDef in H.
+            clear - H0 H. destruct H.
+            rewrite H. clear H.
+            now exists x.
           }
           {
-            ddestruct H2. simpl in *.
-            adjust IHWrtPfxRes (
-              ∀ wrt,
-                WrtDef wrt (wr0 ++ q) ->
-                WrtPfxRes n wrt wr wrp
-            ).
-            {
-              intros.
-              eapply IHWrtPfxRes.
-              { exact H3. }
-              { easy. }
-            }
-            clear - IHWrtPfxRes H0 H.
-            adjust H0 (
+            adjust H (
               ∃ l,
-                l = (i, i, v) :: wr0 ++ q /\
-                WrtDef wrt l
+                l = (i, i, v) :: wr ++ q /\
+                WrtDef t l
             ).
             { now eexists. }
-            destruct H0, H0.
-            dependent induction H1; subst;
-            try specialize (IHWrtDef eq_refl).
+            destruct H, H.
+            induction H1; psimpl; try easy;
+            try specialize (IHWrtDef0 eq_refl).
             { easy. }
             {
-              constructor.
-              eapply IHWrtDef.
-            }
-            {
-              ddestruct H0.
-              constructor; try easy.
-              now apply IHWrtPfxRes.
+              ddestruct H.
+              apply IHWrtDef in H1.
+              destruct H1. rewrite H.
+              now exists x.
             }
           }
-          {
-            ddestruct H2. simpl in *.
-            adjust IHWrtPfxRes (
-              ∀ wrt,
-                WrtDef wrt (wr0 ++ q) ->
-                WrtPfxRes n wrt wr wrp
-            ).
-            {
-              intros.
-              eapply IHWrtPfxRes.
-              { exact H3. }
-              { easy. }
-            }
-            clear - IHWrtPfxRes H0 H.
-            adjust H0 (
-              ∃ l,
-                l = (i, i, v) :: wr0 ++ q /\
-                WrtDef wrt l
-            ).
-            { now eexists. }
-            destruct H0, H0.
-            dependent induction H1; subst;
-            try specialize (IHWrtDef eq_refl).
-            { easy. }
-            {
-              constructor.
-              eapply IHWrtDef.
-            }
-            {
-              ddestruct H0.
-              constructor; try easy.
-              now apply IHWrtPfxRes.
-            }
-          }
-        } *)
-         admit.
+        }
         {
           unfold Commit.
           intros. do 2 psimpl.
@@ -4546,7 +4482,7 @@ Proof.
       }
     }
   }
-Admitted.
+Qed.
 
 Lemma wk_write {T A} (i i' : Name T) (v : A) :
   ∀ (P : Prec T A) (Q : unit -> Relt T A),
