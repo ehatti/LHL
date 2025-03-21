@@ -3902,7 +3902,7 @@ Proof.
           split. easy.
           exists p'. split. 2: easy.
           eapply res_stable. 2: exact Hwrt.
-          clear - H H5 H'. destruct H5, H'.
+          clear - H H0 HI'. destruct H0, HI'.
           clear - H wrt_def0 wrt_def1.
           eapply forget_othr, pfx_stable in H.
           destruct H. rewrite H in *. clear H.
