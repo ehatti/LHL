@@ -20,7 +20,8 @@ From LHL.Examples Require Import
   MemSpec
   AtomicStackSpec
   ArraySpec
-  Array.
+  Array
+  MemSpec.
 Import WriteRacyMem.
 
 From LHL.Util Require Import
