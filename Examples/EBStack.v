@@ -2446,8 +2446,8 @@ intros. destruct v0.
               {
                 constructor.
                 {
-                  exists vs, x1. psimpl.
-                  
+                  exists vs, x1.
+                  now setoid_rewrite <-H6.
                 }
                 {
                   intros.
@@ -2503,7 +2503,7 @@ intros. destruct v0.
               constructor.
               {
                 constructor.
-                { now setoid_rewrite <- H6 at 1. }
+                { now setoid_rewrite <- H6. }
                 {
                   intros.
                   ddestruct H.
@@ -2624,7 +2624,7 @@ intros. destruct v0.
                 constructor.
                 {
                   constructor.
-                  { now setoid_rewrite <- H7 at 1. }
+                  { now setoid_rewrite <- H7. }
                   {
                     intros.
                     rewrite <- x in H8 at 1.
@@ -3024,19 +3024,18 @@ eapply SafeBind with
     {
       constructor.
       {
-        constructor.
         ddestruct H2.
+        destruct H; psimpl;
+        rewrite H2 in x3;
+        ddestruct x3.
+        constructor.
         {
-          rewrite H in x3.
-          ddestruct x3. eexists _, _.
-          split. symmetry. exact x. easy.
+          exists x0, (Some (i, existT WFPop)).
+          split. 2: easy.
+          right. recons.
+          symmetry. exact x.
         }
-        {
-          rewrite H in x3.
-          ddestruct x3. eexists _, _.
-          split. symmetry. exact x. easy.
-        }
-        { now setoid_rewrite <- H6. }
+        { now setoid_rewrite <-H6. }
       }
       { now setoid_rewrite <- H6. }
     }
@@ -3069,25 +3068,18 @@ intros. destruct v.
       move Heqs0 at bottom.
       ddestruct H.
       {
-        subst.
-        exfalso.
-        clear - H2 x2.
-        eassert _ by (eapply projT2_eq with (p:=H2)).
-        simpl in *.
-        assert (projT1_eq H2 = x2) by apply proof_irrelevance.
-        rewrite H in X. clear H2 H.
-        assert (RN = option A) by now apply StkRet_inj.
-        subst.
-        assert (x2 = eq_refl) by apply proof_irrelevance.
-        rewrite H in X. cbn in X. easy.
+        apply StkRet_inj in x4.
+        subst. ddestruct H2.
+        ddestruct H.
       }
       {
         ddestruct Heqs0.
         destruct H3, wait_ready0.
         destruct ready_wait0, ready_inv0.
-        destruct_all. rewrite H in x1 at 1.
-        ddestruct x1.
+        destruct_all. destruct H; psimpl;
+        rewrite H7 in x1; ddestruct x1.
         rename a into v.
+        rename x5 into i.
         pose (p' :=
           comRetPoss i
             (comInvPoss i
@@ -3117,7 +3109,7 @@ intros. destruct v.
         {
           intros. subst.
           exists x3. split. easy.
-          eapply erase_vis. exact H7.
+          eapply erase_vis. exact H.
         }
         split.
         {
@@ -3166,7 +3158,7 @@ intros. destruct v.
               intros. now rewrite H0.
             }
             { 
-              cbn. rewrite H, <- x at 1.
+              cbn. rewrite H7, <- x at 1.
               easycons.
             }
           }
@@ -3194,27 +3186,18 @@ intros. destruct v.
       move Heqs0 at bottom.
       ddestruct H.
       {
-        subst.
-        exfalso.
-        clear - H2 x2.
-        eassert _ by (eapply projT2_eq with (p:=H2)).
-        simpl in *.
-        assert (projT1_eq H2 = x2) by apply proof_irrelevance.
-        rewrite H in X. clear H2 H.
-        assert (RN = option A) by now apply StkRet_inj.
-        subst.
-        assert (x2 = eq_refl) by apply proof_irrelevance.
-        rewrite H in X. cbn in X. easy.
+        apply StkRet_inj in x4.
+        subst. ddestruct H2.
+        ddestruct H.
       }
-      {
-        ddestruct Heqs0.
-      }
+      { ddestruct Heqs0. }
       {
         ddestruct Heqs0.
         destruct H3, wait_ready0.
         destruct ready_wait0, ready_inv0.
-        destruct_all. rewrite H in x1 at 1.
-        ddestruct x1.
+        destruct_all. destruct H; psimpl;
+        rewrite H7 in x1; ddestruct x1.
+        rename x5 into i.
         pose (p' :=
           comRetPoss i
             (comInvPoss i
@@ -3244,7 +3227,7 @@ intros. destruct v.
         {
           intros. subst.
           exists x3. split. easy.
-          eapply erase_vis. exact H7.
+          eapply erase_vis. exact H.
         }
         split.
         {
@@ -3293,7 +3276,7 @@ intros. destruct v.
               intros. now rewrite H0.
             }
             { 
-              cbn. rewrite H, <- x at 1.
+              cbn. rewrite H7, <- x at 1.
               easycons.
             }
           }
@@ -3317,8 +3300,10 @@ intros. destruct v.
     do 2 psimpl. exists (eq x3). ddestruct H.
     apply StkRet_inj in x2. psimpl. clear x5.
     destruct H3, wait_ready0, ready_wait0, ready_inv0.
-    psimpl. rewrite <- x1 in H3 at 1. ddestruct H3.
-    ddestruct H2.
+    psimpl. rewrite <- x1 in H3 at 1. destruct H3;
+    psimpl; ddestruct H8. ddestruct H.
+    rewrite x in x1. ddestruct x1.
+    rename x5 into i.
     split.
     { recons. }
     split.
@@ -3336,17 +3321,17 @@ intros. destruct v.
         {
           constructor.
           {
-            exists x2, (Some (None, MkWFSPend i0 mo)).
+            exists x2, None.
             easycons.
           }
-          { now setoid_rewrite <- H7. }
+          { now setoid_rewrite <- H6. }
         }
-        { now setoid_rewrite <- H7. }
+        { now setoid_rewrite <- H6. }
       }
       { constructor; easy. }
     }
     {
-      eexists. split. easy. eq_inj H2.
+      eexists. split. easy. eq_inj H.
       eapply StkPopFail with
         (i:=i).
       constructor.
@@ -3355,7 +3340,7 @@ intros. destruct v.
         intros. now rewrite H0.
       }
       {
-        cbn. rewrite <- x1, <- x at 1.
+        cbn. rewrite <-x4, x at 1.
         easycons.
       }
     }
@@ -3443,7 +3428,7 @@ intros. destruct v.
           constructor.
           {
             exists x, x1.
-            now rewrite <- H6 at 1.
+            now setoid_rewrite <- H6.
           }
           {
             intros.
@@ -3584,7 +3569,7 @@ intros. destruct v.
                 constructor.
                 {
                   exists vs, x2.
-                  now rewrite <- H6 at 1.
+                  now setoid_rewrite <- H6.
                 }
                 {
                   intros.
@@ -3664,7 +3649,7 @@ intros. destruct v.
               constructor.
               {
                 constructor.
-                { now setoid_rewrite <- H6 at 1. }
+                { now setoid_rewrite <- H6. }
                 {
                   intros.
                   ddestruct H.
@@ -3844,7 +3829,7 @@ intros. destruct v.
                 constructor.
                 {
                   constructor.
-                  { now setoid_rewrite <- H7 at 1. }
+                  { now setoid_rewrite <- H7. }
                   {
                     intros.
                     rewrite <- x in H0 at 1.
@@ -4218,7 +4203,11 @@ constructor.
   constructor.
   {
     constructor.
-    { now exists [], None. }
+    {
+      exists [], None.
+      split. 2: easy.
+      now left.
+    }
     { cbn. intros. easy. }
   }
   { cbn. intros. easy. }
