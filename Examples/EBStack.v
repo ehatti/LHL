@@ -21,6 +21,7 @@ From LHL.Examples Require Import
   ExchangerSpec
   AtomicStackSpec
   WaitFreeStackSpec.
+Import AtomicWFStack.
 
 From Coq Require Import
   Lists.List
@@ -34,7 +35,7 @@ Definition E A :=
   ExchSig (option A) |+| WaitFreeStackSig A.
 
 Definition VE T A : Spec T (E A) :=
-  tensorSpec exchSpec wfStackSpec.
+  tensorSpec exchSpec WFStackSpec.
 
 Definition F A := AtomicStackSig A.
 
@@ -204,7 +205,10 @@ Record Inv {T A}
 := {
   state_consistent :
     exists vs pu,
-      stkSt s = WaitFreeStackDef vs pu /\
+      (pu = None /\ stkSt s = WFSsIdle vs \/
+      exists i R m,
+        pu = Some (i, existT m) /\
+        stkSt s = WFSsPend (R:=R) i vs m) /\
       PState x = AtomicStackDef vs None;
   wait_inv :
     forall i v,
@@ -401,7 +405,7 @@ do 10 try (
     destruct H
   | [ H : PointStep ?M ?s ?m ?t |- _ ] =>
     ddestruct H
-  | [ H : WaitFreeStackStep ?s ?m ?t |- _ ] =>
+  | [ H : WFStackStep ?s ?m ?t |- _ ] =>
     ddestruct H
   | [ H : ExchStep ?s ?m ?t |- _ ] =>
     ddestruct H
@@ -575,16 +579,17 @@ Proof.
     {
       constructor.
       {
-        setoid_rewrite <- x at 1.
-        recons. easy.
-      }
-      { now setoid_rewrite <- H6. }
-    }
-    {
-      constructor.
-      {
-        setoid_rewrite <- x at 1.
-        recons. easy.
+        destruct H; psimpl.
+        2:{
+          rewrite H7 in x1 at 1.
+          ddestruct x1.
+        }
+        rewrite H7 in x1 at 1.
+        ddestruct x1.
+        eexists x2, (Some (i, existT _)).
+        split. 2: easy.
+        right. recons.
+        now rewrite <-x at 1.
       }
       { now setoid_rewrite <- H6. }
     }
@@ -592,36 +597,50 @@ Proof.
   {
     dsteps; simp_eqs;
     drecs; psimpl; simp_eqs.
+    ddestruct H2.
     ddestruct H3.
     constructor.
     {
-      setoid_rewrite <- x at 1.
-      destruct_big_steps. dsteps.
-      simp_eqs. rewrite H2 in x5.
-      ddestruct x5. recons. easy.
+      destruct H; psimpl;
+      rewrite H3 in x1 at 1;
+      ddestruct x1.
+      exists (v :: x2), None.
+      destruct_big_steps.
+      rewrite H2 in H.
+      ddestruct H.
+      rewrite <-x in H13.
+      ddestruct H13.
+      split. 2: easy.
+      now left.
     }
     {
       setoid_rewrite <- H6. intros.
       dec_eq_nats i0 i.
-      { now apply nin_pend in H8. }
+      { now apply (nin_pend v0) in H8. }
       {
-        apply wait_inv0 in H8.
+        apply (wait_inv0 i0 v0) in H8.
         2: easy. destruct_big_steps.
         destruct v0, H21;
         constructor; cbn;
-        now rewrite ?H19, ?H20, ?H12, ?H13.
+        rewrite ?H19, ?H20, ?H12, ?H13; auto.
+        now rewrite H18, H11.
+        now rewrite H18, H11.
       }
     }
   }
   {
     dsteps; simp_eqs.
     drecs. psimpl. simp_eqs.
+    destruct H; psimpl;
+    rewrite H8 in x1;
+    ddestruct x1.
     constructor.
     {
-      setoid_rewrite <- x at 1.
-      recons. easy.
+      exists x2, None.
+      split. 2: easy.
+      now left.
     }
-    { now setoid_rewrite <- H7. }
+    { now setoid_rewrite <- H6. }
   }
   {
     dsteps; simp_eqs.
@@ -629,17 +648,12 @@ Proof.
       drecs. psimpl. simp_eqs.
       constructor.
       {
-        setoid_rewrite <- x at 1.
-        recons. easy.
-      }
-      { now setoid_rewrite <- H6. }
-    }
-    {
-      drecs. psimpl. simp_eqs.
-      constructor.
-      {
-        setoid_rewrite <- x at 1.
-        recons. easy.
+        destruct H; psimpl;
+        rewrite H7 in x1;
+        ddestruct x1.
+        exists x2, (Some (i, existT WFPop)).
+        split. 2: easy.
+        right. now recons.
       }
       { now setoid_rewrite <- H6. }
     }
@@ -647,18 +661,27 @@ Proof.
   {
     dsteps; simp_eqs;
     drecs; psimpl; simp_eqs.
-    ddestruct H3.
+    ddestruct H2.
     {
       constructor.
       {
         setoid_rewrite <- x at 1.
         destruct_big_steps. dsteps.
         {
-          simp_eqs. rewrite H2 in x4.
-          ddestruct x4. recons. easy.
+          simp_eqs. rewrite H2 in x7.
+          ddestruct x7.
+          destruct H; psimpl;
+          rewrite H0 in x4;
+          ddestruct x4.
+          exists vs1, None.
+          split. 2: easy.
+          now left.
         }
         {
-          simp_eqs. rewrite H2 in x4.
+          simp_eqs. rewrite H2 in x7.
+          ddestruct x7.
+          destruct H; psimpl;
+          rewrite H0 in x4;
           ddestruct x4.
         }
       }
@@ -681,12 +704,21 @@ Proof.
         setoid_rewrite <- x at 1.
         destruct_big_steps. dsteps.
         {
-          simp_eqs. rewrite H2 in x4.
+          simp_eqs. rewrite H2 in x7.
+          ddestruct x7.
+          destruct H; psimpl;
+          rewrite H0 in x4;
           ddestruct x4.
         }
         {
-          simp_eqs. rewrite H2 in x4.
-          ddestruct x4. recons. easy.
+          simp_eqs. rewrite H2 in x7.
+          ddestruct x7.
+          destruct H; psimpl;
+          rewrite H0 in x4;
+          ddestruct x4.
+          exists [], None.
+          split. 2: easy.
+          now left.
         }
       }
       {
@@ -709,9 +741,14 @@ Proof.
     constructor.
     {
       setoid_rewrite <- x at 1.
-      recons. easy.
+      destruct H; psimpl;
+      rewrite H8 in x1;
+      ddestruct x1.
+      exists x2, None.
+      split. 2: easy.
+      now left.
     }
-    { now setoid_rewrite <- H7. }
+    { now setoid_rewrite <- H6. }
   }
   {
     dsteps; simp_eqs;
@@ -765,17 +802,18 @@ Proof.
       constructor.
       {
         setoid_rewrite <- H6.
-        setoid_rewrite H0.
-        recons.
-        rewrite <- x in x8.
-        ddestruct x8. 
-        rewrite <- x12 in x14.
-        ddestruct x14.
+        exists x5, x10.
+        split. easy.
+        rewrite <-x15.
+        f_equal.
         rewrite H9 in x4.
         ddestruct x4.
-        rewrite <- x9 in x11.
+        rewrite <-x in x8.
+        ddestruct x8.
+        rewrite <-x9 in x11.
         ddestruct x11.
-        easy.
+        rewrite <-x12 in x14.
+        now ddestruct x14.
       }
       {
         intros.
@@ -808,8 +846,7 @@ Proof.
     constructor.
     {
       setoid_rewrite <- H6.
-      setoid_rewrite H.
-      recons.
+      exists x3, x2.
       rewrite <- x10 in x7.
       ddestruct x7.
       easy.
@@ -879,18 +916,26 @@ Proof.
   { dsteps; now setoid_rewrite <- H5. }
   {
     dsteps.
-    now setoid_rewrite <- H7.
-    now setoid_rewrite <- H5.
+    {
+      clear - x2 H1.
+      exfalso.
+      apply StkRet_inj in x2.
+      subst. ddestruct H1.
+    }
+    now setoid_rewrite <-H5.
   }
-  { dsteps. now setoid_rewrite <- H6. }
+  { dsteps. now setoid_rewrite <- H5. }
   { dsteps; now setoid_rewrite <- H5. }
   {
     dsteps.
-    now setoid_rewrite <- H7.
-    now setoid_rewrite <- H5.
-    now setoid_rewrite <- H5.
+    {
+      apply StkRet_inj in x2.
+      subst. ddestruct H1.
+    }
+    now setoid_rewrite <-H5.
+    now setoid_rewrite <-H5.
   }
-  { dsteps. now setoid_rewrite <- H6. }
+  { dsteps. now setoid_rewrite <- H5. }
   {
     dsteps; drecs; intros.
     {
@@ -996,18 +1041,20 @@ Proof.
   }
   {
     dsteps; simp_eqs.
+    { ddestruct H3. }
     ddestruct H4.
     destruct_big_steps.
     constructor.
+    { now rewrite H18, H11. }
     { now rewrite H19, H12. }
-    { now rewrite H20, H13. }
   }
   {
     dsteps; simp_eqs.
+    { ddestruct H3. }
     ddestruct H4.
     destruct_big_steps;
     constructor;
-    now rewrite ?H20, ?H19, ?H13, ?H12.
+    now rewrite ?H18, ?H19, ?H12, ?H11.
     destruct_big_steps;
     constructor;
     now rewrite ?H20, ?H19, ?H13, ?H12.
@@ -1182,13 +1229,25 @@ Proof.
     now setoid_rewrite <- H1.
   }
   { dsteps; destruct m; simp rde_prop; now setoid_rewrite <- H7. }
-  { dsteps; simp_eqs; destruct m; simp rde_prop;
-    repeat (ddestruct H4 || now setoid_rewrite <- H7). }
-  { dsteps; simp_eqs; destruct m; simp rde_prop; now setoid_rewrite <- H8. }
+  {
+    dsteps; simp_eqs; destruct m; simp rde_prop.
+    ddestruct H3. ddestruct H3.
+    all: repeat (ddestruct H4 || now setoid_rewrite <- H7).
+  }
+  {
+    dsteps; simp_eqs; destruct m; simp rde_prop;
+    now setoid_rewrite <- H7.
+  }
   { dsteps; simp_eqs; destruct m; simp rde_prop; now setoid_rewrite <- H7. }
-  { dsteps; simp_eqs; destruct m; simp rde_prop;
-    repeat (ddestruct H4 || now setoid_rewrite <- H7). }
-  { dsteps; simp_eqs; destruct m; simp rde_prop; now setoid_rewrite <- H8. }
+  {
+    dsteps; simp_eqs; destruct m; simp rde_prop;
+    repeat (ddestruct H4 || now setoid_rewrite <- H7).
+    ddestruct H3. ddestruct H3.
+  }
+  {
+    dsteps; simp_eqs; destruct m; simp rde_prop;
+    now setoid_rewrite <- H7.
+  }
   { dsteps; destruct m; simp rde_prop in *; psimpl; simp_eqs; simp_sets. }
   { dsteps; destruct m; simp rde_prop in *; psimpl; simp_eqs; simp_sets. }
   {
@@ -1265,14 +1324,22 @@ Proof.
     psimpl. destruct m; now setoid_rewrite <- H1.
   }
   { dsteps; destruct m; now setoid_rewrite <- H7. }
+  {
+    dsteps; simp_eqs; destruct m; simp rde_prop;
+    repeat (ddestruct H4 || now setoid_rewrite <- H7).
+    ddestruct H3. ddestruct H3.
+  }
+  { dsteps; simp_eqs; destruct m; now setoid_rewrite <- H7. }
   { dsteps; simp_eqs; destruct m; simp rde_prop;
     repeat (ddestruct H4 || now setoid_rewrite <- H7). }
-  { dsteps; simp_eqs; destruct m; now setoid_rewrite <- H8. }
-  { dsteps; simp_eqs; destruct m; simp rde_prop;
-    repeat (ddestruct H4 || now setoid_rewrite <- H7). }
-  { dsteps; simp_eqs; destruct m; simp rde_prop;
-    repeat (ddestruct H4 || now setoid_rewrite <- H7). }
-  { dsteps; simp_eqs; destruct m; now setoid_rewrite <- H8. }
+  {
+    dsteps; simp_eqs; destruct m; simp rde_prop;
+    repeat (ddestruct H4 || now setoid_rewrite <- H7).
+    ddestruct H3. ddestruct H3.
+  }
+  {
+    dsteps; simp_eqs; destruct m; now setoid_rewrite <- H7.
+  }
   { dsteps; destruct m; psimpl; simp_eqs; simp_sets. }
   { dsteps; destruct m; psimpl; simp_eqs; simp_sets. }
   {
@@ -1406,48 +1473,15 @@ Proof.
     { easy. }
     { now rewrite <- H7 at 1. }
     { now rewrite <- H7 at 1. }
-    constructor.
+    (* constructor.
     { easy. }
     { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. } *)
   }
   {
     left.
     dsteps; simp_eqs.
-    ddestruct H4.
-    constructor.
-    { easy. }
-    { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
-  }
-  {
-    left.
-    dsteps; simp_eqs.
-    constructor.
-    { easy. }
-    { now rewrite <- H8 at 1. }
-    { now rewrite <- H8 at 1. }
-  }
-  {
-    left.
-    dsteps; simp_eqs.
-    constructor.
-    { easy. }
-    { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
-    constructor.
-    { easy. }
-    { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
-  }
-  {
-    left.
-    dsteps; simp_eqs.
-    ddestruct H4.
-    constructor.
-    { easy. }
-    { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
+    ddestruct H4. ddestruct H3.
     constructor.
     { easy. }
     { now rewrite <- H7 at 1. }
@@ -1458,8 +1492,41 @@ Proof.
     dsteps; simp_eqs.
     constructor.
     { easy. }
-    { now rewrite <- H8 at 1. }
-    { now rewrite <- H8 at 1. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
+  }
+  {
+    left.
+    dsteps; simp_eqs.
+    constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
+    (* constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. } *)
+  }
+  {
+    left.
+    dsteps; simp_eqs.
+    ddestruct H4. ddestruct H3.
+    constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
+    constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
+  }
+  {
+    left.
+    dsteps; simp_eqs.
+    constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
   }
   {
     dsteps.
@@ -1663,48 +1730,15 @@ Proof.
     { easy. }
     { now rewrite <- H7 at 1. }
     { now rewrite <- H7 at 1. }
-    constructor.
+    (* constructor.
     { easy. }
     { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. } *)
   }
   {
     left.
     dsteps; simp_eqs.
-    ddestruct H4.
-    constructor.
-    { easy. }
-    { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
-  }
-  {
-    left.
-    dsteps; simp_eqs.
-    constructor.
-    { easy. }
-    { now rewrite <- H8 at 1. }
-    { now rewrite <- H8 at 1. }
-  }
-  {
-    left.
-    dsteps; simp_eqs.
-    constructor.
-    { easy. }
-    { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
-    constructor.
-    { easy. }
-    { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
-  }
-  {
-    left.
-    dsteps; simp_eqs.
-    ddestruct H4.
-    constructor.
-    { easy. }
-    { now rewrite <- H7 at 1. }
-    { now rewrite <- H7 at 1. }
+    ddestruct H4. ddestruct H3.
     constructor.
     { easy. }
     { now rewrite <- H7 at 1. }
@@ -1715,8 +1749,41 @@ Proof.
     dsteps; simp_eqs.
     constructor.
     { easy. }
-    { now rewrite <- H8 at 1. }
-    { now rewrite <- H8 at 1. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
+  }
+  {
+    left.
+    dsteps; simp_eqs.
+    constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
+    (* constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. } *)
+  }
+  {
+    left.
+    dsteps; simp_eqs.
+    ddestruct H4. ddestruct H3.
+    constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
+    constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
+  }
+  {
+    left.
+    dsteps; simp_eqs.
+    constructor.
+    { easy. }
+    { now rewrite <- H7 at 1. }
+    { now rewrite <- H7 at 1. }
   }
   {
     dsteps.
@@ -1952,16 +2019,14 @@ eapply SafeBind with
         constructor.
         ddestruct H2.
         {
-          rewrite H in x3.
-          ddestruct x3. eexists _, _.
-          split. symmetry. exact x. easy.
+          destruct H; psimpl;
+          rewrite H2 in x3;
+          ddestruct x3. eexists x0, _.
+          split. 2: easy.
+          right. recons.
+          symmetry. exact x.
         }
-        {
-          rewrite H in x3.
-          ddestruct x3. eexists _, _.
-          split. symmetry. exact x. easy.
-        }
-        { now setoid_rewrite <- H6. }
+        { now setoid_rewrite <-H6. }
       }
       { now setoid_rewrite <- H6. }
     }
@@ -1991,19 +2056,18 @@ intros. destruct v0.
     ddestruct H.
     {
       exfalso.
-      clear - H2 x2.
-      eassert _ by (eapply projT2_eq with (p:=H2)).
-      simpl in *.
-      assert (projT1_eq H2 = x2) by apply proof_irrelevance.
-      rewrite H in X. clear H2 H.
-      assert (RN = unit) by now apply StkRet_inj.
-      subst. ddestruct x2.
-      easy.
+      clear - H x2.
+      apply StkRet_inj in x2.
+      subst. ddestruct H.
     }
     destruct H3, wait_ready0.
     destruct ready_wait0, ready_inv0.
-    destruct_all. rewrite H in x1 at 1.
-    ddestruct x1. rename x2 into vs.
+    destruct_all.
+    destruct H; destruct_all;
+    rewrite H7 in x1 at 1;
+    ddestruct x1.
+    rename x2 into vs.
+    rename x5 into i.
     exists (eq (
       comRetPoss i
         (comInvPoss i
@@ -2039,7 +2103,7 @@ intros. destruct v0.
     {
       intros. subst.
       exists x3. split. easy.
-      eapply erase_vis. exact H7.
+      eapply erase_vis. exact H.
     }
     split.
     {
@@ -2087,8 +2151,8 @@ intros. destruct v0.
           constructor; cbn. easy.
           intros. now rewrite H0.
         }
-        { 
-          cbn. rewrite H, <- x at 1.
+        {
+          cbn. rewrite H7, <- x at 1.
           easycons.
         }
       }
@@ -2110,8 +2174,8 @@ intros. destruct v0.
     do 2 psimpl. exists (eq x3). ddestruct H.
     apply StkRet_inj in x2. psimpl. clear x5.
     destruct H3, wait_ready0, ready_wait0, ready_inv0.
-    psimpl. rewrite <- x1 in H3 at 1. ddestruct H3.
-    ddestruct H2.
+    psimpl. rewrite <- x1 in H3 at 1.
+    destruct H3; destruct_all; ddestruct H8.
     split.
     { recons. }
     split.
@@ -2129,17 +2193,19 @@ intros. destruct v0.
         {
           constructor.
           {
-            exists x2, (Some (None, MkWFSPend i0 mo)).
+            rewrite x in x1 at 1.
+            ddestruct x1.
+            exists x2, None.
             easycons.
           }
-          { now setoid_rewrite <- H7. }
+          { now setoid_rewrite <- H6. }
         }
-        { now setoid_rewrite <- H7. }
+        { now setoid_rewrite <- H6. }
       }
       { constructor; easy. }
     }
     {
-      eexists. split. easy. eq_inj H2.
+      eexists. split. easy. eq_inj H8.
       eapply StkPushFail with
         (i:=i) (v:=v).
       constructor.
@@ -2148,8 +2214,8 @@ intros. destruct v0.
         intros. now rewrite H0.
       }
       {
-        cbn. rewrite <- x1, <- x at 1.
-        easycons.
+        cbn. rewrite <- x1, <- x8 at 1.
+        ddestruct H. easycons.
       }
     }
   }
@@ -2235,7 +2301,18 @@ intros. destruct v0.
           constructor.
           {
             exists x, x1.
-            now rewrite <- H6 at 1.
+            destruct H3.
+            split. 2: easy.
+            destruct H3; psimpl.
+            {
+              left.
+              split. easy.
+              now rewrite <-H6 at 1.
+            }
+            {
+              split. 2: easy. right.
+              now setoid_rewrite <-H6.
+            }
           }
           {
             intros.
@@ -2369,8 +2446,8 @@ intros. destruct v0.
               {
                 constructor.
                 {
-                  exists vs, x1.
-                  now rewrite <- H6 at 1.
+                  exists vs, x1. psimpl.
+                  
                 }
                 {
                   intros.
