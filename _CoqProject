@@ -54,6 +54,7 @@
 ./Examples/LockAround.v
 
 ./Examples/RegSpec.v
+./Examples/OrderedSpec.v
 ./Examples/SnapshotSpec.v
 ./Examples/Snapshot.v
 

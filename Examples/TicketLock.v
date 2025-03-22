@@ -17,7 +17,6 @@ From LHL.Core Require Import
 From LHL.Examples Require Import
   LockSpec
   FAISpec
-  SeqCell
   NameSpec
   ArraySpec
   Counter.CounterSig
