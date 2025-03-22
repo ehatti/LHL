@@ -185,144 +185,95 @@ Context
 
 Lemma lemWhile {A} {i : Name T} :
   ∀ (b : A -> bool) (e : StateM E A unit)
-    (S : A -> Relt VE VF) P (Q : A -> Relt VE VF),
-    (forall x, Stable R (S x)) ->
-    (forall x, SilentStep i G (Q x) (S x)) ->
-    (forall x, Q x ->> S x ==> P x) ->
+    (I : A -> Prec VE VF),
+    (forall x, Stable R (I x)) ->
+    (forall x, SilentStep i G (I x) (λ _ _, I x)) ->
     (∀ x,
       VerifyProg i R G
-        (P x)
+        (λ _ _, I x)
         (e x)
-        (λ '(tt, y), Q y)) ->
+        (λ '(tt, y) _ _, I y)) ->
     ∀ x,
       VerifyProg i R G
-        (P x)
+        (λ _ _, I x)
         (while b e x)
-        (λ '(tt, y) s ρs t σs, Q y s ρs t σs /\ b y = false).
+        (λ '(tt, y) _ _ t σs, I y t σs /\ b y = false).
 Proof.
-  (* intros b e S P Q.
+  intros b e I.
   intros S_stable.
-  intros S_silent.
-  intros S_compose.
+  intros I_silent.
   intros.
   unfold VerifyProg in *.
   rewrite paco_eqv.
-  generalize dependent x.
-  generalize dependent P.
-  cut (
-    ∀ P P'' : A -> Relt VE VF,
-    (∀ x, P'' x ==> P x) →
-    (∀ x : A, Q x ->> S x ==> P x)
-      → (∀ x : A, SafeProg i R G (P x) (e x) (λ '(u, y), let 'tt := u in Q y))
-        → ∀ x : A,
-            paco_safe i R G (P'' x) (while b e x)
-              (λ '(u, y),
-                let
-                'tt := u in
-                  λ (s : InterState F VE) (ρs : PossSet VF) (t : InterState F VE) 
-                    (σs : PossSet VF), Q y s ρs t σs)
-  ).
-  {
-    intros. eapply H with (P'':=P) (P:=P); auto.
-    unfold sub, subRelt. auto.
-  }
-  pcofix rec.
-
-  intros.
   unfold while.
-
-  pose proof H2 as Hbody.
-
-  remember e as e'.
-  rewrite Heqe' in rec.
-  rewrite Heqe' in Hbody.
-  rewrite Heqe' at 1.
-  clear Heqe'.
-
-  remember P as P'.
-  (* rewrite HeqP' in H0. *)
-  rewrite HeqP' in Hbody.
-  (* rewrite HeqP' in H0. *)
-  rewrite HeqP' in H1.
-  clear HeqP'.
-
-  specialize (H2 x).
-  generalize dependent (e' x).
-  revert x.
-  generalize dependent P'.
-  generalize dependent P''.
-  generalize dependent e'.
-  pcofix rec'. intros; pfold.
-  rewrite frobProgId.
-  destruct p; cbn; auto.
+  pose proof (H' := H).
+  specialize (H x).
+  generalize dependent (e x).
+  generalize dependent (λ (_ : InterState F VE) (_ : PossSet VF), I x).
+  clear x. pcofix rec. intros.
+  rewrite frobProgId at 1.
+  destruct p0; cbn; ddestruct H0; pfold.
   {
-    ddestruct H2.
-    econstructor;
-    [exact H|exact H2|
-      eapply weakenCommitPre; eauto
-    |].
-    intros.
-    specialize (H4 v).
-    psimpl. split.
-    - eapply weakenCommitPre; eauto.
-      clear - H0.
-      unfold sub, subRelt, ReltCompose in *.
-      intros. destruct_all.
-      eexists. eexists. eauto.
-    - right. apply rec' with
-        (P':=λ x, P' x ->> QI ->> QR v)
-        (P'':=λ x, P'' x ->> QI ->> QR v);
-        auto.
-      unfold sub, subRelt, ReltCompose in *.
+    econstructor.
+    { exact H. }
+    { exact H0. }
+    { easy. }
+    {
       intros.
-      destruct H6 as [? [? [? [? [? [? ?]]]]]].
-      eexists. eexists. split; eauto.
+      specialize (H2 v).
+      destruct H2.
+      split. easy.
+      right. now eapply rec.
+    }
   }
   {
-    ddestruct H2.
-    destruct p, u.
-    simpl.
-    destruct (b a).
-    - fold (@whileAux E A b e (e a)).
-      (* specialize (rec _ S_compose Inv Hbody). *)
-      econstructor.
-      + apply S_stable.
-      + unfold SilentStep in *. intros.
-        eapply S_silent; auto.
-        destruct H2, H2.
-        eexists _, _.
-        apply H, H0, H2.
-      + right.
-        eapply rec with
-          (P:=fun x => P' x ->> S x)
-          (P'':=fun x => _);
-          auto.
-        admit.
-        admit.
-        admit.
-    - econstructor.
-      unfold sub, subRelt, ReltCompose in *.
-      eauto.
+    simpl (frobProgram _).
+    destruct p0, u.
+    remember (b a) as test eqn:Htest.
+    destruct test.
+    {
+      eapply LogicPaco.SafeNoOp with
+        (QS:= λ _ _, I a).
+      {
+        intros ?????.
+        apply S_stable.
+        psimpl. psplit.
+        exact H0. easy.
+      }
+      {
+        intros ???????.
+        apply I_silent; auto.
+        destruct H0, H0.
+        now apply H in H0.
+      }
+      {
+        right.
+        eapply rec.
+        eapply weakenPrec.
+        { apply H'. }
+        {
+          intros ?????.
+          now psimpl.
+        }
+      }
+    }
+    {
+      rewrite foldProg.
+      constructor.
+      intros ?????.
+      now apply H in H0.
+    }
   }
   {
-    ddestruct H2.
-    econstructor;
-    [exact H| |].
-    - clear - H0 H2.
-      unfold sub, subRelt, ReltCompose in *.
-      unfold SilentStep in *.
-      intros.
-      eapply H2; eauto.
-      unfold ReltToPrec in *. destruct_all.
-      eexists. eexists. eauto.
-    (* - right. eapply rec'; eauto.
-      clear - H0.
-      unfold sub, subRelt, ReltCompose in *.
-      intros. destruct_all.
-      eexists. eexists. eauto. *)
-    - admit.
-  } *)
-Admitted.
+    econstructor.
+    { exact H. }
+    { easy. }
+    {
+      right.
+      now eapply rec.
+    }
+  }
+Qed.
 
 Lemma lemRange {A} {i : Name T} :
   ∀ (N : nat) (e : Index N -> StateM E A unit)
@@ -1436,17 +1387,11 @@ Proof.
   }
 Qed.
 
-Axiom neg_all : ∀ A (P : A -> Prop), (¬(∀ x, P x)) -> ∃ x, ¬P x.
-Axiom neg_imp : ∀ (P Q : Prop), ¬(P -> Q) -> P /\ ¬Q.
-
 Lemma neg_som : ∀ A (P : A -> Prop), (¬(∃ x, P x)) -> ∀ x, ¬P x.
 Proof.
   intros ?????.
   apply H. now exists x.
 Qed.
-
-Axiom neg_and : ∀ (P Q : Prop), ¬(P /\ Q) -> ¬P \/ ¬Q.
-Axiom neg_or : ∀ (P Q : Prop), ¬(P \/ Q) -> ¬P /\ ¬Q.
 
 Lemma return_in_rely {T A} :
   ∀ i j,
@@ -5582,14 +5527,12 @@ Proof.
               set_of p ⊆ y.(new)
         ).
         eapply lemWhile with
-          (P:=λ y _ _ s ρs, I y s ρs)
-          (Q:=λ y _ _ s ρs, I y s ρs)
-          (S:=λ y _ _ s ρs, I y s ρs).
+          (I:=I).
         {
           subst I.
           unfold
-            Stable, stableRelt,
-            sub, subRelt.
+            Stable, stablePrec,
+            sub, subPrec.
           intros.
           destruct H as [t' [σ' [[d [lb [vi [HI [HviS [Hlb [Hr [Hns [Hus [p [Hvi [Hpfx [Hold Hnew]]]]]]]]]]]]] HR]]].
           apply HR in HI.
@@ -5672,22 +5615,22 @@ Proof.
         }
         {
           unfold SilentStep. intros.
-          subst I. psimpl.
-          assert (Inv x2 (tht, s) ρs).
+          subst I. do 2 psimpl.
+          assert (Inv x0 (tht, s) ρs).
           {
             destruct H.
             now constructor.
           }
           split.
           {
-            exists x2, x3, x4.
+            exists x0, x1, x2.
             split. easy.
             split. easy.
             split. easy.
             split. easy.
             split. easy.
             split. easy.
-            now exists x5.
+            now exists x3.
           }
           {
             intros ??.
@@ -5696,10 +5639,6 @@ Proof.
             exists d. split.
             constructor. easy.
           }
-        }
-        {
-          unfold sub, subRelt. intros.
-          now destruct H, H, H, H.
         }
         {
           intros.
@@ -5916,5 +5855,35 @@ Proof.
       intros ???. psimpl.
       now exists x1.
     }
+  }
+Qed.
+
+Definition VEOriginal T A : Spec T (E T A) :=
+  tensorSpec
+  nameSpec
+  (arraySpec T
+    (LiftSemiRacy
+      RegCond
+      (regSpec {| val := None; ran := false |}))).
+
+From LHL.Core Require Import
+  Linearizability
+  LinFacts
+  RefinesFacts
+  TensorFacts.
+
+Lemma snapshotLin T A :
+  VEOriginal T A ▷ snapImpl T A ↝ VF T A.
+Proof.
+  eapply layerRefines_trans.
+  2:{
+    eapply soundness with (lay:= mkLayer _ _).
+    apply writeSnapshotCorrect.
+  }
+  {
+    apply mkLayer_monotonic.
+    apply tensor_monotonic.
+    { easy. }
+    { apply ordspec_ref. }
   }
 Qed.
