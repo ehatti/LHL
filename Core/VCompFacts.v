@@ -72,7 +72,7 @@ Qed.
 
 Lemma substProg_assoc {E F G R} (f : Impl F G) (g : Impl E F) :
   forall p,
-  eutt (substProg g (substProg f p)) (substProg (Ret:=R) (fun _ (m : G _) => substProg g (f _ m)) p).
+  eutt (substProg g (substProg f p)) (substProg (R:=R) (fun _ (m : G _) => substProg g (f _ m)) p).
 Proof.
   intro p.
   enough (forall (p1 p2 : Prog E R),
