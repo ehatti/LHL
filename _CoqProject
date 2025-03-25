@@ -43,7 +43,7 @@
 ./Examples/WaitFreeStackSpec.v
 ./Examples/WaitFreeStack.v
 ./Examples/EBStack.v
-# ./Examples/EBLin.v
+./Examples/EBLin.v
 
 ./Examples/Counter/CounterSig.v
 ./Examples/Counter/RacyCounterSpec.v
@@ -57,20 +57,3 @@
 ./Examples/OrderedSpec.v
 ./Examples/SnapshotSpec.v
 ./Examples/Snapshot.v
-
-# ./Examples/LockSpec.v
-# ./Examples/FAISpec.v
-# ./Examples/CounterSpec.v
-# ./Examples/FAISpec.v
-# ./Examples/YieldSpec.v
-# ./Examples/OMemSpec.v
-# ./Examples/LocalVarSpec.v
-# ./Examples/SnapshotSpec.v
-# ./Examples/ThreadLocal.v
-
-# ./Examples/RegSpec.v
-# ./Examples/SnapshotSpec.v
-
-# # ./Examples/SpinLock.v
-
-# ./Examples/Array.v

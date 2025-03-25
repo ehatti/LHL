@@ -46,26 +46,6 @@ CoFixpoint until {E R} (m : E R) (k : R -> bool) : Prog E unit :=
     else
       until m k).
 
-Section lemUntil.
-
-Context
-  {T}
-  {i : Name T}
-  {E F : ESig}
-  {VE : Spec T E}
-  {VF : Spec T F}
-  {R G : Relt VE VF}.
-
-Notation SomeRet I := (λ s ρ t σ, ∃ x, I x s ρ t σ).
-
-Lemma lemUntil {I : bool -> Relt VE VF} {A}
-  {m : E A} {k : A -> bool} :
-  VerifyProg i R G (I true) (call (E:=E) m) (λ x, I (k x)) ->
-  VerifyProg i R G (SomeRet I) (until m k) (λ _, I false).
-Admitted.
-
-End lemUntil.
-
 Definition E (T : nat) := FAISig |+| CounterSig.
 Definition F := LockSig.
 
