@@ -98,7 +98,7 @@ Variant OverThreadStep {E F : ESig} (M : Impl E F) :
 Variant UnderThreadStep {E F : ESig} :
   ThreadState E F -> option (Event E) -> ThreadState E F -> Prop :=
 | UCallThreadStep A B th th' (um : E A) (om : F B) k :
-  th = Cont om (Bind um k) ->
+  th = Cont om (Vis um k) ->
   th' = UCall om um k ->
   UnderThreadStep th (Some (CallEv um)) th'
 | URetThreadStep A B th th' (um : E A) (om : F B) k v :
@@ -106,7 +106,7 @@ Variant UnderThreadStep {E F : ESig} :
   th' = Cont om (k v) ->
   UnderThreadStep th (Some (RetEv um v)) th'
 | USilentThreadStep A th th' om (p : Prog E A) :
-  th = Cont om (NoOp p) ->
+  th = Cont om (Tau p) ->
   th' = Cont om p ->
   UnderThreadStep th None th'.
 

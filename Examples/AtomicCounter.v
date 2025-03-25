@@ -446,7 +446,7 @@ constructor.
   unfold inc, get.
   {
     repeat (
-      eapply lemBind;
+      eapply lemVis;
       intros
     ).
     {

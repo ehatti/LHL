@@ -39,13 +39,13 @@ Definition HBRw {T E} : (Trace (ThreadEvent T E)) -> (Trace (ThreadEvent T E)) -
 
 Inductive AllRetEv {T E} : Trace (@ThreadEvent T E) -> Prop :=
 | NilAllRet : AllRetEv nil
-| ConsAllRet {Ret s i} {m : E Ret} {v : Ret} :
+| ConsAllRet {R s i} {m : E R} {v : R} :
     AllRetEv s ->
     AllRetEv ((i, RetEv m v) :: s).
 
 Inductive AllCallEv {T E} : Trace (ThreadEvent T E) -> Prop :=
 | NilAllCall : AllCallEv nil
-| ConsCall {Ret s i} {m : E Ret} :
+| ConsCall {R s i} {m : E R} :
     AllCallEv s ->
     AllCallEv ((i, CallEv m) :: s).
 

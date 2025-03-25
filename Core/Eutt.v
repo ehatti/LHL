@@ -31,11 +31,11 @@ Inductive euttF {E A}
   (_eutt : Prog E A -> Prog E A -> Prop)
   : Prog E A -> Prog E A -> Prop :=
 | euttF_Return r : euttF _eutt (Return r) (Return r)
-| euttF_Bind X (e : E X) k k' : (forall x, _eutt (k x) (k' x)) ->
-    euttF _eutt (Bind e k) (Bind e k')
-| euttF_NoOp p p' : _eutt p p' -> euttF _eutt (NoOp p) (NoOp p')
-| euttF_L p p' : euttF _eutt p p' -> euttF _eutt (NoOp p) p'
-| euttF_R p p' : euttF _eutt p p' -> euttF _eutt p (NoOp p')
+| euttF_Vis X (e : E X) k k' : (forall x, _eutt (k x) (k' x)) ->
+    euttF _eutt (Vis e k) (Vis e k')
+| euttF_Tau p p' : _eutt p p' -> euttF _eutt (Tau p) (Tau p')
+| euttF_L p p' : euttF _eutt p p' -> euttF _eutt (Tau p) p'
+| euttF_R p p' : euttF _eutt p p' -> euttF _eutt p (Tau p')
 .
 
 Definition eutt {E} R
@@ -54,18 +54,18 @@ Proof.
 Qed.
 Hint Resolve monotone_euttF : paco.
 
-Lemma eutt_NoOp_l {E R}
+Lemma eutt_Tau_l {E R}
   : forall (p1 p2 : Prog E R),
     eutt p1 p2 ->
-    eutt (NoOp p1) p2.
+    eutt (Tau p1) p2.
 Proof.
   intros. punfold H. pfold.
   constructor. assumption.
 Qed.
 
-Lemma eutt_NoOp_r (E : ESig)
+Lemma eutt_Tau_r (E : ESig)
     (R : Type) (p p' : Prog E R)
-  : eutt p p' -> eutt p (NoOp p').
+  : eutt p p' -> eutt p (Tau p').
 Proof.
   intros. punfold H. pfold.
   constructor. assumption.
@@ -83,7 +83,7 @@ Global Hint Resolve Reflexive_eutt_ieq : core.
 
 (*
 Inductive untaus1 {E R} (P : Prog E R -> Prop) : Prog E R -> Prop :=
-| untaus1_Noop p : untaus1 P p -> untaus1 P (NoOp p)
+| untaus1_Noop p : untaus1 P p -> untaus1 P (Tau p)
 | untaus1_Id p : P p -> untaus1 P p
 .
 
@@ -101,32 +101,32 @@ Proof.
   - constructor. eauto.
 Qed.
 
-Lemma eq_Bind_inv {E R} {R1} (e1 : E R1) k1 {R2} (e2 : E R2) k2
+Lemma eq_Vis_inv {E R} {R1} (e1 : E R1) k1 {R2} (e2 : E R2) k2
   : (x <- e1; k1 x) = (x <- e2; k2 x) ->
     forall (P : forall R' (m : E R') (k : R' -> Prog E R), Prop),
       P _ e1 k1 -> P _ e2 k2.
 Proof.
   intros H P.
   change (P _ e2 k2) with
-      (match Bind e2 k2 with
-       | Bind m k => P _ m k
+      (match Vis e2 k2 with
+       | Vis m k => P _ m k
        | _ => False
        end).
-  remember (Bind e2 k2).
+  remember (Vis e2 k2).
   destruct H.
   auto.
 Qed.
 
-Lemma eutt_Bind_inv {E1 E2} (RR : IRel E1 E2)
+Lemma eutt_Vis_inv {E1 E2} (RR : IRel E1 E2)
       {X} (e1 : E1 X) {R} (k1 : X -> Prog E1 R) (p2 : Prog E2 R)
-  : eutt RR (Bind e1 k1) p2 ->
+  : eutt RR (Vis e1 k1) p2 ->
     exists e2 k2,
       RR _ e1 e2 /\
       (forall x, eutt RR (k1 x) (k2 x)) /\
-      untaus1 (fun p => Bind e2 k2 = p) p2.
+      untaus1 (fun p => Vis e2 k2 = p) p2.
 Proof.
   intros H. punfold H.
-  remember (Bind e1 k1) as p1.
+  remember (Vis e1 k1) as p1.
   revert e1 k1 Heqp1.
   induction H; intros.
   - discriminate.
@@ -211,10 +211,10 @@ Section Trans.
 
 Lemma inv_eutt_Noop_left {E R}
   : forall (p1 p2 : Prog E R),
-    euttF (upaco2 (euttF (A:=R)) bot2) (NoOp p1) p2 ->
+    euttF (upaco2 (euttF (A:=R)) bot2) (Tau p1) p2 ->
     euttF (upaco2 (euttF (A:=R)) bot2) p1 p2.
 Proof.
-  intros p1 p2 H; remember (NoOp p1) as NoOp_p1 eqn:EQp1.
+  intros p1 p2 H; remember (Tau p1) as Tau_p1 eqn:EQp1.
   induction H; try discriminate.
   - constructor.
     destruct H; [| contradiction ].
@@ -227,10 +227,10 @@ Qed.
 
 Lemma inv_eutt_Noop_right {E R}
   : forall (p1 p2 : Prog E R),
-    euttF (upaco2 (euttF (A:=R)) bot2) p1 (NoOp p2) ->
+    euttF (upaco2 (euttF (A:=R)) bot2) p1 (Tau p2) ->
     euttF (upaco2 (euttF (A:=R)) bot2) p1 p2.
 Proof.
-  intros p1 p2 H; remember (NoOp p2) as Noop_p1 eqn:EQp1.
+  intros p1 p2 H; remember (Tau p2) as Noop_p1 eqn:EQp1.
   induction H; try discriminate.
   - constructor.
     destruct H; [| contradiction ].
@@ -284,7 +284,7 @@ Inductive flattenProg_bisim {M1 M2 N1 N2}
 Lemma euttF_Noop_L {E R}
       (_eutt : Prog E R -> Prog E R -> Prop)
   : forall (p1 p2 : Prog E R),
-    paco2 euttF _eutt p1 p2 -> paco2 euttF _eutt (NoOp p1) p2.
+    paco2 euttF _eutt p1 p2 -> paco2 euttF _eutt (Tau p1) p2.
 Proof.
   pcofix self.
   intros p1 p2 H. pfold. punfold H. induction H.

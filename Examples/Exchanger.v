@@ -113,7 +113,7 @@ Definition CCleared {A T} m : SPrec T A :=
 
 Definition OnSelf {A T} (s : ThreadsSt T (E T A) (F A)) i :=
   (exists A v m p,
-    s i = Cont (Exch v) (Bind (A:=A) (inl m) p)) \/
+    s i = Cont (Exch v) (Vis (A:=A) (inl m) p)) \/
   (exists A v m p,
     s i = UCall (A:=A) (Exch v) (inl m) p).
 
@@ -476,7 +476,7 @@ Definition CallStep {T A R} i (m : CASSig (Offer T A) R) : SRelt T A :=
   fun s x t y =>
     exists a,
       (exists OR (om : _ OR) k,
-        fst s i = Cont om (Bind (inr m) k) /\
+        fst s i = Cont om (Vis (inr m) k) /\
         fst t i = UCall om (inr m) k) /\
       casSt s = CASDef a None /\
       casSt t = CASDef a (Pend i m) /\
@@ -1952,7 +1952,7 @@ eapply weakenPrec with
     }
   }
 }
-apply lemBindSelf.
+apply lemVisSelf.
 {
   constructor.
   {
@@ -2282,7 +2282,7 @@ apply lemBindSelf.
   }
 }
 unfold Precs.
-eapply lemBind with
+eapply lemVis with
   (Q:=fun _ _ _ => LiftSPrec (fun s x =>
     Precs i s x /\
     PCalls x i = CallPoss (Exch v) /\
@@ -3071,7 +3071,7 @@ eapply lemIf with
     { easy. }
   }
   {
-    eapply lemBind.
+    eapply lemVis.
     {
       eapply lemGet with
         (Q:=fun w s x =>
@@ -3159,7 +3159,7 @@ eapply lemIf with
           apply lemRet. begin_return.
           congruence.
         }
-        eapply lemBind.
+        eapply lemVis.
         {
           eapply lemCAS with
             (QT:=fun s x =>
@@ -3252,7 +3252,7 @@ eapply lemIf with
   }
 }
 {
-  eapply lemBind.
+  eapply lemVis.
   {
     apply lemGet with
       (Q:=fun w s x =>

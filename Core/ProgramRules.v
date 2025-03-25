@@ -75,12 +75,12 @@ eapply weakenSafe.
 exact H0. easy.
 Qed.
 
-Lemma lemNoOp {A Q} {P : Relt VE VF} {C : Prog E A} :
+Lemma lemTau {A Q} {P : Relt VE VF} {C : Prog E A} :
   forall QS,
   Stable R QS ->
   SilentStep i G P QS ->
   VerifyProg i R G (P ->> QS) C Q ->
-  VerifyProg i R G P (NoOp C) Q.
+  VerifyProg i R G P (Tau C) Q.
 intros.
 econstructor. exact H. easy. easy.
 Qed.
@@ -124,7 +124,7 @@ intros. psimpl.
 exists x, x0. easy.
 Qed.
 
-Lemma lemBind {A B P S} {C : Prog E A} {k : A -> Prog E B} :
+Lemma lemVis {A B P S} {C : Prog E A} {k : A -> Prog E B} :
   forall Q,
   VerifyProg i R G P C Q ->
   (forall v, VerifyProg i R G (Q v) (k v) S) ->
@@ -139,9 +139,9 @@ punfold H1. dependent destruction H1.
 {
   rewrite frobProgId at 1. simpl.
   assert (k v = match k v with
-  | @Bind _ _ A0 e f => Bind e f
+  | @Vis _ _ A0 e f => Vis e f
   | Return a => Return a
-  | NoOp p' => NoOp p'
+  | Tau p' => Tau p'
   end) by (destruct (k v); easy). rewrite <- H1. clear H1.
   specialize (H0 v).
   rewrite paco_eqv in H0. punfold H0.
@@ -214,7 +214,7 @@ Lemma lemIf {A} {B : Prog E bool} {CT CF : Prog E A} {P : Relt VE VF} {Q : Post 
   VerifyProg i R G PF CF Q ->
   VerifyProg i R G P (b <- B; if b then CT else CF) Q.
 intros.
-eapply lemBind. exact H.
+eapply lemVis. exact H.
 intros. now destruct v.
 Qed.
 
@@ -222,8 +222,8 @@ Lemma foldProg {A} :
   forall p : Prog E A,
   match p with
   | Return v => Return v
-  | Bind m k => Bind m k
-  | NoOp p => NoOp p
+  | Vis m k => Vis m k
+  | Tau p => Tau p
   end = p.
 intros.
 destruct p; easy.

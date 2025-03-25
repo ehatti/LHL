@@ -146,12 +146,12 @@ CoFixpoint whileAux (e' : Prog E (unit * A)) : Prog E (unit * A) :=
   match e' with
   | Return (tt, t) =>
     if b t then
-      NoOp (whileAux (e t))
+      Tau (whileAux (e t))
     else
       ret (tt, t)
-  | Bind m k =>
-    Bind m (λ x, whileAux (k x))
-  | NoOp e' => NoOp (whileAux e')
+  | Vis m k =>
+    Vis m (λ x, whileAux (k x))
+  | Tau e' => Tau (whileAux e')
   end.
 
 Definition while s := whileAux (e s).
@@ -232,7 +232,7 @@ Proof.
     remember (b a) as test eqn:Htest.
     destruct test.
     {
-      eapply LogicPaco.SafeNoOp with
+      eapply LogicPaco.SafeTau with
         (QS:= λ _ _, I a).
       {
         intros ?????.
@@ -295,7 +295,7 @@ Proof.
   cbn; intros s.
   { now constructor. }
   {
-    eapply lemBind.
+    eapply lemVis.
     { apply H. }
     {
       intros [[] t]. simpl in *.
@@ -643,7 +643,7 @@ Variant SnapTran {T A} {i : Name T} : pdata T A -> pdata T A -> Prop :=
   SnapTran
     (MkD s x o)
     (MkD s (updf x i PIdle) o)
-| SnapNoOp d :
+| SnapTau d :
   SnapTran d d
 | SnapFail s v x o :
   x i = PWait v ->
@@ -3709,7 +3709,7 @@ Proof.
     unfold runStateM.
     unfold lift.
     rename p into pp.
-    eapply lemBind with
+    eapply lemVis with
       (Q:=λ '(r, s) _ _ s0 ρs,
         ∃ d lb vi,
           Inv d s0 ρs /\
@@ -3732,7 +3732,7 @@ Proof.
               set_of p' ⊆ s.(new)).
     {
       unfold lift.
-      eapply lemBind.
+      eapply lemVis.
       {
         pose (I:=λ s0 ρs,
           ∃ d lb vi,
@@ -4443,7 +4443,7 @@ Proof.
   unfold call. intros. ddestruct H.
   specialize (H2 tt). psimpl.
   ddestruct H3.
-  eapply SafeBind with
+  eapply SafeVis with
     (QI:=λ s ρs t σs, i' = i /\ QI s ρs t σs).
   {
     unfold
@@ -4689,7 +4689,7 @@ Proof.
     now rewrite eqb_id in H.
   }
   unfold write_snapshot.
-  eapply lemBind.
+  eapply lemVis.
   {
     eapply lemCallWk with
       (Q:=λ s ρs,
@@ -4788,7 +4788,7 @@ Proof.
     }
   }
   intros i'. psimpl.
-  eapply lemBind.
+  eapply lemVis.
   {
     eapply lemCallWk with
       (Q:=λ s ρs,
@@ -5464,13 +5464,13 @@ Proof.
     now left.
   }
   {
-    eapply lemBind.
+    eapply lemVis.
     {
       apply wk_write.
       apply write_correct.
     }
     intros [].
-    eapply lemBind with
+    eapply lemVis with
       (Q:=λ v, _).
     2:{
       intros.
@@ -5489,7 +5489,7 @@ Proof.
     }
     psimpl.
     {
-      eapply lemBind.
+      eapply lemVis.
       {
         eapply weakenPrec.
         { now apply fill_new_correct with (v:=v). }
@@ -5509,7 +5509,7 @@ Proof.
       }
       intros [[]]. simpl.
       eapply weakenPrec.
-      eapply lemBind.
+      eapply lemVis.
       {
         simpl.
         pose (I := λ y s ρs,

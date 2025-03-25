@@ -3546,7 +3546,7 @@ eapply weakenPrec with
   }
 }
 unfold exch.
-eapply lemBind.
+eapply lemVis.
 {
   eapply (lemCall
     (Q:=fun _ _ => LiftSPrec (fun s x =>
@@ -3894,7 +3894,7 @@ intros.
 rename v0 into k.
 repeat rewrite <- reltCompAssoc at 1.
 apply lemForget.
-eapply lemBind.
+eapply lemVis.
 {
   eapply (lemCall
     (Q:=fun _ _ => LiftSPrec (fun s x =>

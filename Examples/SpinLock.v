@@ -2070,7 +2070,7 @@ Proof.
       (I := (fun v _ _ t σs => exists (σ: Poss (VFU T)), σs = eq σ /\
         StateWithUB_acf _ (acf T) (PState σ) i = None /\
         ((v = true /\ 
-            fst t i = Cont Acq (NoOp (SpinLockImpl unit Acq)) /\
+            fst t i = Cont Acq (Tau (SpinLockImpl unit Acq)) /\
             PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle /\
             (i_owns i t σ \/ i_not_owns i t σ)) \/
          (v = false /\
@@ -2173,7 +2173,7 @@ Proof.
         { destruct Hub as [? Hub]. specialize (H6 Hub). right. split; [| easy]. rewrite <- H7, <- H8. easy. }
       }
     }
-    { eapply lemBind.
+    { eapply lemVis.
       { eapply (lemCall
           (Q := fun s ρs t σs => exists (ρ σ: Poss (VFU T)), ρs = eq ρ /\ σs = eq σ /\
                   StateWithUB_acf _ (acf T) (PState ρ) i = None /\
@@ -2202,7 +2202,7 @@ Proof.
                         ((unowns_acq i s ρ /\ i_owns i t σ))) \/
                      (v = false /\ PCalls ρ i = CallPoss Acq /\ PRets ρ i = RetIdle /\
                         PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle /\
-                        fst t i = Cont Acq (NoOp (SpinLockImpl unit Acq)) /\
+                        fst t i = Cont Acq (Tau (SpinLockImpl unit Acq)) /\
                         ((other_owns_acq i s ρ /\ i_not_owns i t σ))))) \/
                    (((PCalls σ i = CallPoss Acq /\ PRets σ i = RetIdle) \/
                      (PCalls σ i = CallDone Acq /\ PRets σ i = RetPoss Acq tt)) /\
@@ -2775,7 +2775,7 @@ Proof.
     }
     { right. split; [| easy]. easy. }
   }
-  eapply lemBind.
+  eapply lemVis.
   { eapply (lemCall
       (Q := fun s ρs t σs => exists (ρ σ: Poss (VFU T)), ρs = eq ρ /\ σs = eq σ /\
               StateWithUB_acf _ (acf T) (PState ρ) i = None /\

@@ -17,19 +17,19 @@ Inductive paco_safeF {T E F A} {VE : Spec T E} {VF : Spec T F} i (R G : Relt VE 
 | SafeReturn v (P : Relt VE VF) :
     P ==> Q v ->
     paco_safeF i R G Q rec P (Return v)
-| SafeBind A (P : Relt VE VF) QI QR (m : E A) k :
+| SafeVis A (P : Relt VE VF) QI QR (m : E A) k :
     Stable R QI ->
     Stable R QR ->
     Commit i G P (CallEv m) QI ->
     (forall v,
       Commit i G (P ->> QI) (RetEv m v) (QR v) /\
       rec (P ->> QI ->> QR v) (k v)) ->
-    paco_safeF i R G Q rec P (Bind m k)
-| SafeNoOp (P : Relt VE VF) QS C :
+    paco_safeF i R G Q rec P (Vis m k)
+| SafeTau (P : Relt VE VF) QS C :
     Stable R QS ->
     SilentStep i G P QS ->
     rec (P ->> QS) C ->
-    paco_safeF i R G Q rec P (NoOp C)
+    paco_safeF i R G Q rec P (Tau C)
 .
 
 Definition paco_safe {T E F A} {VE : Spec T E} {VF : Spec T F} i (R G P : Relt VE VF) (C : Prog E A) (Q : Post VE VF A) : Prop := paco2 (paco_safeF i R G Q) bot2 P C.

@@ -138,22 +138,22 @@ CoInductive selfProgWF {E P R} (C : P -> Prog E R) := {
         (x = y -> v = w);
   bindWF :
     forall x A (m1 : E A) k1,
-      C x = Bind m1 k1 ->
+      C x = Vis m1 k1 ->
       forall y, exists (m2 : P -> E A) k2,
-        C y = Bind (m2 y) (k2 y) /\
+        C y = Vis (m2 y) (k2 y) /\
         m1 = m2 x /\
         k1 = k2 x /\
         (forall z, selfProgWF (fun i' => k2 i' z));
   noopWF :
     forall x k1,
-      C x = NoOp k1 ->
+      C x = Tau k1 ->
       forall y, exists k2,
-        C y = NoOp (k2 y) /\
+        C y = Tau (k2 y) /\
         k1 = k2 x /\
         selfProgWF k2
 }.
 
-Lemma lemBindSelf {T E F A} {VE : Spec T E} {VF : Spec T F}
+Lemma lemVisSelf {T E F A} {VE : Spec T E} {VF : Spec T F}
   {P R G : Relt (tensorSpec nameSpec VE) VF}
   {Q : Post (tensorSpec nameSpec VE) VF A}
   {C : Name T -> Prog (NameSig T |+| E) A} :
@@ -173,7 +173,7 @@ intros WF. intros. ddestruct H.
 rewrite frobProgId with (p:=_;;_) in x.
 simpl in x. ddestruct x.
 rewrite frobProgId at 1. cbn.
-eapply SafeBind with
+eapply SafeVis with
   (QI:=QI)
   (QR:=fun v s xs t ys => i = v /\ QR v s xs t ys).
 easy.

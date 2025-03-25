@@ -381,7 +381,7 @@ Definition p2m {T F} {VF : Spec T F} (ρ : Poss VF) : InterState F VF :=
     fun i =>
       match PCalls ρ i with
       | CallIdle => Idle
-      | CallPoss m => Cont m (Bind m Return)
+      | CallPoss m => Cont m (Vis m Return)
       | CallDone m =>
         match PRets ρ i with
         | RetIdle => UCall m m Return
@@ -514,7 +514,7 @@ Definition m2p {T F} {VF : Spec T F} (s : InterState F VF) : Poss VF := {|
   PState := snd s;
   PCalls i := match fst s i with
   | Idle => CallIdle
-  | Cont m (Bind _ _) => CallPoss m
+  | Cont m (Vis _ _) => CallPoss m
   | Cont m (Return _) => CallDone m
   | UCall m _ _ => CallDone m
   | _ => CallIdle
@@ -2520,7 +2520,7 @@ assert (
   assert (
     forall i,
       (@allIdle T F F i = Idle) \/
-      (exists A (m : F A), @allIdle T F F i = Cont m (Bind m Return)) \/
+      (exists A (m : F A), @allIdle T F F i = Cont m (Vis m Return)) \/
       (exists A (m : F A), @allIdle T F F i = UCall m m Return) \/
       (exists A (m : F A) v, @allIdle T F F i = Cont m (Return v))
   ).
@@ -2708,7 +2708,7 @@ constructor.
       apply propositional_extensionality.
       split; intros; psimpl; easy.
     }
-    eapply SafeBind with
+    eapply SafeVis with
       (QI:=fun _ _ => comp_inv VE VF M)
       (QR:=fun _ _ _ => comp_inv VE VF M).
     {
@@ -2753,7 +2753,7 @@ constructor.
     easy.
   }
   {
-    eapply SafeNoOp with
+    eapply SafeTau with
       (QS:=fun _ _ => comp_inv VE VF M).
     {
       unfold Stable, stableRelt, sub, subRelt.

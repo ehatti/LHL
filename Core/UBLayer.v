@@ -600,7 +600,7 @@ Proof.
   generalize dependent prog.
   pcofix rec.
   destruct prog; pfold; intros.
-  + (* Bind *)
+  + (* Vis *)
     punfold H0.
     dependent destruction H0.
     econstructor.
@@ -634,7 +634,7 @@ Proof.
     rewrite <- paco_eqv in H0.
     dependent destruction H0.
     apply ReltPostUBEmbedding, H.
-  + (* NoOp*)
+  + (* Tau*)
     rewrite <- paco_eqv in H0.
     dependent destruction H0.
     econstructor.

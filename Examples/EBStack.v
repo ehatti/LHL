@@ -190,7 +190,7 @@ Variant EBTran {T A} : Name T -> Relt T A :=
     ),
     IStep s i (RetEv (inl (Exch v)) (Some w)) t ->
     EBTran i s x t x
-| StkNoOp s x t i :
+| StkTau s x t i :
     InterStep (EBStack _) s (i, UEvent None) t ->
     EBTran i s x t x.
 
@@ -284,14 +284,14 @@ Lemma foldProg {E A} :
   forall p : Prog E A,
   match p with
   | Return v => Return v
-  | Bind m k => Bind m k
-  | NoOp p => NoOp p
+  | Vis m k => Vis m k
+  | Tau p => Tau p
   end = p.
 intros.
 destruct p; easy.
 Qed.
 
-Lemma stepLoopBind {E E' A B} e `{SigCoercion E' E} :
+Lemma stepLoopVis {E E' A B} e `{SigCoercion E' E} :
   forall m : E' A,
   forall C : A -> Prog E (ControlFlow B),
   loopAux e (x <- call m; C x) = (x <- call m; loopAux e (C x)). 
@@ -311,12 +311,12 @@ intros. now rewrite frobProgId at 1.
 Qed.
 
 Lemma stepLoopCont {E A} e :
-  loopAux e (ret (E:=E) (Continue (A:=A))) = NoOp (loop e).
+  loopAux e (ret (E:=E) (Continue (A:=A))) = Tau (loop e).
 intros. now rewrite frobProgId at 1.
 Qed.
 
 Lemma stepCall {E E' A B} {m : E' A} {k : A -> Prog E B} `{SigCoercion E' E} :
-  (x <- call m; k x) = Bind (coerceOp _ m) k.
+  (x <- call m; k x) = Vis (coerceOp _ m) k.
 rewrite frobProgId at 1. cbn.
 f_equal. extensionality x.
 rewrite frobProgId at 1. simpl.
@@ -1968,8 +1968,8 @@ cut (
 ).
 { intros. now apply H. }
 cofix rec. intros P impH. unfold push, loop.
-rewrite stepLoopBind, stepCall.
-eapply SafeBind with
+rewrite stepLoopVis, stepCall.
+eapply SafeVis with
   (QI:=fun _ _ => LiftSPrec (ReadyWaiting i (Push v)))
   (QR:=fun r _ _ => LiftSPrec (fun s x =>
     match r with
@@ -2220,8 +2220,8 @@ intros. destruct v0.
     }
   }
   {
-    rewrite stepLoopBind, stepCall.
-    eapply SafeBind with
+    rewrite stepLoopVis, stepCall.
+    eapply SafeVis with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
         Complete i (Some v) s x \/
         ReadyDoneExch i (Push v) tt s x \/
@@ -2815,7 +2815,7 @@ intros. destruct v0.
         }
         rewrite H0. clear H0.
         rewrite stepLoopCont.
-        apply SafeNoOp with
+        apply SafeTau with
           (QS:=fun _ _ => LiftSPrec (fun s x =>
             match v0 with
             | Some None => ReadyDone i (Push v) tt s x
@@ -2867,7 +2867,7 @@ intros. destruct v0.
           }
           {
             eexists. split. easy. eq_inj H0.
-            eapply StkNoOp with (i:=i).
+            eapply StkTau with (i:=i).
             constructor.
             {
               constructor; cbn. easy.
@@ -2977,8 +2977,8 @@ cut (
 ).
 { intros. now apply H. }
 cofix rec. intros P impH. unfold pop, loop.
-rewrite stepLoopBind, stepCall.
-eapply SafeBind with
+rewrite stepLoopVis, stepCall.
+eapply SafeVis with
   (QI:=fun _ _ => LiftSPrec (ReadyWaiting i Pop))
   (QR:=fun r _ _ => LiftSPrec (fun s x =>
     match r with
@@ -3346,8 +3346,8 @@ intros. destruct v.
     }
   }
   {
-    rewrite stepLoopBind, stepCall.
-    eapply SafeBind with
+    rewrite stepLoopVis, stepCall.
+    eapply SafeVis with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
         Complete i None s x \/
         (exists w, ReadyDoneExch i Pop (Some w) s x) \/
@@ -4002,7 +4002,7 @@ intros. destruct v.
         }
         rewrite H0. clear H0.
         rewrite stepLoopCont.
-        apply SafeNoOp with
+        apply SafeTau with
           (QS:=fun _ _ => LiftSPrec (fun s x =>
             match v with
             | Some (Some v) => ReadyDone i Pop (Some v) s x
@@ -4054,7 +4054,7 @@ intros. destruct v.
           }
           {
             eexists. split. easy. eq_inj H0.
-            eapply StkNoOp with (i:=i).
+            eapply StkTau with (i:=i).
             constructor.
             {
               constructor; cbn. easy.

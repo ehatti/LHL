@@ -1512,7 +1512,7 @@ Section AtomicWFStackProof.
       }
     Qed.
 
-    Lemma stepCall {E E' A' B} {m : E' A'} {k : A' -> Prog E B} `{SigCoercion E' E} : (x <- call m; k x) = Bind (coerceOp _ m) k.
+    Lemma stepCall {E E' A' B} {m : E' A'} {k : A' -> Prog E B} `{SigCoercion E' E} : (x <- call m; k x) = Vis (coerceOp _ m) k.
     Proof.
       rewrite frobProgId at 1. cbn.
       f_equal. extensionality x.
@@ -1615,7 +1615,7 @@ Section AtomicWFStackProof.
 
     (* step get call *)
     rewrite stepCall.
-    eapply SafeBind with
+    eapply SafeVis with
       (QI:=fun _ _ => LiftSPrec (ReadyWaiting i (WFPush v)))
       (QR:=fun old _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
@@ -1720,7 +1720,7 @@ Section AtomicWFStackProof.
 
     (* step malloc call *)
     rewrite stepCall.
-    eapply SafeBind with
+    eapply SafeVis with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
           on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) old None /\
@@ -1834,7 +1834,7 @@ Section AtomicWFStackProof.
 
     (* step write call *)
     rewrite stepCall.
-    eapply SafeBind with
+    eapply SafeVis with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
           location_owned i s new /\
@@ -1976,7 +1976,7 @@ Section AtomicWFStackProof.
 
     (* step cas call *)
     rewrite stepCall.
-    eapply SafeBind with
+    eapply SafeVis with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i (WFPush v) s x /\
           (exists h, (eval_heap (memSt s)) = Some h /\ h new = Some (v, old)) /\
@@ -2323,7 +2323,7 @@ Section AtomicWFStackProof.
 
     (* step get call *)
     rewrite stepCall.
-    eapply SafeBind with
+    eapply SafeVis with
       (QI:=fun _ _ => LiftSPrec (ReadyWaiting i WFPop))
       (QR:=fun old _ _ => LiftSPrec (fun s x =>
           match old with
@@ -2530,7 +2530,7 @@ Section AtomicWFStackProof.
 
     (* step read call *)
     rewrite stepCall.
-    eapply SafeBind with
+    eapply SafeVis with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i WFPop s x /\
             on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (Some old) None /\
@@ -2639,7 +2639,7 @@ Section AtomicWFStackProof.
 
     (* step cas call *)
     rewrite stepCall.
-    eapply SafeBind with
+    eapply SafeVis with
       (QI:=fun _ _ => LiftSPrec (fun s x =>
           ReadyWaiting i WFPop s x /\
           on_chain_written_aux (eval_heap (memSt s)) (eval_loc (memSt s)) (Some old) None /\

@@ -1268,20 +1268,20 @@ Qed.
 Fixpoint noops {E A} n (p : Prog E A) :=
   match n with
   | 0 => p
-  | S n => NoOp (noops n p)
+  | S n => Tau (noops n p)
   end.
 
 Inductive eutt_finite {E F A} (om : F A) : Prog E A -> Prog E A -> ThreadState E F -> Prop :=
 | EFRet x : eutt_finite om (Return x) (Return x) (Cont om (Return x))
-| EFBind A (m : E A) k k' :
+| EFVis A (m : E A) k k' :
     (forall x, eutt (k x) (k' x)) ->
-    eutt_finite om (Bind m k) (Bind m k') (Cont om (Bind m k))
-| EFLNoOp p p' s :
+    eutt_finite om (Vis m k) (Vis m k') (Cont om (Vis m k))
+| EFLTau p p' s :
     eutt_finite om p p' s ->
-    eutt_finite om (NoOp p) p' s
-| EFRNoOp p p' s :
+    eutt_finite om (Tau p) p' s
+| EFRTau p p' s :
     eutt_finite om p p' s ->
-    eutt_finite om p (NoOp p') s.
+    eutt_finite om p (Tau p') s.
 
 Lemma contra_eutt_finite {E F A} :
   forall om p p' (s : ThreadState E F),

@@ -12,9 +12,9 @@ Require Import Morphisms.
 Definition frobProgram {E Ret} (p : Prog E Ret) :
   Prog E Ret :=
   match p with
-    | Bind e f => Bind e f
+    | Vis e f => Vis e f
     | Return a => Return a
-    | NoOp p' => NoOp p'
+    | Tau p' => Tau p'
   end.
 
 Theorem frobProgId {E Ret} (p : Prog E Ret) :
@@ -120,7 +120,7 @@ Add Parametric Relation E Ret: (@Prog E Ret) (@progEq E Ret)
     transitivity proved by (progEqTrans E Ret)                        
       as programEq_rel.
 
-Add Parametric Morphism E Ret A: (@Bind E Ret A)
+Add Parametric Morphism E Ret A: (@Vis E Ret A)
     with signature eq ==> pointwise_relation _ eq ==> eq
       as bind_eq_eq.
 Proof.
@@ -128,7 +128,7 @@ Proof.
   intros. f_equal. apply functional_extensionality. assumption.
 Qed.
 
-Add Parametric Morphism E Ret A: (@Bind E Ret A)
+Add Parametric Morphism E Ret A: (@Vis E Ret A)
     with signature eq ==> pointwise_relation _ progEq ==> progEq
       as bind_progEq_progEq.
 Proof.

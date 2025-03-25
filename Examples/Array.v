@@ -140,7 +140,7 @@ End indexntensor.
 Arguments activentensor {T U V N}.
 
 Definition index {U N R} (i : Index N) (m : U R) : Prog (nsig U N) R :=
-  Bind (getIndex i m)
+  Vis (getIndex i m)
   Return.
 
 Definition arrayImpl {U N} : Impl (nsig U N) (ArraySig U N) :=
@@ -1028,7 +1028,7 @@ constructor.
 {
   intros. destruct m. cbn.
   unfold index.
-  eapply SafeBind with
+  eapply SafeVis with
     (QI:=fun _ _ => LiftSPrec (fun t σ =>
       Inv t σ /\
       fst t i = UCall (At i0 m) (getIndex i0 m) Return))

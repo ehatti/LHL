@@ -189,7 +189,7 @@ Proof.
     }
   }
   unfold LAImpl.
-  eapply lemBind.
+  eapply lemVis.
   {
     eapply (lemCall
       (Q:=λ _ _, LiftSPrec (λ (s : InterState F VE) ρ,
@@ -388,7 +388,7 @@ Proof.
   intros [].
   rewrite <- reltCompAssoc.
   apply lemForget.
-  eapply lemBind.
+  eapply lemVis.
   {
     eapply (lemCall
       (Q:=λ _ _, LiftSPrec (λ (s : InterState F VE) ρ,
@@ -637,7 +637,7 @@ Proof.
   }
   intros v.
   apply lemForget.
-  eapply lemBind.
+  eapply lemVis.
   {
     eapply (lemCall
       (Q:=λ _ _, LiftSPrec (λ (s : InterState F VE) ρ,

@@ -15,12 +15,12 @@ Lemma substIdImpl_is_id_l {E R} (p : Prog E R)
   : eutt (substProg idImpl p) p.
 Proof.
   enough (J : forall q p : Prog E R,
-             (q = substProg (fun _ m => Bind m Return) p \/
-              q = NoOp (substProg (fun _ m => Bind m Return) p)) ->
+             (q = substProg (fun _ m => Vis m Return) p \/
+              q = Tau (substProg (fun _ m => Vis m Return) p)) ->
              eutt q p).
   { apply J. left; reflexivity. }
   clear. pcofix SELF. intros q p.
-  enough (J : paco2 euttF r (substProg (fun _ m => Bind m Return) p) p).
+  enough (J : paco2 euttF r (substProg (fun _ m => Vis m Return) p) p).
   { intros []; subst; [ apply J | apply euttF_Noop_L, J ]. }
   pfold.
   destruct p.
@@ -40,7 +40,7 @@ Lemma substIdImpl_is_id_r {E F} (M : Impl E F)
   : eutt (substProg M (idProg f)) (M _ f).
 Proof.
   rewrite (frobProgId (substProg _ _)). cbn.
-  apply eutt_NoOp_l.
+  apply eutt_Tau_l.
   remember (M R f) as p eqn:E0. clear E0 f.
   revert p. pcofix SELF. intros p.
   pfold.

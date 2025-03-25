@@ -433,9 +433,9 @@ move H3 after st''.
 assert (
   exists n' x0',
     match x0 with
-    | Cont m (Bind um k) =>
+    | Cont m (Vis um k) =>
         exists k',
-          x0' = Cont m (Bind um k') /\
+          x0' = Cont m (Vis um k') /\
           forall x, eutt (k x) (k' x)
     | UCall om um k =>
         exists k',
@@ -480,7 +480,7 @@ assert (
       repeat constructor.
     }
     {
-      exists 0, (Cont m (Bind m0 k')).
+      exists 0, (Cont m (Vis m0 k')).
       repeat constructor.
       exists k'.
       easy.
@@ -520,7 +520,7 @@ assert (
         destruct p1.
         destruct_all.
         subst.
-        exists (S x0), (Cont m0 (Bind e0 x2)).
+        exists (S x0), (Cont m0 (Vis e0 x2)).
         split.
         exists x2. easy.
         simpl.
@@ -536,7 +536,7 @@ assert (
         eapply USilentThreadStep.
         easy. easy. easy.
         subst.
-        exists (S x0), (Cont m0 (NoOp p1)).
+        exists (S x0), (Cont m0 (Tau p1)).
         split.
         easy.
         simpl.
@@ -1000,17 +1000,17 @@ Inductive assoc_states {E F G} {impl : Impl E F} {impl' : Impl F G} : ThreadStat
 | ASGCall :
     assoc_states Idle Idle Idle
 | ASFCall A B (gm : G A) (fm : F B) k :
-    assoc_states Idle (Cont gm (Bind fm k)) (Cont gm (NoOp (bindSubstProg impl k (impl _ fm))))
-| ASFNoOp A m p :
-  assoc_states Idle (Cont m (NoOp p)) (Cont m (NoOp (A:=A) (substProg impl p)))
+    assoc_states Idle (Cont gm (Vis fm k)) (Cont gm (Tau (bindSubstProg impl k (impl _ fm))))
+| ASFTau A m p :
+  assoc_states Idle (Cont m (Tau p)) (Cont m (Tau (A:=A) (substProg impl p)))
 | ASECall A R B gm fm em ek fk :
-    assoc_states (Cont fm (Bind em ek)) (UCall gm fm fk) (Cont gm (Bind (A:=A) (B:=B) em (fun x => bindSubstProg (R:=R) impl fk (ek x))))
-| ASENoOp A R k om p um :
-    assoc_states (Cont um (NoOp p)) (UCall om um k) (Cont om (NoOp (A:=A) (bindSubstProg (R:=R) impl k p)))
-| ASEBind A B R gm fm em ek fk :
+    assoc_states (Cont fm (Vis em ek)) (UCall gm fm fk) (Cont gm (Vis (A:=A) (B:=B) em (fun x => bindSubstProg (R:=R) impl fk (ek x))))
+| ASETau A R k om p um :
+    assoc_states (Cont um (Tau p)) (UCall om um k) (Cont om (Tau (A:=A) (bindSubstProg (R:=R) impl k p)))
+| ASEVis A B R gm fm em ek fk :
     assoc_states (UCall (A:=A) fm em ek) (UCall (B:=B) gm fm fk) (UCall gm em (fun x => bindSubstProg (R:=R) impl fk (ek x)))
 | ASERet A B gm fm v fk :
-    assoc_states (Cont fm (Return v)) (UCall (A:=B) gm fm fk) (Cont (A:=A) gm (NoOp (substProg impl (fk v))))
+    assoc_states (Cont fm (Return v)) (UCall (A:=B) gm fm fk) (Cont (A:=A) gm (Tau (substProg impl (fk v))))
 | ASFRet A (gm : G A) v :
     assoc_states Idle (Cont gm (Return v)) (Cont gm (Return v))
 .
@@ -1498,13 +1498,13 @@ Qed.
 | IASGCall :
     assoc_states_inv Idle Idle Idle
 | IASFCall A (gm : G A) B (fm : F B) p :
-    assoc_states_inv Idle (Cont gm (Bind fm p)) (Cont gm (NoOp (bindSubstProg impl p (impl _ fm))))
+    assoc_states_inv Idle (Cont gm (Vis fm p)) (Cont gm (Tau (bindSubstProg impl p (impl _ fm))))
 | IASFCall2 A (gm : G A) B (fm : F B) p q :
-    assoc_states_inv Idle (Cont gm (Bind fm p)) (Cont gm (bindSubstProg impl p q))
+    assoc_states_inv Idle (Cont gm (Vis fm p)) (Cont gm (bindSubstProg impl p q))
 | IASFRet A (gm : G A) v :
     assoc_states_inv Idle (Cont gm (Return v)) (Cont gm (Return v))
 | IASFNoop A (gm : G A) p :
-    assoc_states_inv Idle (Cont gm (NoOp p)) (Cont gm (NoOp (substProg impl p))).
+    assoc_states_inv Idle (Cont gm (Tau p)) (Cont gm (Tau (substProg impl p))).
 Arguments assoc_states_inv {E F G} impl impl'. *)
 
 Theorem layerRefines_VComp_assoc_inv {T E F G} : 

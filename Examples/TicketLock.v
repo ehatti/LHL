@@ -40,7 +40,7 @@ Require Import Unicode.Utf8.
 Import ListNotations.
 
 CoFixpoint until {E R} (m : E R) (k : R -> bool) : Prog E unit :=
-  Bind m (λ x,
+  Vis m (λ x,
     if k x then
       ret tt
     else
@@ -50,7 +50,7 @@ Definition E (T : nat) := FAISig |+| CounterSig.
 Definition F := LockSig.
 
 CoFixpoint acq_body {T} (my_tkt : nat) : Prog (E T) unit :=
-  Bind (inr Get) (λ cur_tkt,
+  Vis (inr Get) (λ cur_tkt,
   if cur_tkt =? my_tkt then
     ret tt
   else
@@ -556,7 +556,7 @@ Proof.
       cbn in *. now rewrite <- pres_ths0 at 1.
     }
   }
-  eapply lemBind.
+  eapply lemVis.
   {
     eapply (lemCall
       (Q:= λ _ _,
@@ -1142,7 +1142,7 @@ Proof.
   pcofix rec. intros. pfold.
   rename H0 into H.
   rewrite frobProgId at 1.
-  eapply SafeBind with
+  eapply SafeVis with
     (QI:=λ _ _,
       LiftSPrec (fun s ρ =>
         (Inv i s ρ /\

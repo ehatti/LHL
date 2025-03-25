@@ -218,19 +218,19 @@ CoInductive SafeProg {T E F} {VE : Spec T E} {VF : Spec T F} i : Relt VE VF -> R
 | SafeReturn A v R G (P : Relt VE VF) Q :
     P ==> Q v ->
     SafeProg i R G A P (Return v) Q
-| SafeBind A B R G (P : Relt VE VF) QI QR Q (m : E A) k :
+| SafeVis A B R G (P : Relt VE VF) QI QR Q (m : E A) k :
     Stable R QI ->
     Stable R QR ->
     Commit i G P (CallEv m) QI ->
     (forall v,
       Commit i G ((P ->> QI)) (RetEv m v) (QR v) /\
       SafeProg i R G B (P ->> QI ->> QR v) (k v) Q) ->
-    SafeProg i R G B P (Bind m k) Q
-| SafeNoOp R G A (P : Relt VE VF) QS C Q :
+    SafeProg i R G B P (Vis m k) Q
+| SafeTau R G A (P : Relt VE VF) QS C Q :
     Stable R QS ->
     SilentStep i G P QS ->
     SafeProg i R G A (P ->> QS) C Q ->
-    SafeProg i R G A P (NoOp C) Q
+    SafeProg i R G A P (Tau C) Q
 .
 
 Arguments SafeProg {T E F VE VF} i R G {A} P C Q.
@@ -270,7 +270,7 @@ Definition InvokeAny {T E F VE VF} impl i : @Relt T E F VE VF :=
   fun s ρ t σ =>
     exists Ret (m : F Ret), TInvoke impl i Ret m s ρ t σ.
 
-Definition TReturn {T E F VE VF} (impl : Impl E F) (i : Name T) {Ret} (m : F Ret) v : @Relt T E F VE VF :=
+Definition TReturn {T E F VE VF} (impl : Impl E F) (i : Name T) {R} (m : F R) v : @Relt T E F VE VF :=
   fun s ρs t σs =>
     Returned i m v s ρs /\
     InterOStep impl i (fst s) (RetEv m v) (fst t) /\
