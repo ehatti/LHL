@@ -30,30 +30,36 @@
 
 ./Core/Eutt.v
 
-./Examples/ArraySpec.v
-./Examples/Array.v
-./Examples/NameSpec.v
-./Examples/CASSpec.v
-./Examples/ExchangerSpec.v
-./Examples/Exchanger.v
-./Examples/RandomSpec.v
-./Examples/ElimArray.v
-./Examples/AtomicStackSpec.v
-./Examples/MemSpec.v
-./Examples/WaitFreeStackSpec.v
-./Examples/WaitFreeStack.v
-./Examples/EBStack.v
-./Examples/EBLin.v
+./Examples/Misc/NameSpec.v
+./Examples/Misc/OrderedSpec.v
+./Examples/Misc/RandomSpec.v
+
+./Examples/CAS/CASSpec.v
 
 ./Examples/Counter/CounterSig.v
 ./Examples/Counter/RacyCounterSpec.v
-./Examples/FAISpec.v
-./Examples/LockSpec.v
-./Examples/TicketLock.v
-./Examples/AtomicSpec.v
-./Examples/LockAround.v
+# TODO: AtomicCounter
 
-./Examples/RegSpec.v
-./Examples/OrderedSpec.v
-./Examples/SnapshotSpec.v
-./Examples/Snapshot.v
+./Examples/Exchanger/ExchangerSpec.v
+./Examples/Exchanger/Exchanger.v
+./Examples/Exchanger/ElimArray.v
+
+./Examples/FAI/FAISpec.v
+
+./Examples/Lock/LockSpec.v
+./Examples/Lock/TicketLock.v
+
+./Examples/LockAround/AtomicSpec.v
+./Examples/LockAround/LockAround.v
+
+./Examples/Memory/MemSpec.v
+./Examples/Memory/RegSpec.v
+
+./Examples/Stack/AtomicStackSpec.v
+./Examples/Stack/WaitFreeStackSpec.v
+./Examples/Stack/WaitFreeStack.v
+./Examples/Stack/EBStack.v
+./Examples/Stack/EBLin.v
+
+./Examples/WriteSnapshot/SnapshotSpec.v
+./Examples/WriteSnapshot/Snapshot.v

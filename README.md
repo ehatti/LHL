@@ -52,10 +52,11 @@ coq_makefile -f _CoqProject -o Makefile
 make
 ```
 
-You will also need to install Paco to compile this project. Install like so:
+You will also need to install Paco and Equations to compile this project. Install like so:
 ```
 opam repo add coq-released https://coq.inria.fr/opam/released
 opam install coq-paco
+opam install coq-equations
 ```
 
 ## Usage
