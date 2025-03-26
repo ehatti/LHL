@@ -1,5 +1,9 @@
 # LHL
 
+## OOPSLA25 Note
+
+Please see `Paper.v` for correspondance between the paper and this artefact.
+
 ## Overview
 
 LHL is the first sound and complete program logic for _compositional linearizability_, which is a generalization of atomic linearizability, set linearizability, and interval linearizability. This makes it complete for concurrent objects. LHL uses a compositional model for concurrent computation which enables us to use the features of compositional linearizability to link verified components together into large systems with a high-level of abstraction for their subcomponents.
@@ -23,9 +27,9 @@ As a showcase, we verify the elimination-backoff stack implementation modularly 
 
 Examples of the program logic's usage.
 
-- `Examples/Exchanger.v`: One-cell set-linearizable exchanger. Specification may be found in `Examples/ExchangerSpec.v`
-- `Examples/ElimArray.v`: An exchanger array object that allows an arbitrary number of exchangers to execute concurrently
-- `Examples/EBStack.v`: The atomic elimination backoff stack. Specification may be found in `Examples/AtomicStackSpec.v`
+- `Examples/Exchanger/Exchanger.v`: One-cell set-linearizable exchanger. Specification may be found in `Examples/Exchanger/ExchangerSpec.v`
+- `Examples/Exchanger/ElimArray.v`: An exchanger array object that allows an arbitrary number of exchangers to execute concurrently
+- `Examples/Stack/EBStack.v`: The atomic elimination backoff stack. Specification may be found in `Examples/Stack/AtomicStackSpec.v`
 
 ### LHL
 
