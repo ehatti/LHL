@@ -3,16 +3,13 @@ From LHL.Core Require Import
   Specs
   Logic.
 
-From LHL.Examples Require Import
-  ArraySpec.
-
 From LHL.Util Require Import
   Tactics
   TransUtil
   Util.
 
 Variant RandSig : ESig :=
-| Random (k : nat) : RandSig (Index k).
+| Random (k : nat) : RandSig (Name k).
 
 Definition RandState T := ActiveMap T RandSig.
 

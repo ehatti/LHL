@@ -3874,3 +3874,10 @@ Proof.
     }
   }
 Qed.
+
+Theorem ticketLockLin T :
+  VE T ▷ ticketLockImpl ↝ VF T.
+Proof.
+  eapply soundness.
+  eapply ticketLockCorrect.
+Qed.

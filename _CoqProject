@@ -34,6 +34,9 @@
 ./Examples/Misc/OrderedSpec.v
 ./Examples/Misc/RandomSpec.v
 
+./Examples/Array/ArraySpec.v
+./Examples/Array/Array.v
+
 ./Examples/CAS/CASSpec.v
 
 ./Examples/Counter/CounterSig.v

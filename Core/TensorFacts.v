@@ -542,7 +542,6 @@ induction p; cbn; intros.
 }
 Qed.
 
-(* Note to Eashan: This is also seems to be proven by C4 in Traces_Pair.v *)
 Theorem tensor_monotonic_inv {T E F} : 
   forall (specE specE' : Spec T E) (specF specF' : Spec T F), 
     specRefines (tensorSpec specE specF) (tensorSpec specE' specF') ->

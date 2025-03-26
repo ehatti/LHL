@@ -54,7 +54,7 @@ Proof.
   now apply hcomp_lin.
 Qed.
 
-Theorem EBStack_lin {T A} :
+Theorem LinkedEBStack_lin {T A} :
   LinkedEBUnderlay T A ▷ LinkedEBImpl T A ↝ atomicStackSpec.
 Proof.
   unfold LinkedEBUnderlay, LinkedEBImpl.

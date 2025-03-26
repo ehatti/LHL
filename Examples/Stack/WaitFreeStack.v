@@ -3110,4 +3110,6 @@ Section AtomicWFStackProof.
       }
     }
   Qed.
+
+  
 End AtomicWFStackProof.

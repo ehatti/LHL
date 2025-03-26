@@ -42,6 +42,11 @@ Qed.
 
 (* Basic Refinement Properties *)
 
+Lemma specRefines_refl {T E} :
+  forall (spec : Spec T E),
+    specRefines spec spec.
+Proof. easy. Qed.
+
 Lemma specRefines_trans {T E} :
   forall (spec1 spec2 spec3 : Spec T E),
     specRefines spec1 spec2 -> specRefines spec2 spec3 -> 
@@ -248,7 +253,7 @@ Theorem eutt_layerRefines {T E F} :
   forall (spec : Spec T E) (impl impl' : Impl E F), 
   euttImpl impl impl' -> 
   layerRefines (spec :> impl) (spec :> impl').
-unfold euttImpl, layerRefines, specRefines, Incl, IsTraceOfSpec, Steps.
+unfold euttImpl, layerRefines, specRefines, Incl, IsTraceOfSpec.
 intros.
 destruct_all.
 destruct x.

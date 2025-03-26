@@ -1136,4 +1136,11 @@ Proof.
   }
 Qed.
 
+Theorem lockAroundLin :
+  VE ▷ LAImpl ↝ VF.
+Proof.
+  eapply soundness. simpl.
+  eapply lockAroundCorrect.
+Qed.
+
 End Lock_Around.

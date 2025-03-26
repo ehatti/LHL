@@ -8,18 +8,15 @@ From LHL.Util Require Import
   Tactics
   Util.
 
-Inductive Steps_ {Ev State} 
+Inductive Steps {Ev State} 
     (step : State -> Ev -> State -> Prop) 
     (st : State) :
     list Ev -> 
     State 
     -> Prop :=
-| StepsNone : Steps_ step st nil st
-| StepsMore ev evs st'' st' : step st ev st'' -> Steps_ step st'' evs st' -> Steps_ step st (ev :: evs) st'
+| StepsNone : Steps step st nil st
+| StepsMore ev evs st'' st' : step st ev st'' -> Steps step st'' evs st' -> Steps step st (ev :: evs) st'
 .
-
-Definition Steps {Ev State} (step : State -> Ev -> State -> Prop) st evs st' 
-    := Steps_ step st evs st'.
 
 Inductive bwd_list {A} :=
 | Start
@@ -114,7 +111,7 @@ easy.
 simpl.
 econstructor.
 exact H.
-apply IHSteps_.
+apply IHSteps.
 easy.
 generalize dependent s.
 induction xs.

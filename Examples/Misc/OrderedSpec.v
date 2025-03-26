@@ -8,16 +8,8 @@ From LHL.Util Require Import
   Tactics
   Util.
 
-From LHL.Examples Require Import
-  AtomicSpec.
-
 From LHL.Core Require Import
   Traces.
-
-From LHL.Examples Require Import
-  ArraySpec
-  AtomicSpec
-  RegSpec.
 
 From Coq Require Import
   Unicode.Utf8.
