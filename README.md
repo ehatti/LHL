@@ -1,8 +1,8 @@
 # LHL
 
-## OOPSLA25 Note
+## ECOOPS26 Note
 
-Please see `Paper.v` for correspondance between the paper and this artefact.
+Please see `Paper.v` for correspondance between the paper and this artifact.
 
 ## Overview
 
