@@ -44,18 +44,11 @@ Implementation of LHL.
 
 ## Setup
 
-Compiled with Coq version 8.18.0, OCaml version 5.2.0.
-
-We are using make. To build the project:
+The following series of commands will build and check all files in the project, including `Examples`.
 ```
-coq_makefile -f _CoqProject -o Makefile
-make
-```
-
-You will also need to install Paco to compile this project. Install like so:
-```
-opam repo add coq-released https://coq.inria.fr/opam/released
-opam install coq-paco
+docker build -t lhl-artifact .
+docker run -it lhl-artifact
+./build.sh
 ```
 
 ## Usage
