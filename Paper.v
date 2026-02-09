@@ -30,7 +30,7 @@ Require Import LHL.Examples.Exchanger.ElimArray.
 
 (* In the paper this section gives a rough overview of the EB stack. We will cover that at the end of this file *)
 (* For now, the diagram in Fig. 1 depicting the structure of the EB stack is reflected in the `EBLin` file, and the linearizability proof connecting all the independent components of the EB stack may be found there *)
-Check EBStack_lin.
+Check LinkedEBStack_lin.
 
 (* Section 3: Programming Language *)
 

@@ -7,6 +7,7 @@ COPY --chown=coq:coq _CoqProject .
 COPY --chown=coq:coq Util/ ./Util/
 COPY --chown=coq:coq Core/ ./Core/
 COPY --chown=coq:coq Examples/ ./Examples/
+COPY --chown=coq:coq Paper.v .
 COPY --chown=coq:coq README.md .
 COPY --chown=coq:coq ebstack_structure.png .
 COPY --chown=coq:coq build.sh .

@@ -66,3 +66,5 @@
 
 ./Examples/WriteSnapshot/SnapshotSpec.v
 ./Examples/WriteSnapshot/Snapshot.v
+
+./Paper.v
