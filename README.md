@@ -1,6 +1,6 @@
 # LHL
 
-## ECOOPS26 Note
+## ECOOP26 Note
 
 Please see `Paper.v` for correspondance between the paper and this artifact.
 
