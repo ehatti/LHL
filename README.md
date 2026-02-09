@@ -27,9 +27,12 @@ As a showcase, we verify the elimination-backoff stack implementation modularly 
 
 Examples of the program logic's usage.
 
-- `Examples/Exchanger/Exchanger.v`: One-cell set-linearizable exchanger. Specification may be found in `Examples/Exchanger/ExchangerSpec.v`
-- `Examples/Exchanger/ElimArray.v`: An exchanger array object that allows an arbitrary number of exchangers to execute concurrently
-- `Examples/Stack/EBStack.v`: The atomic elimination backoff stack. Specification may be found in `Examples/Stack/AtomicStackSpec.v`
+- `Examples/Exchanger/*`: Contains the set-linearizable exchanger specification `ExchangerSpec.v` along with two implementations. `Exchanger.v` is a one-cell exchanger, `ElimArray.v` is an array of exchangers.
+- `Examples/Stack/{AtomicStackSpec.v, EBStack.v}`: The atomic stack specification and its implementation as the elimination-backoff stack.
+- `Examples/Stack/{WaitFreeStackSpec.v, WaitFreeStack.v}`: The set-linearizable wait-free stack specification and its implementation, used in the construction of the elimination-backoff stack.
+- `Examples/WriteSnapshot/{SnapshotSpec.v, Snapshot.v}`: The interval-linearizable write-snapshot and its specification
+- `Examples/Lock/*`: The atomic lock specification and two implementations, a spinlock and a ticket lock
+- `Examples/LockAround/*`: An object that takes another object and wraps it in a lock, resulting in an atomic-linearizable object
 
 ### LHL
 
