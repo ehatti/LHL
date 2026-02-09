@@ -1,6 +1,6 @@
 # LHL
 
-## ECOOPS26 Note
+## ECOOP26 Note
 
 Please see `Paper.v` for correspondance between the paper and this artifact.
 
@@ -40,7 +40,7 @@ Implementation of LHL.
 
 - `Core/Program.v`: Definition of programs.
 - `Core/Specs.v`: Definition of specifications.
-- `Core/Traces.v`: Definition of our operational semantics and vertical composition.
+- `Core/Traces.v`: Definition of our operational semantics and spec-module composition.
 - `Core/Linearizability.v`: Definition of compositional linearizability.
 - `Core/RefinesFacts.v`: Important theorems about refinement.
 - `Core/LinFacts.v`: Proofs of observational refinement and locality, needed for compositionality
