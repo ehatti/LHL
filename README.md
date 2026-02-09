@@ -31,7 +31,7 @@ Examples of the program logic's usage.
 - `Examples/Stack/{AtomicStackSpec.v, EBStack.v}`: The atomic stack specification and its implementation as the elimination-backoff stack.
 - `Examples/Stack/{WaitFreeStackSpec.v, WaitFreeStack.v}`: The atomic-linearizable wait-free stack specification and its implementation, used in the construction of the elimination-backoff stack.
 - `Examples/WriteSnapshot/*`: The interval-linearizable write-snapshot specification and its implementation
-- `Examples/Lock/*`: The atomic lock specification and two implementations, a spinlock and a ticket lock
+- `Examples/Lock/{LockSpec.v, TicketLock.v}`: The atomic lock specification and a ticket lock implementation
 - `Examples/LockAround/*`: An object that takes another object and wraps it with calls to a lock, resulting in an atomic-linearizable object
 
 ### LHL

@@ -26,9 +26,9 @@ Require Import LHL.Examples.Exchanger.ElimArray.
 
 (* This file connects the main points of the paper to the artefact. *)
 
-(* Section 1: Overview *)
+(* Section 2: Motivating Example *)
 
-(* This section gives a rough overview of the EB stack, but a fuller proof may be found in the appendix. We will cover that at the end of this file *)
+(* In the paper this section gives a rough overview of the EB stack. We will cover that at the end of this file *)
 (* For now, the diagram in Fig. 1 depicting the structure of the EB stack is reflected in the `EBLin` file, and the linearizability proof connecting all the independent components of the EB stack may be found there *)
 Check EBStack_lin.
 
@@ -173,13 +173,15 @@ Print VisPossStep.
 
 (* Section 5: Program Logic *)
 
-(* Section 5.1 *)
+(* Section 5.3 *)
 
 (* The module judgement -- same definition as in the paper *)
 Check VerifyImpl.
 
-(* The definition of the `ReturnStep` side condition. The definition is presented differently here than in the paper, but the two definitions are equivalent *)
+(* The definition of the `ReturnStep` side condition. This side condition is omitted in the paper as it is trivially proven for nearly all objects (the only place we have had to use it in a nontrivial way is the completeness proof) *)
 Print ReturnStep.
+
+(* Section 5.4 *)
 
 (* The program judgement -- also same as in the paper. The actual definition is called `SafeProg`, and `VerifyProg` is an alias *)
 Print SafeProg.
@@ -194,37 +196,34 @@ Check SafeVis.
 Check lemVis.
 Check lemCall.
 
-(* The commit judgement. Minor difference from the paper -- as mentioned earlier -- is that the definition of `↠` is inlined into the rule rather than being a separate definition *)
+(* Section 5.5 *)
+
+(* The commit judgement. Minor difference from the paper is that the definition of `↠` is inlined into the rule rather than being a separate definition *)
 Print Commit.
 
-(* Section 5.2 *)
-
-(* Soundness and completeness of the program logic, same as in the paper *)
-Check soundness.
-Check completeness.
-(* Minor difference from the paper: In the artefact the completeness invariant is one big definition rather than being split out into `I`, `S`, and `D`. Otherwise the proof outlines in the paper are accurate to the proofs in the artefact *)
-
-(* Section 6: Further Examples *)
+(* Section 5.6: Further Examples *)
 
 (* All examples may be found in the `Examples` folder. Here are the ones mentioned in this section *)
 
-(* "Lock-Protected Concurrent Objects". *)
+(* The family of lock-protected objects *)
 
-(* Theorem 10 in this section is `lockAroundLin`*)
 Print AtomicSpec.
 Declare Module Params : LOCK_AROUND_PARAMS.
 Module LA := LockAround.Lock_Around Params.
 Check LA.lockAroundLin.
 
-(* The ticket lock mentioned in the paper *)
+(* A ticket lock implementation for use in the lock-protected family *)
 Check ticketLockLin.
 
-(* The write-snapshot mentioned in the paper *)
+(* The one-shot write-snapshot mentioned in the paper *)
 Check snapshotLin.
 
-(* Appendix A: Verification of the EB Stack *)
+(* Verification of the EB Stack *)
 
-(* As mentioned in the beginning of this file, `EBLin.v` connects all the components of the EB stack together to assemble the full linearizability proof *)
+(* --- As mentioned in the beginning of this file, `EBLin.v` connects all the components of the EB stack together to assemble the full linearizability proof --- *)
+
+(* Linearizability proof for the exchanger *)
+Check oneCellExchLin.
 
 (* Linearizability of wait-free stack *)
 Lemma WFStackLin T A :
@@ -245,25 +244,8 @@ Check LinkedEBStack_lin.
 Print LinkedEBUnderlay.
 Print atomicStackSpec.
 
-(* Appendix B: Wait-free stack *)
+(* Section 5.7 *)
 
-(* Linearizability proof for the wait-free stack *)
-Theorem waitFreeStackLin T A :
-  WaitFreeStack.VE (T:=T) ▷ WaitFreeStack.WFStack A ↝ WaitFreeStack.VF.
-Proof.
-  eapply soundness.
-  apply WaitFreeStack.WFStackCorrect.
-Qed.
-
-(* Appendix C: One-cell exchanger *)
-
-(* Linearizability proof for the exchanger *)
-Check oneCellExchLin.
-
-(* Additionally, we verify the elimination array, which encapsulates an array of exchangers into a single exchanger *)
-Check elimArrayLin.
-
-(* Appendix D: Elimination backoff stack -- toplevel component *)
-
-(* Linearizability proof for the EB stack's toplevel component *)
-Check EBStackLin.
+(* Soundness and completeness of the program logic, same as in the paper *)
+Check soundness.
+Check completeness.
