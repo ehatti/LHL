@@ -154,7 +154,7 @@ Print "↝".
 Check lin_obs_ref.
 Check locality.
 
-(* Additionally we prove these two lemmas, which are very handy in linearizability proofs involving lots of compositions, and are straightforward applications of observational refinement and locality *)
+(* Additionally we use observational refinement and locality to prove the horizontal and vertical composition rules from the compositional linearizability refinement calculus. These are used to build larger systems from their verified components. *)
 Check vcomp_lin.
 Check hcomp_lin.
 
