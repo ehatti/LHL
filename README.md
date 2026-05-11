@@ -53,7 +53,7 @@ Implementation of LHL.
 
 The following series of commands will build and check all files in the project, including `Examples`.
 ```
-docker build -t lhl-artifact .
+docker pull ghcr.io/ehatti/lhl:latest
 docker run -it lhl-artifact
 ./build.sh
 ```
