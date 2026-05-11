@@ -1,3 +1,12 @@
+(*
+ * VisPoss.v
+ *
+ * Helper relations, lemmas, and types for manipulating possibilities in proofs.
+ *
+ * - `VisPossStep`: In proofs it is very helpful for comprehension's sake to lay out the transitions of the possibilities as a list of events, even though the program logic technically does not require this, `VisPossStep` and the lemmas around it facilitate this. The sequence of events may be written out as a list, and then `callStep` and `retStep` are used. Without these helpers proofs tend to be extremely hard to read without explicitly stepping through the proof state, although the length of proofs is generally not affected.
+ * - `Waiting`, `Done`: The call and return states of a possibility are separated in the program logic. It was originally thought that this would make assertions clearer, but in practice this turned out to be false. These two predicates allow for the behavior of the call and return states being bundled together to be recovered. In the future, we would like to refactor the program logic to fuse the call and return states of the possibilities back together into a single state.
+*)
+
 From Coq Require Import
   Lists.List.
 Import ListNotations.

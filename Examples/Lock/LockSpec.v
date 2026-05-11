@@ -1,7 +1,6 @@
 From LHL.Core Require Import
   Program
-  Specs
-  UBLayer.
+  Specs.
 
 From LHL.Util Require Import
   Util
@@ -9,7 +8,8 @@ From LHL.Util Require Import
   TransUtil.
 
 From Coq Require Import
-  Program.Equality.
+  Program.Equality
+  Program.Wf.
 
 Require Import List.
 Import ListNotations.

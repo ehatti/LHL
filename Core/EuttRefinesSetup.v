@@ -1,3 +1,14 @@
+(*
+ * EuttRefinesSetup.v
+ *
+ * See `RefinesFacts.v` for the use of this file. The key task here is to reduce the task of proving the full `eutt_layerRefines` to proving a version of it for each thread individually -- i.e sequential executions. This involves uninterleaving the full trace, proving the lemma for the resulting sequential traces -- i.e demonstrating there exists sequential traces with added/removed tau steps such that they match the goal -- and then reinterleaving those constructed sequential traces into a full trace matching the the original.
+ *
+ * As mentioned in `RefinesFacts.v`, these proofs would be easier to state (close to definitional, even) if a more structure-enforcing type were used, but unfortunately in practice in Rocq those kinds of highly dependent types seem to be more trouble than they're worth.
+ *
+ * Key items:
+ * - `interleave`: The witness for the reinterleaving, takes in the original trace and all the sequential traces and constructs a new full trace
+ * - `reinterleave_eutt`: The actual lemma demonstrating the reinterleaving has the desired property, used in `RefinesFacts.v`
+*)
 From LHL.Util Require Import
   Util
   TransUtil
@@ -1189,7 +1200,7 @@ split.
 }
 Qed.
 
-Lemma help13 {T E F} :
+Lemma reinterleave_eutt {T E F} :
   forall (p : Trace (ThreadLEvent T E F)),
   forall (qc : Name T -> Trace (LEvent E F)),
   (forall i, ~In i (dedup (map fst p)) ->

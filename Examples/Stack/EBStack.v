@@ -394,8 +394,6 @@ intros. induction H1. easy.
 eapply IHSRTC, H. exact H0. easy.
 Qed.
 
-Axiom StkRet_inj : forall A B, StkRet A = StkRet B -> A = B.
-
 Ltac dsteps :=
 do 10 try (
   do 2 psimpl;

@@ -235,8 +235,6 @@ Ltac simp_sets :=
       apply insert_cong3 in H; auto
   end.
 
-Axiom undef:forall{a},a.
-
 From Coq Require Import
   Program.Wf.
 
