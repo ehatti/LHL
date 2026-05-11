@@ -119,7 +119,7 @@ Print InterStep.
 Print InterSteps.
 (* This makes many of the definitions and proofs much cleaner *)
 
-(* Same as in the paper: The object implemented by running `M` on top of `V`. It *)
+(* Same as in the paper: The object implemented by running `M` on top of `V`. *)
 Print overObj.
 Locate "▷".
 
