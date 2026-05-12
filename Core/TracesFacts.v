@@ -1,3 +1,11 @@
+(*
+ * TracesFacts.v
+ *
+ * Helper lemmas about trace projections and the overObj layer semantics.
+ *
+ * The central lemma here is `decompOverObj`. As discussed in `RefinesFacts.v`, our traces are rather "untyped" despite having a good amount of structure. `overObj` runs an implementation over an underlay specification and projects out the overlay trace, resulting in a transition system over the overlay signature. The results in `RefinesFacts.v` involve a great deal of working with these interleaved traces, so it is essential that we make this as easy as possible. `decompOverObj` takes the interleaved trace and projects out the overlay and underlay steps, allowing us to work with them separately. The proof works using `overObj_view`, which decomposes a valid `overObj` trace into blocks of `OEvent`s followed by `UEvents`.
+*)
+
 From Coq Require Import 
     Init.Nat
     Arith

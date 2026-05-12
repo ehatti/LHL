@@ -7,7 +7,6 @@ From LHL.Core Require Import
   Traces
   SingConds
   VisPoss
-  UBLayer
   ProgramRules
   Linearizability.
 

@@ -119,7 +119,7 @@ Print InterStep.
 Print InterSteps.
 (* This makes many of the definitions and proofs much cleaner *)
 
-(* Same as in the paper: The object implemented by running `M` on top of `V`. It *)
+(* Same as in the paper: The object implemented by running `M` on top of `V`. *)
 Print overObj.
 Locate "▷".
 
@@ -154,7 +154,7 @@ Print "↝".
 Check lin_obs_ref.
 Check locality.
 
-(* Additionally we prove these two lemmas, which are very handy in linearizability proofs involving lots of compositions, and are straightforward applications of observational refinement and locality *)
+(* Additionally we use observational refinement and locality to prove the horizontal and vertical composition rules from the compositional linearizability refinement calculus. These are used to build larger systems from their verified components. *)
 Check vcomp_lin.
 Check hcomp_lin.
 
@@ -178,7 +178,8 @@ Print VisPossStep.
 (* The module judgement -- same definition as in the paper *)
 Check VerifyImpl.
 
-(* The definition of the `ReturnStep` side condition. This side condition is omitted in the paper as it is trivially proven for nearly all objects (the only place we have had to use it in a nontrivial way is the completeness proof) *)
+(* The definition of the `ReturnStep` side condition. This side condition is omitted in the paper as it is trivially proven for nearly all objects 
+  (the only place we have had to use it in a nontrivial way is the completeness proof to handle the possibility of programs with only a return statement) *)
 Print ReturnStep.
 
 (* Section 5.4 *)

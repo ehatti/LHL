@@ -13,6 +13,17 @@ Variant StkRet {A} :=
 | FAIL.
 Arguments StkRet : clear implicits.
 
+(*
+  This axiom arises due to equalities of `existT`s. A reduced example:
+  ```
+  H : existT Type (fun A => A) (option R) None = existT Type (fun A => A) (option nat) (Some 0)
+  ============================
+  False
+  ```
+  We want to get the proof state to a situation where we have `None = Some 0`, which we can then eliminate to prove `False`. This is difficult however because just deriving `option R = option nat` from `H` and then rewriting will result in an ill-typed term. The following axiom allows us to instead derive `R = nat` and then substitute, which avoids this issue.
+*)
+Axiom StkRet_inj : forall A B, StkRet A = StkRet B -> A = B.
+
 Variant WaitFreeStackSig {A} : ESig :=
 | WFPush (v : A) : WaitFreeStackSig (StkRet unit)
 | WFPop : WaitFreeStackSig (StkRet (option A)).

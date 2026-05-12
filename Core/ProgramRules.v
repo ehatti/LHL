@@ -19,13 +19,6 @@ From Paco Require Import paco.
 
 Ltac ddestruct H := dependent destruction H.
 
-Definition IsAtomic {T E A} (VE : Spec T E) (m : E A) :=
-  forall i s t e r,
-    VE.(Step) s (i, CallEv m) t ->
-    VE.(Step) t e r ->
-    exists v,
-      e = (i, RetEv m v).
-
 Section rules.
 
 Context

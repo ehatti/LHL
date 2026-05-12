@@ -1,3 +1,15 @@
+(*
+ * TensorFacts.v
+ *
+ * Contains the main refinement theorems around horizontal composition, used to prove `locality` in `LinFacts.v`.
+ *
+ * The key theorems are:
+ * - `tensor_monotonic`: Shows that horizontal composition is monotonic wrt refinement. Fairly simple -- we just apply the two refinement hypotheses to the left-projected and right-projected versions of the provided trace, and then perform a forward simulation on both.
+ * - `tensor_monotonic_inv`: Similarly easy, as it again follows from just projecting out either the left or right events and stepping along the resulting trace.
+ * - `tensor_layer_funct_l`: Deals with one side of the interaction between vertical compositional and horizontal composition. The proof is relatively simple, the bulk of it being in managing a proof of `tensor_system`, which maintains the coordination structure between the left overlay, left underlay, right overlay, and right underlay. The size of the proof comes mostly from the number of cases to deal with rather than genuine complexity.
+  * - `tensor_layer_funct_r`: Simpler than the `funct_l` case, the proof proceeds similarly to `tensor_monotonic_inv`, i.e by projecting out either the left or right traces and then performing a forward simulation.
+*)
+
 From LHL.Core Require Import
   Program
   ProgramFacts

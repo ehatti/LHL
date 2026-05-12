@@ -39,8 +39,6 @@ Definition E A :=
 
 Definition F A := WaitFreeStackSig A.
 
-Axiom StkRet_inj : forall A B, StkRet A = StkRet B -> A = B.
-
 Definition wfpush {A} (v : A) : Prog (E A) (StkRet unit) :=
   old <- call Get;
   new <- call MAlloc;

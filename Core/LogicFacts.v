@@ -1,3 +1,39 @@
+(*
+ * LogicFacts.v
+ *
+ * Here we prove soundness and complete of our logic wrt compositional linearizability.
+ *
+ * `soundness`: The possibility sets are the key part of the program logic -- the proof obligations of the program logic are designed to ensure that, at the end of the execution, there exists at least one possibility which is consistent with the `InterSteps` execution. The goal of the soundness proof is essentially to extract this possibility. The proof maintains the predicate `LHLState` over the current thread state and possibility set, which states that the current execution is covered by a sequence of relies and postconditions. We maintain this invariant by applying commits (along with `Inv_in_R` and `Ret_in_R`, less importantly), which also update the possibility set as we continue through the execution. The commits guarantee that the possibility set is nonempty, and the `all_return` side condition guarantees that at the end of the execution all the possibilities left in the set will be consistent with the current concrete execution. Thus, the possibility set always contains at least one consistent possibility, and at the end of the proof this is the possibility which becomes the witness to the simulation.
+ *
+ * `completeness`: The hardest part of this proof is fixing the right instantiations of the program logic's parameters. After that is done the proof follows fairly straightforwardly. For this proof, we chose to have the program logic maintain an invariant `comp_inv` -- while the invariant ends up being somewhat bulky, this approach has the advantage of simplifying the rely to merely `comp_inv -> comp_inv`. We reproduce the invariant here.
+ * ```coq
+ * Definition comp_inv {T E F}
+ * (VE : Spec T E) (VF : Spec T F) (M : Impl E F)
+ * : Prec VE VF :=
+ * fun t σs =>
+ * exists p,
+ *   InterSteps (spec:=VE) M (allIdle, Init VE) p t /\
+ *   (forall σ, σs σ ->
+ *     exists q,
+ *       projOver p = projOver q /\
+ *       FullPossSteps initPoss q σ) /\
+ *   (forall q τ,
+ *     projOver p = projOver q ->
+ *     FullPossSteps initPoss q τ ->
+ *     exists σ l r,
+ *       σs σ /\
+ *       projOver p = projOver l /\
+ *       projOver r = [] /\
+ *       FullPossSteps initPoss l σ /\
+ *       FullPossSteps σ r τ).
+ * ```
+ * The completeness invariant essentially keeps track of the entire trace `p` that the program has stepped along (this is the first conjunct), and further maintains the following:
+ * 1. All possibilities in the possibility set result from an arbitrary trace overlay-consistent with `p`
+ * 2. *Any* execution with the same overlay events as `p` has a corresponding possibility in the possibility set
+ * Essentially, these two conditions say that the possibility set has *no* incorrect possibilities, and has *all* the correct possibilities. There are some subtleties but this captures the idea, which is to make the invariant as strong as possible. These conjuncts of the invariant could instead have been stated as constraining `σs` to be equal to a certain set, but the invariant is clearer if stated this way.
+ * From here, the main part of the proof is `comp_commit`. At each commit step, we fill the possibility set with everything consistent with the current execution, and remove all the old possibilities which are no longer consistent with the current execution. When we reach the end of the execution, since the possibility set only contains possibilities consistent with the current execution, we can pick an arbitrary one, finishing that part of the proof. After that the rest of the conditions of the module judgement are straightforward to prove.
+*)
+
 From LHL.Core Require Import
   Logic
   Specs
